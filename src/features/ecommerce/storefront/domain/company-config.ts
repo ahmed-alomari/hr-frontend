@@ -345,6 +345,8 @@ export type CompanyConfigRecord = {
   timezone: string;
   /** The company's base country (company settings). */
   country: StoreCountry;
+  /** Customers sign in without the password from a trusted device (store setting). */
+  trustedDeviceLogin?: boolean;
 };
 
 /** @deprecated Use StorefrontCompanyConfig from domain/storefront-models.ts in UI. */

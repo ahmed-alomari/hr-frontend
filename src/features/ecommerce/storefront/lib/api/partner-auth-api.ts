@@ -77,6 +77,7 @@ type PartnerSessionApiDto = {
   user: PartnerAuthSessionPayload['user'];
   partner: PartnerAuthSessionPayload['partner'] & { companyId?: string; accountKind?: string };
   message?: string | null;
+  deviceToken?: string | null;
 };
 
 type PartnerMeApiDto = {
@@ -121,6 +122,7 @@ function mapSessionPayload(dto: PartnerSessionApiDto): PartnerAuthSessionPayload
       accountKind: dto.partner.accountKind as PartnerAuthSessionPayload['partner']['accountKind'],
     },
     message: dto.message ?? undefined,
+    deviceToken: dto.deviceToken ?? null,
   };
 }
 
@@ -177,6 +179,22 @@ export async function loginPartner(input: PartnerLoginInput): Promise<PartnerAut
       identifier: input.identifier.trim(),
       password: input.password,
       companyId: input.companyId || getStorefrontCompanyId(),
+    }),
+  });
+  return mapSessionPayload(dto);
+}
+
+/** POST /public/partners/auth/device-login → 200 (trusted device, no password) */
+export async function deviceLoginPartner(input: {
+  mobile: string;
+  deviceToken: string;
+}): Promise<PartnerAuthSessionPayload> {
+  const dto = await partnerAuthFetch<PartnerSessionApiDto>('/public/partners/auth/device-login', {
+    method: 'POST',
+    body: JSON.stringify({
+      companyId: getStorefrontCompanyId(),
+      mobile: input.mobile,
+      deviceToken: input.deviceToken,
     }),
   });
   return mapSessionPayload(dto);

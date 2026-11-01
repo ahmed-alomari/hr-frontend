@@ -189,6 +189,8 @@ export type StorefrontCompanyConfig = {
   timezone: string;
   /** The company's base country (company settings). */
   country: StoreCountry;
+  /** Customers sign in without the password from a trusted device (store setting). */
+  trustedDeviceLogin?: boolean;
 };
 
 export type StorefrontHeroSlide = {

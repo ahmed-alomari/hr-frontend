@@ -361,7 +361,10 @@
     },
     "passwordHint": "The password of your account in this store, created when you signed up — not your email password.",
     "passwordPlaceholder": "Store password",
-    "createAccountCta": "Create a new account"
+    "createAccountCta": "Create a new account",
+    "deviceLogin": "Sign in from this device without a password",
+    "deviceLoginHint": "We recognise this device and your mobile. You can sign in without the password.",
+    "deviceLoginSubmitting": "Signing in..."
   },
   "register": {
     "title": "Create account",

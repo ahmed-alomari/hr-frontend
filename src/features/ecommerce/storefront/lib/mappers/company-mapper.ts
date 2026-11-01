@@ -117,5 +117,6 @@ export function mapStorefrontCompanyConfig(
     currency: record.currency,
     timezone: record.timezone,
     country: record.country,
+    trustedDeviceLogin: record.trustedDeviceLogin === true,
   };
 }

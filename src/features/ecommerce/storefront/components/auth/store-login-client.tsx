@@ -4,12 +4,21 @@ import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Eye, EyeOff, UserPlus } from 'lucide-react';
+import { Eye, EyeOff, Smartphone, UserPlus } from 'lucide-react';
 import {
   useIsStorefrontAuthenticated,
   useStorefrontCustomerUi,
 } from '@/features/ecommerce/storefront/hooks/use-storefront-customer-ui';
-import { loginPartner } from '@/features/ecommerce/storefront/lib/api/partner-auth-api';
+import {
+  deviceLoginPartner,
+  loginPartner,
+} from '@/features/ecommerce/storefront/lib/api/partner-auth-api';
+import {
+  forgetTrustedDevice,
+  readTrustedDevice,
+  rememberTrustedDevice,
+} from '@/features/ecommerce/storefront/lib/store-trusted-device';
+import { useStoreTrustedDeviceLogin } from '@/features/ecommerce/storefront/hooks/use-store-trusted-device-login';
 import { PartnerAuthApiError } from '@/features/ecommerce/storefront/domain/partner-auth';
 import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import {
@@ -51,6 +60,19 @@ export function StoreLoginClient() {
   const hydrated = useStorefrontAuthReady();
   const country = useStoreCountry();
   const mobileError = useStoreMobileError();
+  const trustedDeviceLogin = useStoreTrustedDeviceLogin();
+  const [savedDevice, setSavedDevice] = React.useState<ReturnType<typeof readTrustedDevice>>(null);
+
+  React.useEffect(() => {
+    setSavedDevice(readTrustedDevice(getStorefrontCompanyId()));
+  }, []);
+
+  // The device's key works with the mobile it was given for (store setting on).
+  const typedMobile = method === 'mobile' ? parseStoreMobile(identifier, country) : null;
+  const deviceMatch =
+    trustedDeviceLogin && savedDevice && typedMobile?.ok && typedMobile.e164 === savedDevice.mobile
+      ? savedDevice
+      : null;
 
   React.useEffect(() => {
     if (hydrated && authenticated) {
@@ -84,9 +106,33 @@ export function StoreLoginClient() {
         companyId: getStorefrontCompanyId(),
       });
       setSession(session);
+      rememberTrustedDevice(session);
       toast.success(session.message || t('login.success'));
       router.push(returnTo);
     } catch (error) {
+      toast.error(customerErrorText(error, t('login.errors.generic')));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onDeviceLogin() {
+    if (!deviceMatch) return;
+    setSubmitting(true);
+    try {
+      const session = await deviceLoginPartner({
+        mobile: deviceMatch.mobile,
+        deviceToken: deviceMatch.token,
+      });
+      setSession(session);
+      toast.success(t('login.success'));
+      router.push(returnTo);
+    } catch (error) {
+      // Revoked (password reset) or no longer trusted: the password still works.
+      if (error instanceof PartnerAuthApiError && error.status === 401) {
+        forgetTrustedDevice(getStorefrontCompanyId());
+        setSavedDevice(null);
+      }
       toast.error(customerErrorText(error, t('login.errors.generic')));
     } finally {
       setSubmitting(false);
@@ -171,6 +217,24 @@ export function StoreLoginClient() {
             />
           )}
         </div>
+
+        {deviceMatch ? (
+          <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {t('login.deviceLoginHint')}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full gap-2"
+              disabled={submitting}
+              onClick={() => void onDeviceLogin()}
+            >
+              <Smartphone className="h-4 w-4" aria-hidden />
+              {submitting ? t('login.deviceLoginSubmitting') : t('login.deviceLogin')}
+            </Button>
+          </div>
+        ) : null}
 
         <div className="space-y-1.5">
           <div className="flex items-center justify-between gap-2">

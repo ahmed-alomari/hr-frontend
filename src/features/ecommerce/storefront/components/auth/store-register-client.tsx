@@ -10,6 +10,7 @@ import {
   useStorefrontCustomerUi,
 } from '@/features/ecommerce/storefront/hooks/use-storefront-customer-ui';
 import { registerPartner } from '@/features/ecommerce/storefront/lib/api/partner-auth-api';
+import { rememberTrustedDevice } from '@/features/ecommerce/storefront/lib/store-trusted-device';
 import { PartnerAuthApiError } from '@/features/ecommerce/storefront/domain/partner-auth';
 import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import {
@@ -108,6 +109,7 @@ export function StoreRegisterClient() {
         accountKind: 'customer',
       });
       setSession(session);
+      rememberTrustedDevice(session);
       toast.success(session.message || t('register.success'));
       router.push(returnTo);
     } catch (error) {

@@ -33,6 +33,7 @@ import { DeliveryRatesPanel } from '@/features/ecommerce/admin/delivery-rates/co
 import { StockSyncPanel } from '@/features/ecommerce/admin/stock/components/stock-sync-panel';
 import { PaymentAccountsPanel } from '@/features/ecommerce/admin/payment-accounts/components/payment-accounts-panel';
 import { CashOnDeliverySetting } from '@/features/ecommerce/admin/payment-accounts/components/cash-on-delivery-setting';
+import { TrustedDeviceLoginSetting } from '@/features/ecommerce/admin/cms/settings/components/trusted-device-login-setting';
 import { UnpaidOrderExpirySetting } from '@/features/ecommerce/admin/payment-accounts/components/unpaid-order-expiry-setting';
 import GeoLocationsPage from '@/features/system/organization/geo/components/geo-locations-page';
 
@@ -444,6 +445,9 @@ export function WebsiteSettingsPage() {
                     onChange={(faviconUrl) => updateDraft({ ...draft, faviconUrl })}
                   />
                 </Field>
+              </div>
+              <div className="mt-5">
+                <TrustedDeviceLoginSetting companyId={companyId} />
               </div>
             </SettingsPanel>
           </TabsContent>

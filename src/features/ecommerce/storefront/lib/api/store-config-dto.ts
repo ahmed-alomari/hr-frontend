@@ -53,6 +53,8 @@ export type StoreSettingsDto = {
   announcementSpeedMs: number;
   storePageOffersEnabled: boolean;
   storePageWholesaleEnabled: boolean;
+  /** Sign-in without the password from a trusted device (absent from an older backend). */
+  trustedDeviceLoginEnabled?: boolean;
   defaultLocale: string;
   currencyCode: string;
   timezone: string;
@@ -218,6 +220,7 @@ export function mapStorefrontConfigDtoToRecord(dto: StorefrontConfigDto): Compan
     currency: s.currencyCode || 'YER',
     timezone: s.timezone || 'Asia/Aden',
     country: s.country ?? { ...DEFAULT_STORE_COUNTRY },
+    trustedDeviceLogin: s.trustedDeviceLoginEnabled === true,
   };
 }
 
