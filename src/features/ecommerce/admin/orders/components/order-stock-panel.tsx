@@ -20,7 +20,7 @@ import { APP, useCompanyApps } from '@/shared/modules/company-apps';
 const STOCK_UPDATE_PERMISSION = 'sta.stock.update';
 
 const SOURCE_LABEL: Record<OrderStockSource, string> = {
-  local: 'كمية المتجر',
+  local: 'كمية المنتج',
   inventory: 'المخازن',
   none: 'بلا أثر مخزني',
   unresolved: 'غير محدد — يحتاج مراجعة',
@@ -126,7 +126,7 @@ function ResolveSource({
       </p>
       <ul className="list-disc space-y-0.5 ps-5 text-xs text-muted-foreground">
         <li>المخازن: يُحجز الآن من مستودع المتجر (أو يُعتبر مصروفاً إن صُرف له سابقاً).</li>
-        <li>كمية المتجر: تُخصم الآن من كمية المتجر الخاصة.</li>
+        <li>كمية المنتج: تُخصم منها الآن.</li>
         <li>بلا أثر مخزني: يُشحن دون حركة مخزون، مع ملاحظة إلزامية.</li>
       </ul>
       <p className="text-xs font-medium text-foreground">
@@ -159,7 +159,7 @@ function ResolveSource({
           disabled={!canManage || mutation.isPending}
           onClick={() => run('local')}
         >
-          كمية المتجر
+          كمية المنتج
         </Button>
         <Button
           size="sm"

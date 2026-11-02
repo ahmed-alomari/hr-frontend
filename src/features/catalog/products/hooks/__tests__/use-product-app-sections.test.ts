@@ -1,7 +1,7 @@
 import {
   PRODUCT_INVENTORY_DOCS,
   productAppSectionsFrom,
-  storeSellsLocallyFrom,
+  productsSellLocallyFrom,
   visibleRelatedDocs,
 } from '@/features/catalog/products/hooks/use-product-app-sections';
 import { companyAppsFrom } from '@/shared/modules/company-apps';
@@ -41,13 +41,22 @@ describe('product app sections (phase 2.5)', () => {
   });
 });
 
-describe('store sells from its own quantity (phase 3)', () => {
-  it('only when the store is enabled and the inventory bridge is not', () => {
-    const local = (codes: string[] | null) => storeSellsLocallyFrom(companyAppsFrom(codes));
+describe('a channel sells from the product quantity (§21)', () => {
+  it('when the store or the point of sale is enabled without its inventory bridge', () => {
+    const local = (codes: string[] | null) => productsSellLocallyFrom(companyAppsFrom(codes));
     expect(local(['catalog', 'store-admin'])).toBe(true);
     expect(local(['catalog', 'store-admin', 'inventory'])).toBe(true);
     expect(local(['catalog', 'store-admin', 'inventory', 'store-stock-sync'])).toBe(false);
     expect(local(['catalog', 'inventory'])).toBe(false);
+    // The point of sale alone, with or without its bridge.
+    expect(local(['catalog', 'pos'])).toBe(true);
+    expect(local(['catalog', 'pos', 'inventory', 'pos-stock-sync'])).toBe(false);
+    // Both linked: nothing sells from the product quantity.
+    expect(
+      local(['catalog', 'store-admin', 'pos', 'inventory', 'store-stock-sync', 'pos-stock-sync']),
+    ).toBe(false);
+    // One channel still unlinked is enough.
+    expect(local(['catalog', 'store-admin', 'pos', 'inventory', 'store-stock-sync'])).toBe(true);
     // Not known yet: neither way is shown.
     expect(local(null)).toBe(false);
   });

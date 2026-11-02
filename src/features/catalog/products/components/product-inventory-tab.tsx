@@ -21,9 +21,9 @@ import {
 import { ProductStatTile } from '@/features/catalog/products/components/product-stat-tile';
 import {
   useProductAppSections,
-  useStoreSellsLocally,
+  useProductsSellLocally,
 } from '@/features/catalog/products/hooks/use-product-app-sections';
-import { StoreLocalStockSection } from '@/features/ecommerce/admin/stock/components/store-local-stock-section';
+import { ProductQuantitySection } from '@/features/catalog/products/components/product-quantity-section';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchableDropdown } from '@/components/ui/shared-dialogs';
@@ -42,8 +42,8 @@ export function ProductInventoryTab({ control, errors, register, setValue, produ
   const companyId = getStorefrontCompanyId();
   // Stock is inventory's and stockStatus the store's: each shows only when its app is enabled.
   const sections = useProductAppSections();
-  // Phase 3: a store without the inventory bridge sells from its own quantity.
-  const sellsLocally = useStoreSellsLocally();
+  // A channel without its inventory bridge sells from the product quantity (§21).
+  const sellsLocally = useProductsSellLocally();
   const stockCompanyId = sections.inventory ? companyId : undefined;
   const variants = useWatch({ control, name: 'variants' }) ?? [];
   const warehouseId = useWatch({ control, name: 'warehouseId' });
@@ -202,10 +202,9 @@ export function ProductInventoryTab({ control, errors, register, setValue, produ
         </>
       ) : null}
 
-      {sellsLocally && companyId ? (
-        <StoreLocalStockSection companyId={companyId} productId={productId} variants={variants} />
-      ) : null}
+      {sellsLocally ? <ProductQuantitySection productId={productId} variants={variants} /> : null}
 
+      {sections.store || sections.inventory ? (
       <ProductFormSection title="إعدادات التوفر" description="حالة العرض وتنبيهات النفاد.">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {sections.store ? (
@@ -251,6 +250,7 @@ export function ProductInventoryTab({ control, errors, register, setValue, produ
           ) : null}
         </div>
       </ProductFormSection>
+      ) : null}
     </div>
   );
 }

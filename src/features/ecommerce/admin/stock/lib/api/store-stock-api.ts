@@ -18,33 +18,6 @@ export type StoreStockLevel = {
 const base = (companyId: string) =>
   `/store-admin/companies/${resolveStorefrontCompanyId(companyId)}/stock-levels`;
 
-export const storeStockApi = {
-  async listForProduct(companyId: string, productId: string): Promise<StoreStockLevel[]> {
-    return apiRequest<StoreStockLevel[]>(base(companyId), {
-      query: { productId },
-      throwOnError: true,
-    });
-  },
-
-  async setLevel(
-    companyId: string,
-    input: { productId: string; variantId?: string | null; quantity: number },
-  ): Promise<StoreStockLevel> {
-    return apiRequest<StoreStockLevel>(base(companyId), {
-      method: 'PUT',
-      throwOnError: true,
-      body: input,
-    });
-  },
-
-  async removeLevel(companyId: string, levelId: string): Promise<void> {
-    await apiRequest<void>(`${base(companyId)}/${levelId}`, {
-      method: 'DELETE',
-      throwOnError: true,
-    });
-  },
-};
-
 /** After the inventory link was disabled: the local quantities wait for an approved opening. */
 export type StoreStockOpening = {
   state: 'ready' | 'needs_opening';

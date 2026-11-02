@@ -102,7 +102,7 @@
     "variantUnavailable": "Choose an available combination for this product.",
     "orderWithVariants": "Order with options",
     "orderDirect": "Order product directly",
-    "availableInWarehouse": "Available in warehouse: {count}",
+    "availableInWarehouse": "Available: {count}",
     "soldWithoutStockLimit": "Sold without stock tracking — no warehouse quantity limit.",
     "backorderEnabled": "Backorders allowed — you can order even when stock is zero.",
     "cannotAddOutOfStock": "Sorry, this option is currently out of stock.",

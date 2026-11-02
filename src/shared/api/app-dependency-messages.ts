@@ -38,5 +38,9 @@ export function translateAppDependencyError(envelope: ApiErrorEnvelope | null | 
     const list = quoted(readApps(e.disableFirst));
     return `لا يمكن تعطيل ${name}: ${list.length > 1 ? 'هذه التطبيقات المفعّلة تعتمد عليه' : 'هذا التطبيق المفعّل يعتمد عليه'}: ${list.join('، ')}. عطّلها أولاً.`;
   }
+  if (e.code === 'APP_BRIDGE_FOLLOWS_APPS') {
+    const list = quoted(readApps(e.follows));
+    return `${name} ربط تلقائي لا يُعطَّل وحده: يتوقف بتعطيل ${list.join(' أو ')}.`;
+  }
   return null;
 }

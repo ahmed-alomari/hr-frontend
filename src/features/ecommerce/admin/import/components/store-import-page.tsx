@@ -313,7 +313,7 @@ export function StoreImportPage() {
               ) : null}
               {preview.counts.quantitiesSet ? (
                 <p className="text-sm text-muted-foreground">
-                  تُضبط كمية المتجر لـ {preview.counts.quantitiesSet} منتجاً أو متغيراً (الكمية في الملف هي الكمية الجديدة).
+                  تُضبط كمية المنتج لـ {preview.counts.quantitiesSet} منتجاً أو متغيراً (الكمية في الملف هي الكمية الجديدة).
                 </p>
               ) : null}
 

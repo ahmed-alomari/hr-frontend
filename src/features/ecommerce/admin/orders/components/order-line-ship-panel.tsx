@@ -343,7 +343,7 @@ export function OrderLineShipPanel({
   const shippedFromLabels = React.useMemo(() => {
     if (!isShipped) return [];
     if (line.allocations.length === 0) {
-      if (prepMode === 'local') return ['كمية المتجر'];
+      if (prepMode === 'local') return ['كمية المنتج'];
       return [trackInventory ? '—' : 'بدون خصم مخزون'];
     }
     return line.allocations.map((allocation) => {

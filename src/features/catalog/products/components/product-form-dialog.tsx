@@ -85,7 +85,8 @@ const FORM_TABS = [
     value: 'availability',
     label: 'توفر',
     icon: Warehouse,
-    requiresAnyApp: [APP.inventory, APP.storeAdmin],
+    // The point of sale: the product quantity it sells from (§21).
+    requiresAnyApp: [APP.inventory, APP.storeAdmin, APP.pos],
   },
   { value: 'units', label: 'وحدات', icon: Ruler },
   { value: 'settings', label: 'الإعدادات', icon: Settings },

@@ -171,6 +171,9 @@ function CompanyAppsTab({ companyId }: { companyId: string }) {
         const pending = patchCompanyApplication.isPending || enablingChain;
         const missing = app.isEnabled ? [] : app.missingDependencies;
         const dependents = app.isEnabled ? app.enabledDependents : [];
+        // §21: a link to inventory goes off only with one of its two apps.
+        const followsApps = app.isEnabled && app.followsApps;
+        const bridges = app.isEnabled ? app.followingBridges : [];
 
         return (
           <div
@@ -216,12 +219,26 @@ function CompanyAppsTab({ companyId }: { companyId: string }) {
                   تعتمد عليه: {names(dependents)} — لا يُعطَّل قبلها.
                 </p>
               ) : null}
+              {bridges.length > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  يتوقف معه: {names(bridges)}، بعد فحوصه (الطلبات والورديات المفتوحة).
+                </p>
+              ) : null}
+              {followsApps ? (
+                <p className="text-xs text-muted-foreground">
+                  ربط تلقائي: لا يُعطَّل وحده، ويتوقف بتعطيل {names(app.dependsOn)}.
+                </p>
+              ) : !app.isEnabled && app.followsApps ? (
+                <p className="text-xs text-warning">
+                  إعداد المخازن غير مكتمل: فعّله بعد اختيار المستودع وإدخال الرصيد. حتى ذلك يُباع من كمية المنتج.
+                </p>
+              ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-4">
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Switch
                   checked={app.isEnabled || enableLocked}
-                  disabled={enableLocked || pending}
+                  disabled={enableLocked || pending || followsApps}
                   onCheckedChange={(checked) => {
                     if (checked && missing.length > 0) {
                       setNeedsFirst(app);

@@ -90,8 +90,12 @@ export type SystemOwnerCompanyApplication = {
   dependsOn: string[];
   /** Those still to enable for this company, in the order to enable them (indirect ones too). */
   missingDependencies: string[];
-  /** Enabled apps of this company that need this one. */
+  /** Enabled apps of this company that need this one (links to inventory excluded: they go off with it). */
   enabledDependents: string[];
+  /** Enabled links to inventory that go off with this app (backend decisions.md §21). */
+  followingBridges: string[];
+  /** A link whose two apps are enabled: on once its setup is done, off only with one of them. */
+  followsApps: boolean;
 };
 
 /** The System Owner "company data" buttons: real starting setup, or samples to try the system. */
@@ -324,6 +328,8 @@ function mapCompanyApplication(raw: Record<string, unknown>): SystemOwnerCompany
     dependsOn: readCodes(raw.dependsOn),
     missingDependencies: readCodes(raw.missingDependencies),
     enabledDependents: readCodes(raw.enabledDependents),
+    followingBridges: readCodes(raw.followingBridges),
+    followsApps: raw.followsApps === true,
   };
 }
 

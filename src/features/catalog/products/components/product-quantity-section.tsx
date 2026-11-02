@@ -7,7 +7,10 @@ import {
   ProductFormField,
   ProductFormSection,
 } from '@/features/catalog/products/components/product-form-section';
-import { storeStockApi, type StoreStockLevel } from '@/features/ecommerce/admin/stock/lib/api/store-stock-api';
+import {
+  productStockApi,
+  type ProductStockLevel,
+} from '@/features/catalog/products/lib/api/product-stock';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -16,32 +19,36 @@ type Item = { variantId: string | null; label: string };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * The store's own quantity of a product or of each variant (phase 3), for a
- * company selling without inventory. Setting a quantity starts tracking: it is
- * deducted when an order is placed, an order is refused when short, and the
- * availability follows it. Without a quantity the item is not tracked.
+ * The product's own quantity, or each variant's (backend decisions.md §21):
+ * what the channels not linked to inventory (the store, the point of sale)
+ * sell from — one number for all of them. Setting a quantity starts
+ * tracking: it is deducted on sale, a sale is refused when short, and it
+ * comes back on cancel. Without a quantity the item is not tracked.
  */
-export function StoreLocalStockSection({
-  companyId,
+export function ProductQuantitySection({
   productId,
   variants,
 }: {
-  companyId: string;
   productId?: string | null;
   variants: Array<{ id: string; nameAr: string }>;
 }) {
   const queryClient = useQueryClient();
-  const queryKey = ['ecommerce', 'store-stock-levels', companyId, productId];
-  const { data: levels = [], isLoading } = useQuery({
+  const queryKey = ['catalog', 'product-stock-levels', productId];
+  const {
+    data: levels = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey,
-    queryFn: () => storeStockApi.listForProduct(companyId, productId as string),
-    enabled: Boolean(companyId && productId),
+    queryFn: () => productStockApi.list(productId as string),
+    enabled: Boolean(productId),
   });
   const refresh = () => queryClient.invalidateQueries({ queryKey });
 
   const setLevel = useMutation({
     mutationFn: (input: { variantId: string | null; quantity: number }) =>
-      storeStockApi.setLevel(companyId, { productId: productId as string, ...input }),
+      productStockApi.set(productId as string, input),
     onSuccess: () => {
       toast.success('تم حفظ الكمية');
       void refresh();
@@ -49,7 +56,7 @@ export function StoreLocalStockSection({
     onError: (error: Error) => toast.error(error.message || 'تعذّر حفظ الكمية'),
   });
   const removeLevel = useMutation({
-    mutationFn: (levelId: string) => storeStockApi.removeLevel(companyId, levelId),
+    mutationFn: (levelId: string) => productStockApi.remove(productId as string, levelId),
     onSuccess: () => {
       toast.success('أُوقف تتبّع الكمية');
       void refresh();
@@ -66,13 +73,20 @@ export function StoreLocalStockSection({
 
   return (
     <ProductFormSection
-      title="كمية المتجر"
-      description="يبيع المتجر من كميته الخاصة (بلا مخازن): تُخصم عند إنشاء الطلب ويُرفض الطلب عند النقص، وتعود عند الإلغاء. بدون كمية لا يُتتبّع المنتج."
+      title="الكمية"
+      description="كمية واحدة يبيع منها المتجر ونقاط البيع (بلا مخازن): تُخصم عند البيع ويُرفض البيع عند النقص، وتعود عند الإلغاء أو المرتجع. بدون كمية لا يُتتبّع المنتج."
     >
       {!productId ? (
         <p className="text-xs text-muted-foreground">احفظ المنتج أولاً لتعيين كميته.</p>
       ) : isLoading ? (
         <p className="text-xs text-muted-foreground">…</p>
+      ) : isError ? (
+        <div className="flex items-center gap-2 text-xs text-destructive">
+          <span>تعذّر تحميل الكمية.</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => void refetch()}>
+            إعادة المحاولة
+          </Button>
+        </div>
       ) : (
         <div className="space-y-3">
           {items.map((item) => (
@@ -99,7 +113,7 @@ function StockRow({
   onStop,
 }: {
   item: Item;
-  level: StoreStockLevel | null;
+  level: ProductStockLevel | null;
   saving: boolean;
   onSave: (quantity: number) => void;
   onStop: (levelId: string) => void;
@@ -110,7 +124,7 @@ function StockRow({
   }, [level]);
   const quantity = Number(value);
   const valid = value.trim() !== '' && Number.isFinite(quantity) && quantity >= 0;
-  const id = `store-stock-${item.variantId ?? 'product'}`;
+  const id = `product-stock-${item.variantId ?? 'product'}`;
 
   return (
     <ProductFormField

@@ -28,7 +28,7 @@ describe('orderLinePrepNote', () => {
 
   it('local order: from the store quantity, never "tracking disabled"', () => {
     const note = orderLinePrepNote('local', true);
-    expect(note).toContain('يُصرف من كمية المتجر');
+    expect(note).toContain('يُصرف من كمية المنتج');
     expect(note).not.toContain('تتبع المخزون معطّل');
   });
 

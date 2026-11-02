@@ -102,7 +102,7 @@
     "variantUnavailable": "اختر تركيبة متاحة لهذا المنتج.",
     "orderWithVariants": "طلب بمتغيرات",
     "orderDirect": "طلب مباشر (بدون متغير)",
-    "availableInWarehouse": "المتوفر في المستودع: {count}",
+    "availableInWarehouse": "المتوفر: {count}",
     "soldWithoutStockLimit": "يُباع دون تتبع كمية — لا حد أقصى من المخزون.",
     "backorderEnabled": "الطلب عند النفاد مفعّل — يمكنك الطلب رغم نفاد المخزون.",
     "cannotAddOutOfStock": "عذراً، نفد المخزون حالياً لهذا الخيار.",

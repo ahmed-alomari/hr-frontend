@@ -118,7 +118,7 @@ export function StockSyncPanel({
   return (
     <Can
       permission={READ}
-      fallback={<p className="text-sm text-muted-foreground">لا تملك صلاحية عرض كميات المتجر.</p>}
+      fallback={<p className="text-sm text-muted-foreground">لا تملك صلاحية عرض كميات المنتجات.</p>}
     >
       {status.isLoading ? (
         <div className="h-40 animate-pulse rounded-2xl bg-muted/40" />
@@ -175,14 +175,14 @@ function StatusBanner({ status: s }: { status: StockSyncStatus }) {
       : 'border-success/30 bg-success/10 text-success';
   const text = !s.enabled
     ? s.localState === 'needs_opening'
-      ? 'الربط معطّل. البيع من كمية المتجر متوقف للأصناف المتتبَّعة حتى تُعتمد الكميات الافتتاحية أدناه.'
-      : 'ربط المتجر بالمخازن غير مفعّل: المتجر يبيع من كميته الخاصة (في صفحة المنتج).'
+      ? 'الربط معطّل. البيع من كمية المنتج متوقف للأصناف المتتبَّعة حتى تُعتمد الكميات الافتتاحية أدناه.'
+      : 'إعداد المخازن غير مكتمل: المتجر يبيع من كمية المنتج (في صفحة المنتج). أدخل كميات المنتجات إلى المستودع من «الرصيد الافتتاحي ← من كميات المنتجات» في المخازن وصدّق المستند، ثم اختر مستودع المتجر أدناه وفعّل «ربط المتجر بالمخازن» من إدارة التطبيقات.'
     : s.needsWarehouse
       ? 'الربط مفعّل لكن مستودع المتجر غير محدد: الطلبات مرفوضة حتى تختاره.'
       : s.state === 'draining'
         ? s.sellingLocally
-          ? 'قيد التصريف: الطلبات الجديدة تُخصم من كمية المتجر، وطلبات المخازن المفتوحة تُشحن من المستودع. بعد إنهائها عطّل الربط من إدارة التطبيقات.'
-          : 'قيد التصريف: الطلبات الجديدة متوقفة حتى تُعتمد كميات المتجر الافتتاحية أدناه. اشحن طلبات المخازن المفتوحة أو ألغها ثم عطّل الربط من إدارة التطبيقات.'
+          ? 'قيد التصريف: الطلبات الجديدة تُخصم من كمية المنتج، وطلبات المخازن المفتوحة تُشحن من المستودع. بعد إنهائها يتوقف الربط بتعطيل المتجر أو المخازن من إدارة التطبيقات.'
+          : 'قيد التصريف: الطلبات الجديدة متوقفة حتى تُعتمد كميات المنتجات الافتتاحية أدناه. اشحن طلبات المخازن المفتوحة أو ألغها، ثم يتوقف الربط بتعطيل المتجر أو المخازن من إدارة التطبيقات.'
         :`المتجر يبيع من مستودع «${s.warehouseNameAr ?? '—'}»: يُحجز عند الطلب ويُصرف عند الشحن.`;
   return <div className={cn('rounded-xl border px-3.5 py-2.5 text-sm', tone)}>{text}</div>;
 }
@@ -215,7 +215,7 @@ function WarehouseSetting({
       <h3 className="text-sm font-semibold">مستودع المتجر</h3>
       <p className="text-xs text-muted-foreground">
         مستودع واحد يخدم المتجر: منه الحجز والتجهيز والصرف والتوفر المعروض. لا يُختار تلقائياً، ولا يتغير وفيه حجوزات مفتوحة.
-        {s.enabled ? '' : ' احفظه هنا قبل تفعيل الربط، وإلا يبقى المتجر على كميته الخاصة.'}
+        {s.enabled ? '' : ' احفظه هنا قبل تفعيل الربط، وإلا يبقى المتجر على كمية المنتج.'}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Select value={value} onValueChange={setValue} disabled={!canUpdate || save.isPending}>
@@ -262,7 +262,7 @@ function DrainControl({
       toast.success(
         s.state === 'draining'
           ? 'استُؤنف البيع من المخازن'
-          : 'بدأ التصريف: الطلبات الجديدة متوقفة حتى تعتمد كميات المتجر الافتتاحية',
+          : 'بدأ التصريف: الطلبات الجديدة متوقفة حتى تعتمد كميات المنتجات الافتتاحية',
       );
       onDone();
     },
@@ -275,15 +275,15 @@ function DrainControl({
         <Stat label="حجوزات مفتوحة" value={s.openReservations} />
         <Stat label="طلبات مخازن مفتوحة" value={s.openInventoryOrders} />
         <Stat label="طلبات قديمة للمراجعة" value={s.unresolvedOrders.length} warn={s.unresolvedOrders.length > 0} />
-        {s.state === 'draining' ? <Stat label="طلبات من كمية المتجر" value={s.openLocalOrders} /> : null}
+        {s.state === 'draining' ? <Stat label="طلبات من كمية المنتج" value={s.openLocalOrders} /> : null}
       </div>
       <p className="text-xs text-muted-foreground">
-        التعطيل يمر بالتصريف: المتجر يواصل البيع من المستودع حتى تُعتمد كميات المتجر الافتتاحية، ثم تُخصم الطلبات الجديدة من كمية
-        المتجر. بعد شحن طلبات المخازن المفتوحة أو إلغائها يُعطَّل الربط من إدارة التطبيقات. استئناف البيع من المخازن غير متاح
-        وطلبات من كمية المتجر مفتوحة.
+        التعطيل يمر بالتصريف: المتجر يواصل البيع من المستودع حتى تُعتمد كميات المنتجات الافتتاحية، ثم تُخصم الطلبات الجديدة من كمية
+        المنتج. بعد شحن طلبات المخازن المفتوحة أو إلغائها يتوقف الربط بتعطيل المتجر أو المخازن من إدارة التطبيقات (لا يُعطَّل الربط وحده). استئناف البيع من المخازن غير متاح
+        وطلبات من كمية المنتج مفتوحة.
         {s.state === 'draining'
           ? s.canDisable
-            ? ' لا عمل مفتوحاً: يمكن التعطيل الآن.'
+            ? ' لا عمل مفتوحاً: يمكن الآن تعطيل المتجر أو المخازن.'
             : ' ما زال عمل مفتوح.'
           : ''}
       </p>
@@ -356,7 +356,7 @@ function EnablePreview({ preview, loading }: { preview: StockSyncPreview | undef
       <h3 className="text-sm font-semibold">معاينة التفعيل</h3>
       <p className="text-xs text-muted-foreground">
         هذا ما سيحدث عند تفعيل الربط، دون أن يتغير شيء الآن: يُحسب توفر كل صنف متتبَّع من المستودع (الأصناف بلا رصيد تظهر غير
-        متوفرة)، وتُترك كميات المتجر الحالية. أدخل البضاعة الفعلية في المستودع (استلام أو جرد) قبل التفعيل.
+        متوفرة)، وتُترك كميات المنتجات الحالية. أدخل البضاعة في المستودع قبل التفعيل: من «الرصيد الافتتاحي ← من كميات المنتجات» في المخازن، أو باستلام أو جرد.
       </p>
       {blockers.length > 0 ? (
         <div className="space-y-2 rounded-xl border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-xs text-warning">
@@ -367,7 +367,7 @@ function EnablePreview({ preview, loading }: { preview: StockSyncPreview | undef
           {blockers.includes('open_local_orders') ? (
             <div className="space-y-1.5">
               <p>
-                {openLocalOrders.length} طلب مفتوح خُصم من كمية المتجر: لن يُصرف من المستودع عند شحنه، فاشحنه أو ألغه قبل التفعيل.
+                {openLocalOrders.length} طلب مفتوح خُصم من كمية المنتج: لن يُصرف من المستودع عند شحنه، فاشحنه أو ألغه قبل التفعيل.
               </p>
               <ul className="flex flex-wrap gap-2">
                 {openLocalOrders.map((o) => (
@@ -442,7 +442,7 @@ function LocalOpening({
     onSuccess: () => {
       toast.success(
         draining
-          ? 'اعتُمدت الكميات الافتتاحية: الطلبات الجديدة تُخصم من كمية المتجر'
+          ? 'اعتُمدت الكميات الافتتاحية: الطلبات الجديدة تُخصم من كمية المنتج'
           : 'اعتُمدت الكميات الافتتاحية واستُؤنف البيع المحلي',
       );
       void queryClient.invalidateQueries({ queryKey: key });
@@ -460,8 +460,8 @@ function LocalOpening({
       <h3 className="text-sm font-semibold">الكميات الافتتاحية للمتجر</h3>
       <p className="text-xs text-muted-foreground">
         {draining
-          ? 'أثناء التصريف تتوقف الطلبات الجديدة حتى تعتمد كمية المتجر لكل صنف؛ بعدها تُخصم الطلبات الجديدة منها بدل المستودع. '
-          : 'بعد تعطيل الربط لا تُستخدم كميات المتجر القديمة تلقائياً. '}
+          ? 'أثناء التصريف تتوقف الطلبات الجديدة حتى تعتمد كمية المنتج لكل صنف؛ بعدها تُخصم الطلبات الجديدة منها بدل المستودع. '
+          : 'بعد تعطيل الربط لا تُستخدم كميات المنتجات القديمة تلقائياً. '}
         الكمية المقترحة هي المتاح في مستودع المتجر بعد المحجوز لطلبات المخازن المفتوحة. الأصناف غير المدرجة يتوقف تتبّعها.
       </p>
       {!loaded ? (
@@ -583,12 +583,12 @@ function RunReport({ run }: { run: Pick<StockSyncRun, 'report'> }) {
       <div className="grid gap-2 sm:grid-cols-4">
         <Stat label="الأصناف" value={totals.items} />
         <Stat label="متتبَّعة في المخازن" value={totals.tracked} />
-        <Stat label="فرق مع كمية المتجر" value={totals.mismatched} warn={totals.mismatched > 0} />
+        <Stat label="فرق مع كمية المنتج" value={totals.mismatched} warn={totals.mismatched > 0} />
         <Stat label="غير متوفرة" value={totals.outOfStock} />
       </div>
       {openLocalOrders > 0 ? (
         <p className="rounded-xl border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-xs text-warning">
-          {openLocalOrders} طلب مفتوح خُصم من كمية المتجر: إن أُلغي يعود لكمية المتجر، وعند شحنه لا يُصرف من المخازن.
+          {openLocalOrders} طلب مفتوح خُصم من كمية المنتج: إن أُلغي يعود لكمية المنتج، وعند شحنه لا يُصرف من المخازن.
         </p>
       ) : null}
       {/* Phones: one card per item. */}
@@ -607,7 +607,7 @@ function RunReport({ run }: { run: Pick<StockSyncRun, 'report'> }) {
               <dl className="mt-1.5 grid grid-cols-3 gap-2 text-xs">
                 {(
                   [
-                    ['كمية المتجر', item.localQuantity],
+                    ['كمية المنتج', item.localQuantity],
                     ['الرصيد الصالح', item.onHand],
                     ['محجوز', item.reserved],
                     ['المتاح', item.available],
@@ -636,7 +636,7 @@ function RunReport({ run }: { run: Pick<StockSyncRun, 'report'> }) {
           <thead className="bg-muted/40 text-muted-foreground">
             <tr>
               <th className="px-3 py-2 text-start font-medium">الصنف</th>
-              <th className="px-3 py-2 text-start font-medium">كمية المتجر</th>
+              <th className="px-3 py-2 text-start font-medium">كمية المنتج</th>
               <th className="px-3 py-2 text-start font-medium">الرصيد الصالح</th>
               <th className="px-3 py-2 text-start font-medium">محجوز</th>
               <th className="px-3 py-2 text-start font-medium">المتاح</th>

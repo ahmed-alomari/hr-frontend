@@ -22,8 +22,8 @@ export function translateStoreStockMessage(rawMessage: string): string | null {
   const openLocal = /^(\d+) open order\(s\) took the store's own quantity/.exec(lower);
   if (openLocal) {
     return lower.includes('before resuming')
-      ? `لا يمكن استئناف البيع من المخازن: ${openLocal[1]} طلب مفتوح خُصم من كمية المتجر. اشحنه أو ألغه أولاً.`
-      : `لا يمكن تفعيل ربط المتجر بالمخازن: ${openLocal[1]} طلب مفتوح خُصم من كمية المتجر ولن يُصرف من المستودع. اشحنه أو ألغه أولاً (راجع معاينة التفعيل في إعدادات المتجر).`;
+      ? `لا يمكن استئناف البيع من المخازن: ${openLocal[1]} طلب مفتوح خُصم من كمية المنتج. اشحنه أو ألغه أولاً.`
+      : `لا يمكن تفعيل ربط المتجر بالمخازن: ${openLocal[1]} طلب مفتوح خُصم من كمية المنتج ولن يُصرف من المستودع. اشحنه أو ألغه أولاً (راجع معاينة التفعيل في إعدادات المتجر).`;
   }
   if (lower.includes("choose the store's warehouse") && lower.includes('before enabling')) {
     return 'اختر مستودع المتجر من إعدادات المتجر ← المخازن والمتجر قبل تفعيل الربط.';
@@ -65,7 +65,7 @@ export function translateStoreStockMessage(rawMessage: string): string | null {
     return 'لا توجد كمية صُرفت لهذا الطلب يمكن إرجاعها (لم يُشحن، أو أُرجعت سابقاً).';
   }
   if (lower.includes('approved opening')) {
-    return 'كميات المتجر تحتاج اعتماد الكميات الافتتاحية قبل البيع المحلي.';
+    return 'كميات المنتجات تحتاج اعتماد الكميات الافتتاحية قبل البيع المحلي.';
   }
   return null;
 }

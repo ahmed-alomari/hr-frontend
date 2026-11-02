@@ -34,15 +34,19 @@ export function useProductAppSections(): ProductAppSections {
 }
 
 /**
- * Phase 3: the company sells from the store's own quantity — the store is
- * enabled and the store-stock-sync bridge (selling from inventory) is not.
+ * A channel sells from the product's own quantity (backend decisions.md §21):
+ * the store without the store-stock-sync bridge, or the point of sale without
+ * the pos-stock-sync bridge. Both take from the same quantity.
  */
-export function storeSellsLocallyFrom(apps: CompanyApps): boolean {
-  return apps.isEnabled(APP.storeAdmin) && !apps.isEnabled(APP.storeStockSync);
+export function productsSellLocallyFrom(apps: CompanyApps): boolean {
+  return (
+    (apps.isEnabled(APP.storeAdmin) && !apps.isEnabled(APP.storeStockSync)) ||
+    (apps.isEnabled(APP.pos) && !apps.isEnabled(APP.posStockSync))
+  );
 }
 
-export function useStoreSellsLocally(): boolean {
-  return storeSellsLocallyFrom(useCompanyApps());
+export function useProductsSellLocally(): boolean {
+  return productsSellLocallyFrom(useCompanyApps());
 }
 
 /** Product shortcuts that open inventory screens (after «متغيرات المنتج»). */

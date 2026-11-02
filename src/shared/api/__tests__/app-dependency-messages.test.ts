@@ -36,6 +36,21 @@ describe('translateAppDependencyError', () => {
     expect(text).toContain('«المخازن»');
   });
 
+  it('a link to inventory goes off only with one of its apps (§21)', () => {
+    const text = translateAppDependencyError(
+      envelope({
+        code: 'APP_BRIDGE_FOLLOWS_APPS',
+        app: { code: 'store-stock-sync', nameAr: 'ربط المتجر بالمخازن' },
+        follows: [
+          { code: 'inventory', nameAr: 'المخازن' },
+          { code: 'store-admin', nameAr: 'إدارة المتجر' },
+        ],
+      }),
+    );
+    expect(text).toContain('«ربط المتجر بالمخازن» ربط تلقائي لا يُعطَّل وحده');
+    expect(text).toContain('«المخازن» أو «إدارة المتجر»');
+  });
+
   it('ignores other errors', () => {
     expect(translateAppDependencyError(envelope({ code: 'OTHER' }))).toBeNull();
     expect(translateAppDependencyError(null)).toBeNull();
