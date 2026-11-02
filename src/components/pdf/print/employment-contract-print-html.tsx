@@ -113,9 +113,10 @@ function ArticleBlock({
 }) {
   const sectionFont = useScaledFont(PDF_SECTION_FONT);
   const bodyFont = useScaledFont(PDF_BODY_FONT);
-  // An article may run over to the next page — a contract has no gaps — but
-  // its title never stays alone at a page's foot (kept with the first
-  // paragraph), and no paragraph is cut through a line.
+  // An article is never split across pages: when it does not fit, the whole
+  // article moves to the next page. Only an article taller than a page runs
+  // over, and then its title stays with its first paragraph and no paragraph
+  // is cut through a line.
   const paragraphs = sanitizePdfText(body)
     .split(/\n+/)
     .map((p) => p.trim())
@@ -147,7 +148,7 @@ function ArticleBlock({
     </div>
   );
   return (
-    <div style={{ marginBottom: 8 }}>
+    <div style={{ marginBottom: 8, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
       <div style={{ pageBreakInside: 'avoid' }}>
         {titleBar}
         {paragraphs[0] ? <div style={paragraphStyle}>{paragraphs[0]}</div> : null}
@@ -268,6 +269,30 @@ function SignatureFooter({ employeeRoleNounAr }: { employeeRoleNounAr: string })
         <div style={{ width: 160, height: 1, backgroundColor: '#000', margin: '30px auto 0' }} />
       </div>
     </div>
+  );
+}
+
+/**
+ * A section's blocks followed by its signatures, with the last block and the
+ * signatures kept on one page so the signatures never stand alone.
+ */
+function BlocksWithSignatures({
+  blocks,
+  signatures,
+}: {
+  blocks: React.ReactNode[];
+  signatures: React.ReactNode;
+}) {
+  const shown = blocks.filter(Boolean);
+  const last = shown.pop();
+  return (
+    <>
+      {shown}
+      <div style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+        {last}
+        {signatures}
+      </div>
+    </>
   );
 }
 
@@ -466,20 +491,24 @@ export const EmploymentContractPrintHtml = React.forwardRef<HTMLDivElement, Empl
               party2={model.party2LineAr}
             />
 
-            {model.mainArticles.map((a, i) => (
-              <ArticleBlock
-                key={`${a.code}-${i}`}
-                title={a.titleAr.trim() || `المادة (${i + 1})`}
-                body={a.bodyAr}
-              >
-                {a.includesCompensation ? renderCompensation(true) : null}
-                {a.isContact ? contactLines : null}
-              </ArticleBlock>
-            ))}
-
-            {compensationInArticle ? null : renderCompensation(false)}
-
-            <SignatureFooter employeeRoleNounAr={model.employeeRoleNounAr} />
+            <BlocksWithSignatures
+              blocks={[
+                ...model.mainArticles.map((a, i) => (
+                  <ArticleBlock
+                    key={`${a.code}-${i}`}
+                    title={a.titleAr.trim() || `المادة (${i + 1})`}
+                    body={a.bodyAr}
+                  >
+                    {a.includesCompensation ? renderCompensation(true) : null}
+                    {a.isContact ? contactLines : null}
+                  </ArticleBlock>
+                )),
+                compensationInArticle ? null : (
+                  <React.Fragment key="compensation">{renderCompensation(false)}</React.Fragment>
+                ),
+              ]}
+              signatures={<SignatureFooter employeeRoleNounAr={model.employeeRoleNounAr} />}
+            />
             <FooterRule />
           </div>
         </div>
@@ -523,38 +552,42 @@ export const EmploymentContractPrintHtml = React.forwardRef<HTMLDivElement, Empl
                 party2={model.annexParty2LineAr}
               />
 
-              {model.annexPreambleAr.trim() ? (
-                <ArticleBlock title="تمهيد" body={model.annexPreambleAr} />
-              ) : null}
-
-              {model.annexArticles.map((a, i) => (
-                <ArticleBlock
-                  key={`annex-${a.code}-${i}`}
-                  title={a.titleAr.trim() || `البند (${i + 1})`}
-                  body={a.bodyAr}
-                >
-                  {a.isContact ? contactLines : null}
-                </ArticleBlock>
-              ))}
-
-              <div
-                style={{
-                  marginTop: 36,
-                  display: 'flex',
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  gap: 40,
-                  pageBreakInside: 'avoid',
-                }}
-              >
-                <div style={{ flex: 1, textAlign: 'center', fontSize: pageFont, fontWeight: 700 }}>
-                  الطرف الأول (صاحب العمل)
-                  <RoseCompanyStamp width={130} compact />
-                </div>
-                <div style={{ flex: 1, textAlign: 'center', fontSize: pageFont, fontWeight: 700 }}>
-                  الطرف الثاني ({sanitizePdfText(model.employeeRoleNounAr)})
-                </div>
-              </div>
+              <BlocksWithSignatures
+                blocks={[
+                  model.annexPreambleAr.trim() ? (
+                    <ArticleBlock key="preamble" title="تمهيد" body={model.annexPreambleAr} />
+                  ) : null,
+                  ...model.annexArticles.map((a, i) => (
+                    <ArticleBlock
+                      key={`annex-${a.code}-${i}`}
+                      title={a.titleAr.trim() || `البند (${i + 1})`}
+                      body={a.bodyAr}
+                    >
+                      {a.isContact ? contactLines : null}
+                    </ArticleBlock>
+                  )),
+                ]}
+                signatures={
+                  <div
+                    style={{
+                      marginTop: 36,
+                      display: 'flex',
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      gap: 40,
+                      pageBreakInside: 'avoid',
+                    }}
+                  >
+                    <div style={{ flex: 1, textAlign: 'center', fontSize: pageFont, fontWeight: 700 }}>
+                      الطرف الأول (صاحب العمل)
+                      <RoseCompanyStamp width={130} compact />
+                    </div>
+                    <div style={{ flex: 1, textAlign: 'center', fontSize: pageFont, fontWeight: 700 }}>
+                      الطرف الثاني ({sanitizePdfText(model.employeeRoleNounAr)})
+                    </div>
+                  </div>
+                }
+              />
               <FooterRule />
             </div>
           </div>
