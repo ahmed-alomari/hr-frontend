@@ -52,25 +52,45 @@ type Html2PdfWorkerProps = {
 };
 
 /**
- * Drops a last page that would hold only blank space — a document's bottom
- * padding or margins running a few pixels past a page end. `pageRatio` is the
+ * Drops every page that would hold only blank space, wherever it falls: a
+ * document's bottom padding running a few pixels past a page end, or the
+ * filler html2pdf inserts for a `page-break-before` (the contract's annex)
+ * when the content already ends at a page edge — which printed a blank page
+ * in the middle that the on-screen preview never shows. `pageRatio` is the
  * printable height / width, as html2pdf cuts the drawn canvas into pages.
  */
-export function trimBlankLastPage(canvas: HTMLCanvasElement, pageRatio: number): HTMLCanvasElement {
+export function dropBlankPages(canvas: HTMLCanvasElement, pageRatio: number): HTMLCanvasElement {
   const pagePx = Math.floor(canvas.width * pageRatio);
-  const kept = Math.floor(canvas.height / pagePx) * pagePx;
-  if (kept === 0 || kept === canvas.height) return canvas;
-  const ctx = canvas.getContext('2d');
+  if (pagePx <= 0 || canvas.height <= pagePx) return canvas;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return canvas;
-  const { data } = ctx.getImageData(0, kept, canvas.width, canvas.height - kept);
-  for (let i = 0; i < data.length; i += 4) {
-    // Darker than the faint logo background and light row lines: content.
-    if (data[i] + data[i + 1] + data[i + 2] < 600) return canvas;
+
+  const kept: { y: number; h: number }[] = [];
+  for (let y = 0; y < canvas.height; y += pagePx) {
+    const h = Math.min(pagePx, canvas.height - y);
+    const { data } = ctx.getImageData(0, y, canvas.width, h);
+    for (let i = 0; i < data.length; i += 4) {
+      // Darker than the faint logo background and light row lines: content.
+      if (data[i] + data[i + 1] + data[i + 2] < 600) {
+        kept.push({ y, h });
+        break;
+      }
+    }
   }
+  if (kept.length === 0 || kept.length * pagePx >= canvas.height) return canvas;
+
+  // Each kept page keeps its full height so the later pages stay aligned to
+  // html2pdf's page cuts; only the last may be shorter.
   const out = document.createElement('canvas');
   out.width = canvas.width;
-  out.height = kept;
-  out.getContext('2d')?.drawImage(canvas, 0, 0);
+  out.height = (kept.length - 1) * pagePx + kept[kept.length - 1].h;
+  const outCtx = out.getContext('2d');
+  if (!outCtx) return canvas;
+  outCtx.fillStyle = '#ffffff';
+  outCtx.fillRect(0, 0, out.width, out.height);
+  kept.forEach((page, i) => {
+    outCtx.drawImage(canvas, 0, page.y, canvas.width, page.h, 0, i * pagePx, canvas.width, page.h);
+  });
   return out;
 }
 
@@ -229,7 +249,7 @@ export async function exportDomToPdf(
       .from(content)
       .toCanvas()
       .then(function (this: Html2PdfWorkerProps) {
-        this.prop.canvas = trimBlankLastPage(this.prop.canvas, this.prop.pageSize.inner.ratio);
+        this.prop.canvas = dropBlankPages(this.prop.canvas, this.prop.pageSize.inner.ratio);
       })
       .toPdf()
       .get('pdf')

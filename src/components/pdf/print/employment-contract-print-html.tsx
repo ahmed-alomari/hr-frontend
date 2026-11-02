@@ -50,6 +50,9 @@ export type EmploymentContractPrintHtmlProps = {
   employeeGender?: 'male' | 'female' | null;
   nationalId?: string | null;
   nationality?: string | null;
+  /** Printed by the «طرق التواصل» article and the {{phone}} / {{email}} tokens. */
+  employeePhone?: string | null;
+  employeeEmail?: string | null;
   jobTitleAr?: string | null;
   workCityAr?: string | null;
   branchNameAr?: string | null;
@@ -218,6 +221,31 @@ function CompensationBlock({
   );
 }
 
+/** «طرق التواصل»: the employee's phone and email side by side. */
+function ContactLines({ phone, email }: { phone: string; email: string }) {
+  const bodyFont = useScaledFont(PDF_BODY_FONT);
+  const cell: React.CSSProperties = { flex: 1, fontSize: bodyFont, fontWeight: 700, lineHeight: 1.85 };
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        gap: 24,
+        padding: '4px 4px 6px',
+        pageBreakInside: 'avoid',
+      }}
+    >
+      <div style={{ ...cell, textAlign: 'right' }}>
+        رقم الجوال: <span dir="ltr">{sanitizePdfText(phone)}</span>
+      </div>
+      <div style={{ ...cell, textAlign: 'left' }}>
+        البريد الالكتروني: <span dir="ltr" style={{ textDecoration: 'underline' }}>{sanitizePdfText(email)}</span>
+      </div>
+    </div>
+  );
+}
+
 function SignatureFooter({ employeeRoleNounAr }: { employeeRoleNounAr: string }) {
   const pageFont = useScaledFont(PDF_PAGE_FONT);
   return (
@@ -284,6 +312,8 @@ export const EmploymentContractPrintHtml = React.forwardRef<HTMLDivElement, Empl
       employeeGender,
       nationalId,
       nationality,
+      employeePhone,
+      employeeEmail,
       jobTitleAr,
       workCityAr,
       branchNameAr,
@@ -321,6 +351,8 @@ export const EmploymentContractPrintHtml = React.forwardRef<HTMLDivElement, Empl
       employeeGender,
       nationalId,
       nationality,
+      employeePhone,
+      employeeEmail,
       jobTitleAr,
       workCityAr,
       branchNameAr,
@@ -352,6 +384,8 @@ export const EmploymentContractPrintHtml = React.forwardRef<HTMLDivElement, Empl
       employeeGender,
       nationalId,
       nationality,
+      employeePhone,
+      employeeEmail,
       jobTitleAr,
       workCityAr,
       branchNameAr,
@@ -391,6 +425,9 @@ export const EmploymentContractPrintHtml = React.forwardRef<HTMLDivElement, Empl
         deductionsNote={deductionsNote}
         inArticle={inArticle}
       />
+    );
+    const contactLines = (
+      <ContactLines phone={model.employeePhone} email={model.employeeEmail} />
     );
     const hasAnnex = Boolean(model.annexPreambleAr.trim() || model.annexArticles.length > 0);
 
@@ -436,6 +473,7 @@ export const EmploymentContractPrintHtml = React.forwardRef<HTMLDivElement, Empl
                 body={a.bodyAr}
               >
                 {a.includesCompensation ? renderCompensation(true) : null}
+                {a.isContact ? contactLines : null}
               </ArticleBlock>
             ))}
 
@@ -494,7 +532,9 @@ export const EmploymentContractPrintHtml = React.forwardRef<HTMLDivElement, Empl
                   key={`annex-${a.code}-${i}`}
                   title={a.titleAr.trim() || `البند (${i + 1})`}
                   body={a.bodyAr}
-                />
+                >
+                  {a.isContact ? contactLines : null}
+                </ArticleBlock>
               ))}
 
               <div

@@ -16,6 +16,8 @@ type BuiltContractArticle = {
   titleAr: string;
   bodyAr: string;
   includesCompensation: boolean;
+  /** The «طرق التواصل» article: prints the employee's phone and email under its text. */
+  isContact: boolean;
 };
 
 export type EmploymentContractPrintModelInput = {
@@ -28,6 +30,8 @@ export type EmploymentContractPrintModelInput = {
   employeeGender?: EmploymentContractPrintPartyGender;
   nationalId?: string | null;
   nationality?: string | null;
+  employeePhone?: string | null;
+  employeeEmail?: string | null;
   jobTitleAr?: string | null;
   workCityAr?: string | null;
   branchNameAr?: string | null;
@@ -183,6 +187,15 @@ function isAnnexArticle(a: EmploymentContractPrintArticleInput): boolean {
   );
 }
 
+/**
+ * The contact article («طرق التواصل»): a catalog article whose code has
+ * `contact` (e.g. `annex-contact`) or whose title names it. It may be selected
+ * for any contract, in the main text or the annex, under any number.
+ */
+export function isContactArticle(a: { code: string; titleAr: string }): boolean {
+  return a.code.trim().toLowerCase().includes('contact') || a.titleAr.includes('طرق التواصل');
+}
+
 export function buildEmploymentContractPrintTokens(
   input: EmploymentContractPrintModelInput,
 ): Record<string, string> {
@@ -204,6 +217,10 @@ export function buildEmploymentContractPrintTokens(
     'employee.nationalId': tokenOrDash(input.nationalId),
     nationality: tokenOrDash(input.nationality),
     'employee.nationality': tokenOrDash(input.nationality),
+    phone: tokenOrDash(input.employeePhone),
+    'employee.phone': tokenOrDash(input.employeePhone),
+    email: tokenOrDash(input.employeeEmail),
+    'employee.email': tokenOrDash(input.employeeEmail),
     jobTitle: tokenOrDash(input.jobTitleAr),
     'employee.position': tokenOrDash(input.jobTitleAr),
     branch: tokenOrDash(input.branchNameAr),
@@ -265,6 +282,8 @@ export type BuiltEmploymentContractPrintModel = {
   employeeTitleAr: string;
   employeeRoleNounAr: string;
   employerRepresentativeName: string;
+  employeePhone: string;
+  employeeEmail: string;
 };
 
 export function buildEmploymentContractPrintModel(
@@ -281,6 +300,7 @@ export function buildEmploymentContractPrintModel(
     titleAr: interpolateContractArticleText(a.titleAr, tokens),
     bodyAr: interpolateContractArticleText(a.bodyAr, tokens),
     includesCompensation: false,
+    isContact: isContactArticle(a),
   });
 
   const mainArticles: BuiltContractArticle[] = [];
@@ -374,5 +394,7 @@ export function buildEmploymentContractPrintModel(
     employeeTitleAr,
     employeeRoleNounAr,
     employerRepresentativeName: rep,
+    employeePhone: tokenOrDash(input.employeePhone),
+    employeeEmail: tokenOrDash(input.employeeEmail),
   };
 }

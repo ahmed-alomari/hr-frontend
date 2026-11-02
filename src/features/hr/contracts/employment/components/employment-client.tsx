@@ -313,6 +313,8 @@ export function EmploymentContractsClient() {
       nameAr?: string;
       nationalId?: string | null;
       nationality?: string | null;
+      phone?: string | null;
+      email?: string | null;
       gender?: string | null;
       position?: string | null;
       branchNameAr?: string | null;
@@ -381,6 +383,8 @@ export function EmploymentContractsClient() {
         employeeGender={employeeGender}
         nationalId={employeeOverride?.nationalId ?? empFromList?.nationalId ?? null}
         nationality={employeeOverride?.nationality ?? empFromList?.nationality ?? null}
+        employeePhone={employeeOverride?.phone ?? empFromList?.phone ?? null}
+        employeeEmail={employeeOverride?.email ?? empFromList?.email ?? null}
         jobTitleAr={employeeOverride?.position ?? empFromList?.position ?? null}
         workCityAr={workCityAr}
         branchNameAr={branchNameAr}
@@ -420,6 +424,8 @@ export function EmploymentContractsClient() {
       nameAr: record.employeeNameAr || emp?.nameAr || getEmpName(record.employeeId, record.employeeNameAr),
       nationalId: emp?.nationalId,
       nationality: emp?.nationality,
+      phone: emp?.phone,
+      email: emp?.email,
       gender: emp?.gender,
       position: emp?.position,
       branchNameAr: record.branchNameAr || emp?.branchNameAr,
