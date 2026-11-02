@@ -34,6 +34,7 @@ function dtoToEmployee(dto: EmployeeResponseDto): Employee {
     bankAccount: dto.bankAccount ?? '',
     iban: dto.iban ?? '',
     address: dto.address ?? '',
+    city: dto.city ?? '',
     emergencyContact: '',
     gender: (dto.gender === 'female' ? 'female' : 'male') as Employee['gender'],
     birthDate: dto.birthDate ?? '',
