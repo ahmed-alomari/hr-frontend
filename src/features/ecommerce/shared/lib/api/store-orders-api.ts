@@ -108,6 +108,12 @@ type StoreOrderDto = {
   currencyCode: string;
   subtotalAmount: string;
   shippingFeeAmount: string;
+  deliveryCharge?: {
+    productId: string;
+    productName: string;
+    amount: string;
+    currencyCode: string;
+  } | null;
   totalAmount: string;
   estimatedDeliveryAt?: string | null;
   lines: StoreOrderLineDto[];
@@ -257,6 +263,13 @@ function mapAdminOrder(dto: StoreOrderDto): Order {
     paymentProofUrl: proofUrls[0] ?? null,
     subtotalAmount: { amount: fromDecimalString(dto.subtotalAmount), currency },
     shippingFeeAmount: { amount: fromDecimalString(dto.shippingFeeAmount), currency },
+    deliveryCharge: dto.deliveryCharge
+      ? {
+          productId: dto.deliveryCharge.productId,
+          productName: dto.deliveryCharge.productName,
+          amount: { amount: fromDecimalString(dto.deliveryCharge.amount), currency },
+        }
+      : null,
     source: dto.source ?? 'storefront',
     assignedUserId: dto.assignedUserId ?? null,
     assignedUserName: dto.assignedUserName ?? null,

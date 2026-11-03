@@ -743,11 +743,12 @@ export function StoreReportsPage({ section = 'overview' }: { section?: ReportTab
                   title="المدن"
                   loading={byCity.isLoading}
                   empty="لا بيانات مدن."
-                  headers={['المدينة', 'طلبات', 'وحدات', 'إيراد']}
+                  headers={['المدينة', 'طلبات', 'وحدات', 'التوصيل', 'إيراد']}
                   rows={(byCity.data ?? []).map((row) => [
                     row.cityName || '—',
                     String(row.ordersCount),
                     String(row.unitsSold),
+                    money(row.deliveryTotal ?? '0', currency),
                     money(row.revenueTotal, currency),
                   ])}
                 />
@@ -755,11 +756,12 @@ export function StoreReportsPage({ section = 'overview' }: { section?: ReportTab
                   title="الأحياء / المناطق"
                   loading={byDistrict.isLoading}
                   empty="لا بيانات أحياء."
-                  headers={['الحي', 'المدينة', 'طلبات', 'إيراد']}
+                  headers={['الحي', 'المدينة', 'طلبات', 'التوصيل', 'إيراد']}
                   rows={(byDistrict.data ?? []).map((row) => [
                     row.districtName || '—',
                     row.cityName || '—',
                     String(row.ordersCount),
+                    money(row.deliveryTotal ?? '0', currency),
                     money(row.revenueTotal, currency),
                   ])}
                 />

@@ -280,15 +280,22 @@ export function ProductDetailPage({ productId }: Props) {
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">إضافة منتج</span>
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 text-destructive hover:bg-destructive/10"
-            onClick={() => setDeleteOpen(true)}
-          >
-            <Trash2 className="h-4 w-4" />
-            <span className="hidden sm:inline">حذف</span>
-          </Button>
+          {/* A system item (e.g. «رسوم التوصيل») is never archived: the server refuses it. */}
+          {product?.systemCode ? (
+            <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              صنف نظام ثابت
+            </span>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-destructive hover:bg-destructive/10"
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="hidden sm:inline">حذف</span>
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
@@ -416,6 +423,7 @@ export function ProductDetailPage({ productId }: Props) {
           setValue={form.setValue}
           nameError={form.formState.errors.nameAr?.message}
           currency={product.price.currency}
+          locked={Boolean(product.systemCode)}
         />
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
@@ -461,6 +469,7 @@ export function ProductDetailPage({ productId }: Props) {
                   categories={categoriesData?.items}
                   brands={brandsData?.items}
                   costManaged={product?.costManaged === true}
+                  locked={Boolean(product?.systemCode)}
                 />
               </TabsContent>
               <TabsContent value="image" className="mt-0 focus-visible:outline-none">
@@ -500,6 +509,7 @@ export function ProductDetailPage({ productId }: Props) {
                   errors={form.formState.errors}
                   register={form.register}
                   setValue={form.setValue}
+                  locked={Boolean(product?.systemCode)}
                 />
               </TabsContent>
             </Tabs>

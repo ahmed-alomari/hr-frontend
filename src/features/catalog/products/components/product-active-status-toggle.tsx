@@ -11,6 +11,8 @@ type Props = {
   className?: string;
   /** When archived, toggle is hidden — caller shows archive badge instead. */
   hideWhenArchived?: boolean;
+  /** A system item: its status is fixed (the server refuses a change). */
+  locked?: boolean;
 };
 
 /** Active/draft switch beside product name — green tint when active. */
@@ -19,6 +21,7 @@ export function ProductActiveStatusToggle({
   setValue,
   className,
   hideWhenArchived = true,
+  locked = false,
 }: Props) {
   const status = useWatch({ control, name: 'status' });
   const isActive = status === 'active';
@@ -47,6 +50,7 @@ export function ProductActiveStatusToggle({
       </span>
       <Switch
         checked={isActive}
+        disabled={locked}
         onCheckedChange={(checked) =>
           setValue('status', checked ? 'active' : 'draft', {
             shouldDirty: true,

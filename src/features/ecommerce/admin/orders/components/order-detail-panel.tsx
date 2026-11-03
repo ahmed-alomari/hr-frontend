@@ -3,7 +3,7 @@
 import { APP, useCompanyApps } from '@/shared/modules/company-apps';
 
 import * as React from 'react';
-import { Banknote, CreditCard, StickyNote, User } from 'lucide-react';
+import { Banknote, CreditCard, StickyNote, Truck, User } from 'lucide-react';
 import { WhatsappPhoneAction } from '@/features/ecommerce/admin/cms/whatsapp/components/whatsapp-phone-action';
 import { OrderAttachmentsPanel } from '@/features/ecommerce/admin/orders/components/order-attachments-panel';
 import { OrderContactPanel } from '@/features/ecommerce/admin/orders/components/order-contact-panel';
@@ -297,6 +297,25 @@ function OrderItemsPanel({
           <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
             لا توجد منتجات مطابقة.
           </p>
+        ) : null}
+        {/* The delivery line (system item): no stock, nothing to ship. */}
+        {order.deliveryCharge ? (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Truck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="truncate text-sm font-medium text-foreground">
+                {order.deliveryCharge.productName}
+              </span>
+              <Badge variant="secondary" className="shrink-0">
+                صنف نظام
+              </Badge>
+            </div>
+            <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+              {order.deliveryCharge.amount.amount === 0
+                ? 'مجاني'
+                : formatPrice(order.deliveryCharge.amount)}
+            </span>
+          </div>
         ) : null}
       </div>
 

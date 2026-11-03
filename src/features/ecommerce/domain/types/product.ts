@@ -168,6 +168,8 @@ export type Product = TenantScoped &
     saleOk?: boolean;
     /** Can be purchased / replenished from vendors. */
     purchaseOk?: boolean;
+    /** System item (`delivery`): never archived; code, type, status and sale flags fixed. */
+    systemCode?: string | null;
     /** Offer flags — optional end dates mean “no expiry”. */
     isNewProduct?: boolean;
     newUntil?: string | null;

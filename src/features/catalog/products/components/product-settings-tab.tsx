@@ -28,6 +28,8 @@ type Props = {
   errors: FieldErrors<ProductFormInput>;
   register: UseFormRegister<ProductFormInput>;
   setValue: UseFormSetValue<ProductFormInput>;
+  /** A system item: its sale, purchase and register flags are fixed. */
+  locked?: boolean;
 };
 
 /** Today + N days as a local day (YYYY-MM-DD): the deal's end date. */
@@ -37,7 +39,7 @@ function dayAfter(days: number): string {
   return localYmd(date);
 }
 
-export function ProductSettingsTab({ control, errors, register, setValue }: Props) {
+export function ProductSettingsTab({ control, errors, register, setValue, locked = false }: Props) {
   // Promos (new badge, deal, wholesale, discount) are the store's; stock
   // behaviour is inventory's. Image display lives on its own tab.
   const sections = useProductAppSections();
@@ -226,6 +228,7 @@ export function ProductSettingsTab({ control, errors, register, setValue }: Prop
                   </span>
                   <Switch
                     checked={field.value}
+                    disabled={locked}
                     onCheckedChange={field.onChange}
                     aria-label={item.title}
                   />

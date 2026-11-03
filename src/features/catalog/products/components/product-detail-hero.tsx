@@ -23,6 +23,8 @@ type Props = {
   setValue: UseFormSetValue<ProductFormInput>;
   nameError?: string;
   currency: string;
+  /** A system item: its status is fixed. */
+  locked?: boolean;
 };
 
 const STATUS_BADGE_VARIANT: Record<ProductStatus, BadgeProps['variant']> = {
@@ -39,7 +41,14 @@ const STOCK_BADGE_VARIANT: Record<StockStatus, BadgeProps['variant']> = {
 };
 
 /** Modern, live-updating identity card for the product detail page — replaces the compact dialog header. */
-export function ProductDetailHero({ control, register, setValue, nameError, currency }: Props) {
+export function ProductDetailHero({
+  control,
+  register,
+  setValue,
+  nameError,
+  currency,
+  locked = false,
+}: Props) {
   const { imageUrl, pickImage, uploading } = useProductImageField(control, setValue);
   const productsBasePath = useProductsBasePath();
   const sections = useProductAppSections();
@@ -118,7 +127,7 @@ export function ProductDetailHero({ control, register, setValue, nameError, curr
                 <label htmlFor="product-detail-name-ar" className="text-xs font-medium text-muted-foreground">
                   اسم المنتج <span className="text-destructive">*</span>
                 </label>
-                <ProductActiveStatusToggle control={control} setValue={setValue} />
+                <ProductActiveStatusToggle control={control} setValue={setValue} locked={locked} />
               </div>
               <Input
                 id="product-detail-name-ar"

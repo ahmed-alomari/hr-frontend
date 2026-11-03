@@ -177,6 +177,8 @@ export type Order = TenantScoped & {
   paymentProofUrl?: string | null;
   subtotalAmount?: Money;
   shippingFeeAmount?: Money;
+  /** The delivery line: the system item «رسوم التوصيل» with the fee the order kept. */
+  deliveryCharge?: { productId: string; productName: string; amount: Money } | null;
   source?: 'seed' | 'storefront';
   /** Order stages: the staff member handling the order in its stage. */
   assignedUserId?: string | null;

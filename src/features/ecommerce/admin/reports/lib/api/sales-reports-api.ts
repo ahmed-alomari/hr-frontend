@@ -96,6 +96,8 @@ export type SalesByCityRow = {
   ordersCount: number;
   revenueTotal: string;
   unitsSold: number;
+  /** Sum of the delivery lines (system item «رسوم التوصيل»). */
+  deliveryTotal?: string;
 };
 
 export type SalesByProductRow = {

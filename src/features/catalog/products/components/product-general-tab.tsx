@@ -36,6 +36,8 @@ type Props = {
   brands: Brand[] | undefined;
   /** The purchase price follows inventory (costing runs on its stock). */
   costManaged?: boolean;
+  /** A system item: its type and code are fixed (the server refuses a change). */
+  locked?: boolean;
 };
 
 export function ProductGeneralTab({
@@ -45,6 +47,7 @@ export function ProductGeneralTab({
   categories,
   brands,
   costManaged = false,
+  locked = false,
 }: Props) {
   const [showAdvanced, setShowAdvanced] = React.useState(false);
   // Cost and tracking are inventory's; compare-at price is the store's.
@@ -73,6 +76,7 @@ export function ProductGeneralTab({
                       type="button"
                       role="radio"
                       aria-checked={selected}
+                      disabled={locked}
                       onClick={() => field.onChange(option.value)}
                       className={cn(
                         'rounded-xl border px-3 py-2.5 text-sm transition-all',
@@ -102,6 +106,7 @@ export function ProductGeneralTab({
             dir="ltr"
             placeholder="تلقائي"
             className="h-11"
+            readOnly={locked}
             {...register('sku')}
           />
         </ProductFormField>
