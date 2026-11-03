@@ -45,6 +45,8 @@ type Props = {
    * source batch or costing engine instead).
    */
   needsUnitCost?: boolean;
+  /** Expiry date and serial numbers, stored on the batch this receipt creates. */
+  capturesLot?: boolean;
   className?: string;
 };
 
@@ -58,6 +60,7 @@ export function WarehouseOperationLinesEditor({
   restrictToSourceLocation = false,
   excludeProductIds,
   needsUnitCost = false,
+  capturesLot = false,
   className,
 }: Props) {
   const [availableByKey, setAvailableByKey] = React.useState<Record<string, number>>({});
@@ -365,6 +368,36 @@ export function WarehouseOperationLinesEditor({
     );
   }
 
+  function lotFields(line: OperationLineDraft) {
+    if (!capturesLot || !line.productId) return null;
+    return (
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">تاريخ الانتهاء</Label>
+          <Input
+            type="date"
+            dir="ltr"
+            value={line.expiryDate ?? ''}
+            disabled={disabled}
+            aria-label="تاريخ الانتهاء"
+            onChange={(event) => updateLine(line.id, { expiryDate: event.target.value })}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">أرقام تسلسلية</Label>
+          <Input
+            dir="ltr"
+            placeholder="رقم لكل قطعة، مفصولة بفاصلة"
+            value={line.serialText ?? ''}
+            disabled={disabled}
+            aria-label="أرقام تسلسلية"
+            onChange={(event) => updateLine(line.id, { serialText: event.target.value })}
+          />
+        </div>
+      </div>
+    );
+  }
+
   function removeButton(line: OperationLineDraft, phone = false) {
     return (
       <Button
@@ -459,6 +492,7 @@ export function WarehouseOperationLinesEditor({
                 {unitCostField(line)}
               </div>
             ) : null}
+            {lotFields(line)}
           </div>
         ))}
       </div>
@@ -476,6 +510,9 @@ export function WarehouseOperationLinesEditor({
                   تكلفة الوحدة (الشراء)
                 </th>
               ) : null}
+              {capturesLot ? (
+                <th className="min-w-[16rem] px-3 py-2.5 text-start font-medium">الانتهاء / التسلسل</th>
+              ) : null}
               <th className="w-10 px-2 py-2.5" />
             </tr>
           </thead>
@@ -487,6 +524,7 @@ export function WarehouseOperationLinesEditor({
                 <td className="px-3 py-2.5">{uomField(line)}</td>
                 <td className="px-3 py-2.5">{quantityField(line, false)}</td>
                 {needsUnitCost ? <td className="px-3 py-2.5">{unitCostField(line)}</td> : null}
+                {capturesLot ? <td className="px-3 py-2.5">{lotFields(line)}</td> : null}
                 <td className="px-2 py-2.5">{removeButton(line)}</td>
               </tr>
             ))}

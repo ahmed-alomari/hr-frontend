@@ -25,6 +25,7 @@ import type {
   WarehouseOperationKind,
   WarehouseOperationStatus,
 } from '@/features/inventory/domain/types/warehouse';
+import { useCan } from '@/features/auth/hooks/use-can';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
 import { useProduct } from '@/features/catalog/products/hooks/use-products';
 import { ProductSinglePicker } from '@/features/catalog/products/components/product-single-picker';
@@ -47,6 +48,7 @@ import {
 import {
   emptyOperationLineDraft,
   hasDuplicateOperationLineProducts,
+  lineCapturesLot,
   lineNeedsUnitCost,
   operationLineDraftsToLines,
   supportsMultiProductLines,
@@ -158,6 +160,7 @@ export function WarehouseOperationsPanel({
   const scopedToWarehouse = Boolean(warehouseId);
   const showFilters = enableInventoryFilters || !scopedToWarehouse;
   const companyId = getInventoryCompanyId();
+  const can = useCan();
   const [searchInput, setSearchInput] = React.useState('');
   const [search, setSearch] = React.useState('');
   const [page, setPage] = React.useState(1);
@@ -717,7 +720,7 @@ export function WarehouseOperationsPanel({
         return;
       }
       const lines = operationLineDraftsToLines(lineDrafts, lineLocations, {
-        includeUnitCost: lineNeedsUnitCost(kind),
+        includeUnitCost: lineNeedsUnitCost(kind) && can('inv.warehouse.costs.read'),
       });
       if (lines.length === 0) {
         toast.error('أضف صنفًا واحدًا على الأقل مع كمية أكبر من صفر.');
@@ -758,6 +761,7 @@ export function WarehouseOperationsPanel({
         partnerName: values.partnerName?.trim() || undefined,
         sourceDocument: values.sourceDocument?.trim() || undefined,
         destinationWarehouseId: values.destinationWarehouseId || undefined,
+        transferMode: kind === 'transfer' ? values.transferMode ?? 'direct' : undefined,
         lines,
       });
       openDraftAfterCreate(created);
@@ -839,6 +843,7 @@ export function WarehouseOperationsPanel({
       partnerName: values.partnerName?.trim() || undefined,
       sourceDocument: values.sourceDocument?.trim() || undefined,
       destinationWarehouseId: values.destinationWarehouseId || undefined,
+      transferMode: kind === 'transfer' ? values.transferMode ?? 'direct' : undefined,
       lines,
     });
     openDraftAfterCreate(created);
@@ -1219,6 +1224,27 @@ export function WarehouseOperationsPanel({
               </div>
             ) : null}
 
+            {kind === 'transfer' ? (
+              <div className="space-y-1.5">
+                <Label>طريقة التحويل</Label>
+                <Controller
+                  control={form.control}
+                  name="transferMode"
+                  render={({ field }) => (
+                    <Select value={field.value || 'direct'} onValueChange={field.onChange}>
+                      <SelectTrigger aria-label="طريقة التحويل">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="direct">مباشر — تصل للمستودع الوجهة فور التصديق</SelectItem>
+                        <SelectItem value="two_step">على مرحلتين — تُخصم ثم يؤكد المستلم الوصول</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+            ) : null}
+
             {meta.needsTo ? (
               <div className="space-y-1.5">
                 <Label htmlFor="op-to">
@@ -1311,7 +1337,8 @@ export function WarehouseOperationsPanel({
                 checksSourceStock={checksSourceStock}
                 restrictToSourceLocation={pickerUsesSourceLocationStock(kind)}
                 excludeProductIds={takenProductIdList}
-                needsUnitCost={lineNeedsUnitCost(kind)}
+                needsUnitCost={lineNeedsUnitCost(kind) && can('inv.warehouse.costs.read')}
+                capturesLot={lineCapturesLot(kind)}
                 disabled={!locationsReady}
               />
             ) : (
@@ -1374,7 +1401,7 @@ export function WarehouseOperationsPanel({
                     <p className="text-xs text-muted-foreground">جاري تحميل المتغيرات…</p>
                   ) : null}
                 </OperationLineField>
-                {isCountLike ? (
+                {kind === 'adjustment' ? (
                   <OperationLineField label="الكمية النظامية" htmlFor="op-theo">
                     <Input
                       id="op-theo"

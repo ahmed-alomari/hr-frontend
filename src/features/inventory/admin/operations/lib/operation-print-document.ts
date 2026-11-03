@@ -29,6 +29,7 @@ export function operationPrintDocumentType(kind: WarehouseOperationKind): PrintD
 const TITLES: Partial<Record<WarehouseOperationKind, string>> = {
   receipt: 'سند استلام',
   purchase: 'سند استلام مشتريات',
+  purchase_order: 'أمر شراء',
   replenishment: 'سند تجديد مخزون',
   issue: 'سند صرف',
   scrap: 'سند إتلاف',

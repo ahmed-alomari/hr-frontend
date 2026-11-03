@@ -1,5 +1,6 @@
 'use client';
 
+import { useCan } from '@/features/auth/hooks/use-can';
 import { companyCurrencyCode } from '@/features/auth/lib/company-currency';
 import { currencySymbolAr } from '@/shared/currencies';
 import * as React from 'react';
@@ -52,6 +53,7 @@ type DetailedStockRow = {
 
 export function DetailedStockReportPage() {
   const companyId = getInventoryCompanyId();
+  const canReadCost = useCan()('inv.warehouse.costs.read');
   const [searchInput, setSearchInput] = React.useState('');
   const [search, setSearch] = React.useState('');
   const [warehouseId, setWarehouseId] = React.useState('all');
@@ -350,7 +352,11 @@ export function DetailedStockReportPage() {
           <DataTable
             variant="directory"
             className="inv-table-host"
-            columns={columns}
+            columns={
+              canReadCost
+                ? columns
+                : columns.filter((column) => column.key !== 'unitCost' && column.key !== 'value')
+            }
             data={rowsPage}
             keyExtractor={(row) => row.key}
             mobileCard={(row) => (

@@ -15,6 +15,9 @@ export type OperationLineDraft = {
   uomLineName?: string;
   /** تكلفة الوحدة عند الإدخال — فقط للأنواع الواردة (انظر lineNeedsUnitCost). */
   unitCost?: string;
+  expiryDate?: string;
+  /** One serial per piece, separated by commas or new lines. */
+  serialText?: string;
 };
 
 export function supportsMultiProductLines(kind: WarehouseOperationKind): boolean {
@@ -24,6 +27,7 @@ export function supportsMultiProductLines(kind: WarehouseOperationKind): boolean
     kind === 'issue' ||
     kind === 'internal' ||
     kind === 'purchase' ||
+    kind === 'purchase_order' ||
     kind === 'replenishment' ||
     kind === 'opening' ||
     kind === 'customer_return' ||
@@ -38,6 +42,16 @@ export function supportsMultiProductLines(kind: WarehouseOperationKind): boolean
  * كي يبقى هذا متسقًا مع WAREHOUSE_OPERATION_KIND_META.
  * مرتجع العميل وارد لكن تكلفته تكلفة البيع الأصلي (يحددها الخادم من المستند المصدر).
  */
+/** Expiry and serials are stored on the batch the receipt creates. */
+export function lineCapturesLot(kind: WarehouseOperationKind): boolean {
+  return (
+    kind === 'receipt' ||
+    kind === 'purchase' ||
+    kind === 'replenishment' ||
+    kind === 'opening'
+  );
+}
+
 export function lineNeedsUnitCost(kind: WarehouseOperationKind): boolean {
   return WAREHOUSE_OPERATION_KIND_META[kind].stockEffect === 'inbound' && kind !== 'customer_return';
 }
@@ -104,7 +118,27 @@ export function operationLineDraftsToLines(
       // ignores it there anyway, and this keeps the payload honest about
       // what the client actually controls (cost is derived, not client-set).
       unitCost: includeUnitCost ? line.unitCost?.trim() || undefined : undefined,
+      expiryDate: line.expiryDate?.trim() || undefined,
+      serialNumbers: line.serialText?.trim()
+        ? JSON.stringify(
+            line.serialText
+              .split(/[\n,]+/)
+              .map((item) => item.trim())
+              .filter(Boolean),
+          )
+        : undefined,
     }));
+}
+
+export function serialsToText(raw?: string | null): string {
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) return parsed.map(String).join('\n');
+  } catch {
+    /* already plain text */
+  }
+  return raw;
 }
 
 export function operationLinesToDrafts(lines: WarehouseOperationLine[]): OperationLineDraft[] {
@@ -119,5 +153,7 @@ export function operationLinesToDrafts(lines: WarehouseOperationLine[]): Operati
     quantity: line.uomEnteredQuantity ?? line.quantity,
     productUomLineId: line.productUomLineId ?? undefined,
     unitCost: line.unitCost ?? '',
+    expiryDate: line.expiryDate ? line.expiryDate.slice(0, 10) : '',
+    serialText: serialsToText(line.serialNumbers),
   }));
 }

@@ -22,6 +22,7 @@ export const WAREHOUSE_OPERATION_KINDS: WarehouseOperationKind[] = [
   'physical_count',
   'scrap',
   'purchase',
+  'purchase_order',
   'replenishment',
   'opening',
   'customer_return',
@@ -39,7 +40,7 @@ export type WarehouseOperationKindMeta = {
   needsTo: boolean;
   needsDestWarehouse: boolean;
   refPrefix: string;
-  stockEffect: 'inbound' | 'outbound' | 'move' | 'transfer' | 'adjust_set';
+  stockEffect: 'inbound' | 'outbound' | 'move' | 'transfer' | 'adjust_set' | 'order';
   uiPlacement: WarehouseOperationUiPlacement;
   /** مفتاح ترجمة اختياري */
   navLabelKey: string;
@@ -146,6 +147,20 @@ export const WAREHOUSE_OPERATION_KIND_META: Record<WarehouseOperationKind, Wareh
       uiPlacement: 'both',
       navLabelKey: 'opScrap',
       pathSegment: 'scrap',
+    },
+    purchase_order: {
+      labelAr: 'أوامر الشراء',
+      title: 'أوامر الشراء',
+      createLabel: 'أمر شراء',
+      empty: 'لا توجد أوامر شراء بعد. الأمر لا يحرّك المخزون حتى يُستلم.',
+      needsFrom: false,
+      needsTo: false,
+      needsDestWarehouse: false,
+      refPrefix: 'PO',
+      stockEffect: 'order',
+      uiPlacement: 'header',
+      navLabelKey: 'opPurchaseOrder',
+      pathSegment: 'purchase-orders',
     },
     purchase: {
       labelAr: 'الشراء',

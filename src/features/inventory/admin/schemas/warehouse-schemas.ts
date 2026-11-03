@@ -126,6 +126,7 @@ export const warehouseOperationFormSchema = z.object({
   /** مطلوب عند الإنشاء من قائمة المخزون العامة (بدون مستودع محدد) */
   sourceWarehouseId: z.string().optional().or(z.literal('')),
   destinationWarehouseId: z.string().optional().or(z.literal('')),
+  transferMode: z.enum(['direct', 'two_step']).optional(),
   /** إلزامي — بدون productId لا تُطبَّق الحركة على المخزون */
   productId: z.string().min(1, 'اختر منتجًا من الكتالوج'),
   productName: z.string().min(1, 'اسم المنتج مطلوب').max(160),
@@ -147,6 +148,7 @@ export const WAREHOUSE_OPERATION_FORM_DEFAULT_VALUES: WarehouseOperationFormValu
   sourceDocument: '',
   sourceWarehouseId: '',
   destinationWarehouseId: '',
+  transferMode: 'direct',
   productId: '',
   productName: '',
   sku: '',

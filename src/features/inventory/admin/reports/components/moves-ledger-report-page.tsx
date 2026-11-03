@@ -18,6 +18,7 @@ import type {
   WarehouseLocation,
   WarehouseOperationKind,
 } from '@/features/inventory/domain/types/warehouse';
+import { useCan } from '@/features/auth/hooks/use-can';
 import { companyCurrencyCode } from '@/features/auth/lib/company-currency';
 import { currencySymbolAr } from '@/shared/currencies';
 import { formatDateTime } from '@/shared/utils';
@@ -97,6 +98,7 @@ function formatLocationFilterLabel(
 
 export function MovesLedgerReportPage({ inboundOnly = false }: { inboundOnly?: boolean } = {}) {
   const companyId = getInventoryCompanyId();
+  const canReadCost = useCan()('inv.warehouse.costs.read');
   const [searchInput, setSearchInput] = React.useState('');
   const [search, setSearch] = React.useState('');
   const [page, setPage] = React.useState(1);
@@ -455,7 +457,7 @@ export function MovesLedgerReportPage({ inboundOnly = false }: { inboundOnly?: b
         </span>
       ),
     },
-    ...(inboundOnly
+    ...(inboundOnly && canReadCost
       ? ([
           {
             key: 'unitCost',
@@ -528,7 +530,7 @@ export function MovesLedgerReportPage({ inboundOnly = false }: { inboundOnly?: b
             to={route.toLocationId ? locationName(route.toLocationId) : null}
           />
         ) : null}
-        {inboundOnly ? (
+        {inboundOnly && canReadCost ? (
           <p className="text-xs text-muted-foreground">
             سعر الدخول <span className="tabular-nums text-foreground" dir="ltr">{formatMoney(row.unitCost)}</span>
             {row.unitCost != null ? (
@@ -610,9 +612,9 @@ export function MovesLedgerReportPage({ inboundOnly = false }: { inboundOnly?: b
         <Badge variant="success">
           وارد: {(inboundOnly ? data?.summary.net : data?.summary.qtyIn) ?? 0}
         </Badge>
-        {inboundOnly ? (
+        {inboundOnly && canReadCost ? (
           <Badge variant="subtle">قيمة الداخل: {formatMoney(inboundValue)}</Badge>
-        ) : (
+        ) : inboundOnly ? null : (
           <>
             <Badge variant="destructive">صادر: {data?.summary.qtyOut ?? 0}</Badge>
             <Badge variant="subtle">الصافي: {data?.summary.net ?? 0}</Badge>
@@ -632,7 +634,11 @@ export function MovesLedgerReportPage({ inboundOnly = false }: { inboundOnly?: b
             variant="directory"
             keepHeaderWhenEmpty
             className="inv-table-host"
-            columns={productColumns}
+            columns={
+              canReadCost
+                ? productColumns
+                : productColumns.filter((column) => column.key !== 'average' && column.key !== 'value')
+            }
             mobileCard={(row) => (
               <div className="space-y-1.5">
                 <div className="flex items-start justify-between gap-2">
@@ -647,8 +653,26 @@ export function MovesLedgerReportPage({ inboundOnly = false }: { inboundOnly?: b
                   </span>
                 </div>
                 <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span>{row.entries} دخلات · متوسط <span className="tabular-nums text-foreground" dir="ltr">{formatMoney(row.averageUnitCost)}</span></span>
-                  <span>القيمة <span className="font-semibold tabular-nums text-foreground" dir="ltr">{formatMoney(row.totalValue)}</span></span>
+                  <span>
+                    {row.entries} دخلات
+                    {canReadCost ? (
+                      <>
+                        {' '}
+                        · متوسط{' '}
+                        <span className="tabular-nums text-foreground" dir="ltr">
+                          {formatMoney(row.averageUnitCost)}
+                        </span>
+                      </>
+                    ) : null}
+                  </span>
+                  {canReadCost ? (
+                    <span>
+                      القيمة{' '}
+                      <span className="font-semibold tabular-nums text-foreground" dir="ltr">
+                        {formatMoney(row.totalValue)}
+                      </span>
+                    </span>
+                  ) : null}
                 </div>
               </div>
             )}

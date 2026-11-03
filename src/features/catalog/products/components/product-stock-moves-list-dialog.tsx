@@ -61,6 +61,7 @@ const LIST_ICONS: Record<WarehouseOperationKind, typeof PackagePlus> = {
   physical_count: ClipboardList,
   scrap: Factory,
   purchase: ShoppingCart,
+  purchase_order: ClipboardList,
   replenishment: RefreshCw,
   opening: FileSpreadsheet,
   customer_return: Undo2,

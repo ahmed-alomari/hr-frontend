@@ -37,6 +37,30 @@ type OperationLineDto = Omit<WarehouseOperationLine, 'demandQuantity' | 'quantit
   archivedAt?: string | null;
 };
 
+function serialsForApi(raw?: string | string[] | null): string[] | undefined {
+  if (raw == null) return undefined;
+  if (Array.isArray(raw)) {
+    const items = raw.map((item) => item.trim()).filter(Boolean);
+    return items.length > 0 ? items : undefined;
+  }
+  const text = raw.trim();
+  if (!text) return undefined;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (Array.isArray(parsed)) {
+      const items = parsed.map((item) => String(item).trim()).filter(Boolean);
+      return items.length > 0 ? items : undefined;
+    }
+  } catch {
+    /* comma or newline list */
+  }
+  const items = text
+    .split(/[\n,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : undefined;
+}
+
 function assertLinesLinkedToProduct(
   lines: CreateWarehouseOperationInput['lines'] | WarehouseOperation['lines'],
 ): void {
@@ -63,6 +87,15 @@ function mapLine(dto: OperationLineDto): WarehouseOperationLine {
     notes: dto.notes ?? undefined,
     unitCost: dto.unitCost ?? undefined,
     costCurrency: dto.costCurrency ?? undefined,
+    receivedQuantity: toNumber(dto.receivedQuantity ?? 0),
+    purchaseOrderLineId: dto.purchaseOrderLineId ?? null,
+    expiryDate: dto.expiryDate ?? null,
+    serialNumbers:
+      dto.serialNumbers == null
+        ? null
+        : typeof dto.serialNumbers === 'string'
+          ? dto.serialNumbers
+          : JSON.stringify(dto.serialNumbers),
   };
 }
 
@@ -85,6 +118,8 @@ function mapOperation(dto: OperationDto, lines: WarehouseOperationLine[]): Wareh
     partnerName: dto.partnerName ?? undefined,
     sourceDocument: dto.sourceDocument ?? undefined,
     destinationWarehouseId: dto.destinationWarehouseId ?? undefined,
+    transferMode: dto.transferMode ?? 'direct',
+    transitState: dto.transitState ?? null,
     lines,
     lineCount: dto.lineCount,
     totalDemandQuantity:
@@ -186,6 +221,9 @@ async function createLine(operationId: string, line: WarehouseOperationLine): Pr
       notes: line.notes ?? null,
       unitCost: line.unitCost ?? null,
       costCurrency: line.costCurrency ?? null,
+      purchaseOrderLineId: line.purchaseOrderLineId ?? null,
+      expiryDate: line.expiryDate || null,
+      serialNumbers: serialsForApi(line.serialNumbers) ?? null,
     },
   });
   return mapLine(dto);
@@ -231,6 +269,9 @@ async function syncLines(
             notes: line.notes ?? null,
             unitCost: line.unitCost ?? null,
             costCurrency: line.costCurrency ?? null,
+            purchaseOrderLineId: line.purchaseOrderLineId ?? null,
+            expiryDate: line.expiryDate || null,
+            serialNumbers: serialsForApi(line.serialNumbers) ?? null,
           },
         },
       );
@@ -255,7 +296,10 @@ function isLineUnchanged(prev: WarehouseOperationLine, next: WarehouseOperationL
     (prev.toLocationId ?? null) === (next.toLocationId ?? null) &&
     (prev.notes ?? null) === (next.notes ?? null) &&
     (prev.unitCost ?? null) === (next.unitCost ?? null) &&
-    (prev.costCurrency ?? null) === (next.costCurrency ?? null)
+    (prev.costCurrency ?? null) === (next.costCurrency ?? null) &&
+    (prev.purchaseOrderLineId ?? null) === (next.purchaseOrderLineId ?? null) &&
+    (prev.expiryDate ?? null) === (next.expiryDate ?? null) &&
+    (prev.serialNumbers ?? null) === (next.serialNumbers ?? null)
   );
 }
 
@@ -276,6 +320,18 @@ export function fetchWarehouseOperationGroups(query: WarehouseOperationListQuery
       groupBy: query.groupBy,
     },
   });
+}
+
+export async function receiveWarehouseTransfer(
+  companyId: string,
+  id: string,
+): Promise<WarehouseOperation> {
+  const dto = await apiRequest<OperationDto>(
+    `/inventory/warehouse-operations/${id}/receive-transfer`,
+    { method: 'POST' },
+  );
+  const lines = await fetchLinesByOperationId(id, companyId || dto.companyId);
+  return mapOperation(dto, lines);
 }
 
 export const warehouseOperationsApi: AdminWarehouseOperationsPort & {
@@ -372,6 +428,9 @@ export const warehouseOperationsApi: AdminWarehouseOperationsPort & {
         warehouseId: input.warehouseId,
         destinationWarehouseId: input.destinationWarehouseId ?? null,
         kind: input.kind,
+        ...(input.kind === 'transfer'
+          ? { transferMode: input.transferMode ?? 'direct' }
+          : {}),
         status: createStatus,
         occurredAt: input.occurredAt,
         notes: input.notes ?? null,

@@ -105,6 +105,7 @@ export type WarehouseOperationKind =
   | 'physical_count'
   | 'scrap'
   | 'purchase'
+  | 'purchase_order'
   | 'replenishment'
   | 'opening'
   | 'customer_return'
@@ -139,6 +140,12 @@ export type WarehouseOperationLine = {
    */
   unitCost?: string;
   costCurrency?: string;
+  /** On a purchase order: quantity already received. */
+  receivedQuantity?: number;
+  purchaseOrderLineId?: string | null;
+  expiryDate?: string | null;
+  /** JSON array or omitted. */
+  serialNumbers?: string | null;
 };
 
 export type WarehouseOperation = TenantScoped & {
@@ -147,6 +154,8 @@ export type WarehouseOperation = TenantScoped & {
   groupKey?: string | null;
   warehouseId: string;
   kind: WarehouseOperationKind;
+  transferMode?: 'direct' | 'two_step';
+  transitState?: 'in_transit' | 'received' | null;
   reference: string;
   status: WarehouseOperationStatus;
   occurredAt: string;

@@ -8,11 +8,13 @@ import { useInventoryCompanySettings } from '@/features/inventory/admin/notifica
 import { PartnerSinglePicker } from '@/features/contacts/admin/partners/components/partner-single-picker';
 import { useWarehouseLocations } from '@/features/inventory/admin/locations/hooks/use-warehouse-locations';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import { useWarehouseOperationMutations } from '@/features/inventory/admin/operations/hooks/use-warehouse-operation-mutations';
 import { useOpenOperationProductReservations } from '@/features/inventory/admin/operations/hooks/use-open-operation-product-reservations';
 import {
   fetchWarehouseOperationAudit,
+  receiveWarehouseTransfer,
   warehouseOperationsApi,
 } from '@/features/inventory/admin/operations/lib/api/warehouse-operations';
 import { useCan } from '@/features/auth/hooks/use-can';
@@ -75,9 +77,11 @@ import {
 import {
   emptyOperationLineDraft,
   hasDuplicateOperationLineProducts,
+  lineCapturesLot,
   lineNeedsUnitCost,
   newOperationLineDraftId,
   operationLinesToDrafts,
+  serialsToText,
   supportsMultiProductLines,
   pickerUsesSourceLocationStock,
 } from '@/features/inventory/admin/operations/lib/operation-line-draft';
@@ -339,6 +343,9 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
   const [occurredAt, setOccurredAt] = React.useState('');
   const can = useCan();
   const canPost = can('inv.warehouse.operations.post');
+  const canReadCost = can('inv.warehouse.costs.read');
+  const queryClient = useQueryClient();
+  const [arrivalPending, setArrivalPending] = React.useState(false);
   const [status, setStatus] = React.useState<WarehouseOperationStatus>('draft');
   const { data: audit } = useQuery({
     queryKey: [...warehouseOperationsQueryKeys.detail(companyId, operation?.id ?? ''), 'audit', status],
@@ -657,7 +664,10 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
   const canEditProducts = editable && status === 'draft' && multiProductMode;
   const isCountLike = kind === 'physical_count' || kind === 'adjustment';
   const showDemandColumn = !isCountLike;
-  const showCostColumns = lineNeedsUnitCost(kind);
+  const showCostColumns = lineNeedsUnitCost(kind) && canReadCost;
+  const showSystemQty =
+    kind === 'adjustment' || (kind === 'physical_count' && status === 'done');
+  const capturesLot = lineCapturesLot(kind);
   const lineColumnCount =
     5 + (showDemandColumn ? 1 : 0) + (showCostColumns ? 2 : 0) + (canEditProducts ? 1 : 0);
   const pricedLines = lines.filter((line) => line.productId?.trim());
@@ -1076,6 +1086,135 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
     );
   }
 
+  function orderedQty(line: WarehouseOperationLine): number {
+    return (line.demandQuantity ?? 0) > 0 ? (line.demandQuantity ?? 0) : line.quantity;
+  }
+
+  function poProgress(line: WarehouseOperationLine) {
+    if (kind !== 'purchase_order') return null;
+    const ordered = orderedQty(line);
+    const received = line.receivedQuantity ?? 0;
+    const left = Math.max(0, ordered - received);
+    return (
+      <p className="mt-1 text-xs text-muted-foreground">
+        المطلوب {formatLineQuantity(ordered)} · المستلم {formatLineQuantity(received)} · المتبقي{' '}
+        {formatLineQuantity(left)}
+      </p>
+    );
+  }
+
+  function lotEditor(line: WarehouseOperationLine) {
+    if (!capturesLot || !line.productId) return null;
+    return (
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">تاريخ الانتهاء</Label>
+          <Input
+            type="date"
+            dir="ltr"
+            value={line.expiryDate?.slice(0, 10) ?? ''}
+            disabled={!qtyEditable}
+            onChange={(event) =>
+              setLines((prev) =>
+                prev.map((row) =>
+                  row.id === line.id ? { ...row, expiryDate: event.target.value || null } : row,
+                ),
+              )
+            }
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">أرقام تسلسلية</Label>
+          <Input
+            dir="ltr"
+            placeholder="رقم لكل قطعة"
+            value={serialsToText(line.serialNumbers)}
+            disabled={!qtyEditable}
+            onChange={(event) => {
+              const items = event.target.value
+                .split(/[\n,]+/)
+                .map((item) => item.trim())
+                .filter(Boolean);
+              setLines((prev) =>
+                prev.map((row) =>
+                  row.id === line.id
+                    ? { ...row, serialNumbers: items.length > 0 ? JSON.stringify(items) : null }
+                    : row,
+                ),
+              );
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  async function createReceiptFromOrder() {
+    if (!companyId || !documentOperation) return;
+    const stockBin = filterOperationToLocations('receipt', locations)[0];
+    if (!stockBin) {
+      toast.error('أضف موقعاً داخلياً في المستودع قبل إنشاء الاستلام.');
+      return;
+    }
+    const remaining = lines
+      .filter((line) => line.productId && orderedQty(line) - (line.receivedQuantity ?? 0) > 1e-6)
+      .map((line) => {
+        const quantity = orderedQty(line) - (line.receivedQuantity ?? 0);
+        return {
+          id: newOperationLineDraftId(),
+          productId: line.productId,
+          variantId: line.variantId,
+          productName: line.productName,
+          sku: line.sku,
+          demandQuantity: quantity,
+          quantity,
+          productUomLineId: line.productUomLineId,
+          toLocationId: stockBin.id,
+          unitCost: canReadCost ? line.unitCost : undefined,
+          purchaseOrderLineId: line.id,
+        };
+      });
+    if (remaining.length === 0) {
+      toast.error('لا توجد كمية متبقية على أمر الشراء.');
+      return;
+    }
+    try {
+      const created = await warehouseOperationsApi.create({
+        companyId,
+        warehouseId: documentOperation.warehouseId,
+        kind: 'receipt',
+        status: 'draft',
+        occurredAt: new Date().toISOString(),
+        partnerId: documentOperation.partnerId,
+        partnerName: documentOperation.partnerName,
+        sourceDocument: documentOperation.reference,
+        notes: `استلام من ${documentOperation.reference}`,
+        lines: remaining,
+      });
+      void queryClient.invalidateQueries({ queryKey: warehouseOperationsQueryKeys.root(companyId) });
+      toast.success(`أُنشئ سند الاستلام ${created.reference}. راجع الكمية والتكلفة ثم صدّقه.`);
+    } catch (error) {
+      const { displayMessage } = handleApiError(error, 'ecommerce.warehouseOperations.create');
+      toast.error(displayMessage);
+    }
+  }
+
+  async function confirmArrival() {
+    if (!companyId || !documentOperation) return;
+    setArrivalPending(true);
+    try {
+      const updated = await receiveWarehouseTransfer(companyId, documentOperation.id);
+      setLines(updated.lines.map((line) => ({ ...line })));
+      void queryClient.invalidateQueries({ queryKey: warehouseOperationsQueryKeys.root(companyId) });
+      toast.success('تم تأكيد وصول البضاعة إلى المستودع الوجهة.');
+    } catch (error) {
+      const { displayMessage } = handleApiError(error, 'ecommerce.warehouseOperations.update');
+      toast.error(displayMessage);
+    } finally {
+      setArrivalPending(false);
+    }
+  }
+
   /** The document's actions: in the header on larger screens, at the bottom (thumb reach) on phones. */
   const actionButtons = (
     <>
@@ -1150,7 +1289,7 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
           إلغاء
         </Button>
       ) : null}
-      {(kind === 'physical_count' || kind === 'adjustment') && editable ? (
+      {kind === 'adjustment' && editable ? (
         <Button
           type="button"
           size="sm"
@@ -1159,6 +1298,30 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
           onClick={() => void fillTheoreticalFromStock()}
         >
           تعبئة النظامي من المخزون
+        </Button>
+      ) : null}
+      {kind === 'purchase_order' && status === 'done' ? (
+        <Button
+          type="button"
+          size="sm"
+          disabled={isSaving}
+          onClick={() => void createReceiptFromOrder()}
+        >
+          إنشاء استلام للكمية المتبقية
+        </Button>
+      ) : null}
+      {kind === 'transfer' &&
+      documentOperation.transferMode === 'two_step' &&
+      documentOperation.transitState === 'in_transit' &&
+      status === 'done' &&
+      canPost ? (
+        <Button
+          type="button"
+          size="sm"
+          disabled={isSaving || arrivalPending}
+          onClick={() => void confirmArrival()}
+        >
+          تأكيد وصول البضاعة
         </Button>
       ) : null}
     </>
@@ -1179,7 +1342,13 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
                 </Badge>
               </DialogTitle>
               <p className="text-xs text-muted-foreground">
-                {WAREHOUSE_OPERATION_KIND_LABELS_AR[kind]} · متابعة ومعالجة المستند
+                {WAREHOUSE_OPERATION_KIND_LABELS_AR[kind]}
+                {documentOperation.transferMode === 'two_step'
+                  ? documentOperation.transitState === 'received'
+                    ? ' · وصلت للمستودع الوجهة'
+                    : ' · في الطريق'
+                  : ''}
+                {' · متابعة ومعالجة المستند'}
               </p>
               {audit?.postedAt || audit?.reversedAt ? (
                 <p className="text-xs text-muted-foreground">
@@ -1420,6 +1589,8 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
                           </span>
                           <div className="min-w-0 flex-1 space-y-2">
                             {lineProductField(line)}
+                            {poProgress(line)}
+                            {lotEditor(line)}
                             {line.productId ? lineVariantField(line) : null}
                           </div>
                           {canEditProducts ? lineRemoveButton(line, true) : null}
@@ -1439,7 +1610,7 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
                             {lineQuantityField(line, view, true)}
                           </div>
                         </div>
-                        {isCountLike && (line.demandQuantity ?? 0) > 0 ? (
+                        {showSystemQty && (line.demandQuantity ?? 0) > 0 ? (
                           // Count: the book quantity (filled from stock) and the difference the count makes.
                           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
                             <span>
@@ -1571,7 +1742,11 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
                             <td className="px-3 py-3 text-center text-xs tabular-nums text-muted-foreground">
                               {index + 1}
                             </td>
-                            <td className="px-3 py-3">{lineProductField(line)}</td>
+                            <td className="px-3 py-3">
+                              {lineProductField(line)}
+                              {poProgress(line)}
+                              {lotEditor(line)}
+                            </td>
                             <td className="px-3 py-3">{lineVariantField(line)}</td>
                             {showDemandColumn ? (
                               <td className="px-3 py-3 text-center">{lineDemandField(line, view, false)}</td>
