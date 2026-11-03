@@ -62,6 +62,6 @@ export function buildPdfCompanyLetterhead(source?: PdfCompanySource | null): Pdf
     logoSrc: resolvePdfLogoSrc(source?.logoUrl),
     watermarkEnabled: source?.pdfWatermarkEnabled ?? true,
     watermarkOpacity: Math.min(Math.max(source?.pdfWatermarkOpacity ?? 10, 2), 40) / 100,
-    contractFontScale: Math.min(Math.max(source?.pdfContractFontScale ?? 100, 70), 130) / 100,
+    contractFontScale: Math.min(Math.max(source?.pdfContractFontScale ?? 100, 50), 150) / 100,
   };
 }

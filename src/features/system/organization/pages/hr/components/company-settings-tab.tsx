@@ -331,7 +331,7 @@ export function CompanySettingsTab() {
                       : 'border-border hover:border-primary/40',
                   )}
                 >
-                  {size.label} ({size.value}%)
+                  {size.label ? `${size.label} (${size.value}%)` : `${size.value}%`}
                 </button>
               );
             })}
