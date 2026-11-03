@@ -44,7 +44,9 @@ export function StoreImportPage() {
   const allowed = can('catalog.products.create') && can('catalog.products.update');
 
   const [file, setFile] = React.useState<File | null>(null);
-  const [csvSheet, setCsvSheet] = React.useState<StoreImportSheetKey>('products');
+  // A CSV holds one kind of record: the server tells it by its columns,
+  // unless the user picks it here.
+  const [csvSheet, setCsvSheet] = React.useState<StoreImportSheetKey | null>(null);
   const [mapping, setMapping] = React.useState<StoreImportOptions['mapping']>({});
   const [publish, setPublish] = React.useState(false);
   // Categories and brands the system lacks: created and linked, or refused.
@@ -63,7 +65,7 @@ export function StoreImportPage() {
     async (next: {
       file: File;
       mapping?: StoreImportOptions['mapping'];
-      sheet?: StoreImportSheetKey;
+      sheet?: StoreImportSheetKey | null;
       createMissing?: boolean;
     }) => {
       setBusy('preview');
@@ -71,7 +73,7 @@ export function StoreImportPage() {
       try {
         const result = await storeImportApi.preview(companyId, next.file, {
           mapping: next.mapping,
-          sheet: /\.csv$/i.test(next.file.name) ? next.sheet : undefined,
+          sheet: /\.csv$/i.test(next.file.name) ? (next.sheet ?? undefined) : undefined,
           createMissing: next.createMissing ?? createMissingRef.current,
         });
         setPreview(result);
@@ -91,7 +93,8 @@ export function StoreImportPage() {
     setPreview(null);
     setMapping({});
     setDone(null);
-    if (picked) void runPreview({ file: picked, sheet: csvSheet });
+    setCsvSheet(null);
+    if (picked) void runPreview({ file: picked });
   }
 
   function changeColumn(sheet: StoreImportSheetKey, header: string, field: string) {
@@ -114,7 +117,8 @@ export function StoreImportPage() {
         mapping,
         publish,
         createMissing,
-        sheet: isCsv ? csvSheet : undefined,
+        // The kind the preview read, so the commit reads the file the same way.
+        sheet: isCsv ? (csvSheet ?? preview.sheets[0]?.key) : undefined,
       });
       setDone(result);
       setPreview(null);
@@ -148,7 +152,7 @@ export function StoreImportPage() {
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
       <SetPageTitle
         titleAr="استيراد المنتجات"
-        descriptionAr="من ملف Excel أو CSV: منتجات جديدة، وتحديث الموجود برمزه."
+        descriptionAr="من ملف Excel (بصوره) أو CSV: منتجات جديدة، وتحديث الموجود برمزه."
         iconName="FileSpreadsheet"
       />
 
@@ -157,8 +161,9 @@ export function StoreImportPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base">١. القالب والملف</CardTitle>
           <CardDescription>
-            حمّل القالب واملأه، أو ارفع ملفك كما هو وطابق أعمدته في الخطوة التالية. المنتج الذي رمزه موجود يُحدَّث،
-            والصور روابط في الملف.
+            حمّل القالب واملأه، أو ارفع ملفك كما هو وطابق أعمدته في الخطوة التالية. المنتج الذي رمزه موجود يُحدَّث.
+            الصور تُوضع داخل ملف Excel نفسه في خلية «الصور» (إدراج ← صور ← وضع في الخلية)، أو تُكتب روابطها. ملف CSV
+            لا يحمل صوراً، فيقبل الروابط فقط. نوع الملف يُعرف تلقائياً.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -198,7 +203,9 @@ export function StoreImportPage() {
           >
             {file ? <FileSpreadsheet className="h-7 w-7 text-primary" /> : <Upload className="h-7 w-7 text-muted-foreground" />}
             <span className="text-sm font-medium">{file ? file.name : 'اختر ملف Excel أو CSV أو اسحبه هنا'}</span>
-            <span className="text-xs text-muted-foreground">حتى 15 ميغابايت و5000 سطر في الورقة</span>
+            <span className="text-xs text-muted-foreground">
+              Excel أو CSV، حتى 50 ميغابايت (مع الصور) و5000 سطر في الورقة
+            </span>
             <input
               ref={inputRef}
               type="file"
@@ -210,9 +217,11 @@ export function StoreImportPage() {
 
           {isCsv ? (
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-muted-foreground">ملف CSV يحمل نوعاً واحداً:</span>
+              <span className="text-muted-foreground">
+                {csvSheet ? 'ملف CSV يحمل نوعاً واحداً:' : 'ملف CSV يحمل نوعاً واحداً، عرفناه من أعمدته:'}
+              </span>
               <Select
-                value={csvSheet}
+                value={csvSheet ?? preview?.sheets[0]?.key ?? 'products'}
                 onValueChange={(value) => {
                   const sheet = value as StoreImportSheetKey;
                   setCsvSheet(sheet);
@@ -309,6 +318,11 @@ export function StoreImportPage() {
               {preview.counts.brandsCreated?.length ? (
                 <p className="text-sm text-muted-foreground">
                   علامات تجارية ستُنشأ: {preview.counts.brandsCreated.join('، ')}
+                </p>
+              ) : null}
+              {preview.counts.imagesInFile ? (
+                <p className="text-sm text-muted-foreground">
+                  صور من داخل الملف: {preview.counts.imagesInFile}، تُحفظ مع المنتجات عند الاستيراد.
                 </p>
               ) : null}
               {preview.counts.quantitiesSet ? (

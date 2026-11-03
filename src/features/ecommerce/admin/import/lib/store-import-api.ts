@@ -51,6 +51,8 @@ export type StoreImportPreview = {
     /** Older servers omit it. */
     brandsCreated?: string[];
     quantitiesSet: number;
+    /** Pictures inside the Excel file (not links); older servers omit it. */
+    imagesInFile?: number;
   };
   errors: number;
   warnings: number;
