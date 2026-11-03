@@ -14,7 +14,7 @@ const settingsPath = (companyId: string) =>
 const queryKey = (companyId: string) => ['store-admin', 'trusted-device-login', companyId] as const;
 
 /**
- * Trusted-device sign-in (off by default): a customer signs in with the
+ * Trusted-device sign-in (off by default): a customer signs in with the email or
  * mobile alone from the device they signed up or last signed in on with the
  * password. Off stops it and keeps the saved devices.
  */
@@ -57,7 +57,7 @@ export function TrustedDeviceLoginSetting({ companyId }: { companyId: string }) 
         <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground">الدخول من الجهاز الموثوق</p>
           <p className="text-xs text-muted-foreground">
-            يدخل العميل برقم جواله دون كلمة المرور من الجهاز الذي أنشأ منه حسابه أو دخل منه بكلمة
+            يدخل العميل بإيميله أو رقم جواله دون كلمة المرور من الجهاز الذي أنشأ منه حسابه أو دخل منه بكلمة
             المرور. تعيين كلمة مرور جديدة يلغي الأجهزة الموثوقة.
           </p>
         </div>

@@ -31,7 +31,7 @@ export type PartnerAuthSessionPayload = {
   user: PartnerAuthUser;
   partner: PartnerAuthPartner;
   message?: string | null;
-  /** Trusted-device key (store setting on, mobile account): keep it on this device. */
+  /** Trusted-device key (store setting on): keep it on this device. */
   deviceToken?: string | null;
 };
 

@@ -186,14 +186,15 @@ export async function loginPartner(input: PartnerLoginInput): Promise<PartnerAut
 
 /** POST /public/partners/auth/device-login → 200 (trusted device, no password) */
 export async function deviceLoginPartner(input: {
-  mobile: string;
+  /** Email or mobile */
+  identifier: string;
   deviceToken: string;
 }): Promise<PartnerAuthSessionPayload> {
   const dto = await partnerAuthFetch<PartnerSessionApiDto>('/public/partners/auth/device-login', {
     method: 'POST',
     body: JSON.stringify({
       companyId: getStorefrontCompanyId(),
-      mobile: input.mobile,
+      identifier: input.identifier,
       deviceToken: input.deviceToken,
     }),
   });

@@ -17,6 +17,7 @@ import {
   forgetTrustedDevice,
   readTrustedDevice,
   rememberTrustedDevice,
+  trustedDeviceEmail,
 } from '@/features/ecommerce/storefront/lib/store-trusted-device';
 import { useStoreTrustedDeviceLogin } from '@/features/ecommerce/storefront/hooks/use-store-trusted-device-login';
 import { PartnerAuthApiError } from '@/features/ecommerce/storefront/domain/partner-auth';
@@ -67,12 +68,18 @@ export function StoreLoginClient() {
     setSavedDevice(readTrustedDevice(getStorefrontCompanyId()));
   }, []);
 
-  // The device's key works with the mobile it was given for (store setting on).
-  const typedMobile = method === 'mobile' ? parseStoreMobile(identifier, country) : null;
-  const deviceMatch =
-    trustedDeviceLogin && savedDevice && typedMobile?.ok && typedMobile.e164 === savedDevice.mobile
-      ? savedDevice
+  // The device's key works with the email or mobile of its account (store setting on).
+  const deviceMatch = React.useMemo(() => {
+    if (!trustedDeviceLogin || !savedDevice) return null;
+    if (method === 'email') {
+      const email = trustedDeviceEmail(identifier);
+      return email && email === savedDevice.email ? { identifier: email, token: savedDevice.token } : null;
+    }
+    const typed = parseStoreMobile(identifier, country);
+    return typed.ok && typed.e164 === savedDevice.mobile
+      ? { identifier: typed.e164, token: savedDevice.token }
       : null;
+  }, [trustedDeviceLogin, savedDevice, method, identifier, country]);
 
   React.useEffect(() => {
     if (hydrated && authenticated) {
@@ -121,7 +128,7 @@ export function StoreLoginClient() {
     setSubmitting(true);
     try {
       const session = await deviceLoginPartner({
-        mobile: deviceMatch.mobile,
+        identifier: deviceMatch.identifier,
         deviceToken: deviceMatch.token,
       });
       setSession(session);

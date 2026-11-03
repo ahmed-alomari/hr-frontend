@@ -363,7 +363,7 @@
     "passwordPlaceholder": "Store password",
     "createAccountCta": "Create a new account",
     "deviceLogin": "Sign in from this device without a password",
-    "deviceLoginHint": "We recognise this device and your mobile. You can sign in without the password.",
+    "deviceLoginHint": "We recognise this device and your account. You can sign in without the password.",
     "deviceLoginSubmitting": "Signing in..."
   },
   "register": {
