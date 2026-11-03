@@ -8,6 +8,7 @@ import {
   ArrowUp,
   ExternalLink,
   LayoutTemplate,
+  Loader2,
   Pencil,
   Plus,
   Rocket,
@@ -114,13 +115,14 @@ export function HomepagePageBuilderPage() {
           disabled={!draft || save.isPending}
           onClick={() => void persist()}
         >
-          <Save className="h-3.5 w-3.5" />
+          {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           <span className="hidden sm:inline">{t('saveDraft')}</span>
         </Button>
         <PageHeaderPrimaryButton
           icon={Rocket}
           label={save.isPending ? tCommon('status.saving') : t('publish')}
           disabled={!draft || save.isPending}
+          loading={save.isPending}
           onClick={() => void persist('published')}
         />
         <Button type="button" size="sm" className="h-8" disabled={!draft} onClick={() => setPaletteOpen(true)}>

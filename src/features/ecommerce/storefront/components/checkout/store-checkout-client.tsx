@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   CreditCard,
   FileText,
+  Loader2,
   MapPin,
   MoreHorizontal,
   PackageSearch,
@@ -1130,6 +1131,7 @@ export function StoreCheckoutClient({ currency: storeCurrency, country }: Checko
                       disabled={savingAddress}
                       onClick={() => void saveNewAddress()}
                     >
+                      {savingAddress ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
                       {savingAddress ? t('account.saving') : t('checkout.saveAddress')}
                     </Button>
                     {savedAddresses.length > 0 ? (
@@ -1154,6 +1156,9 @@ export function StoreCheckoutClient({ currency: storeCurrency, country }: Checko
                   placeholder={t('checkout.customerNotePlaceholder')}
                   className="min-h-[4.5rem] w-full min-w-0 max-w-full rounded-xl border-input px-3.5 py-3 text-base leading-relaxed sm:text-sm"
                 />
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {t('checkout.customerNoteHint')}
+                </p>
               </Field>
             </div>
           </section>
@@ -1693,6 +1698,7 @@ export function StoreCheckoutClient({ currency: storeCurrency, country }: Checko
               onClick={() => void submitOrder()}
               disabled={submitting}
             >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
               {submitting ? t('checkout.placing') : t('checkout.placeOrder')}
             </Button>
           )}
@@ -1822,6 +1828,7 @@ export function StoreCheckoutClient({ currency: storeCurrency, country }: Checko
               onClick={() => void submitOrder()}
               disabled={submitting}
             >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
               {submitting ? t('checkout.placing') : t('checkout.placeOrder')}
             </Button>
           )}

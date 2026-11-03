@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   CircleHelp,
   FileText,
+  Loader2,
   Mail,
   Pencil,
   Percent,
@@ -432,7 +433,7 @@ export function CmsPagesPage({ embedded = false, initialPanel = 'list' }: Props)
             disabled={save.isPending}
             onClick={() => void saveForm()}
           >
-            <Save className="me-1.5 h-4 w-4" />
+            {save.isPending ? <Loader2 className="me-1.5 h-4 w-4 animate-spin" /> : <Save className="me-1.5 h-4 w-4" />}
             {save.isPending ? tCommon('status.saving') : tCommon('actions.save')}
           </Button>
         </section>

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Archive, Check, Plus, Star, Trash2, X } from 'lucide-react';
+import { Archive, Check, Loader2, Plus, Star, Trash2, X } from 'lucide-react';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
@@ -601,6 +601,7 @@ export function ProductReviewsAdminPage() {
                 إلغاء
               </Button>
               <Button type="submit" disabled={createReview.isPending || !form.productId}>
+                {createReview.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 حفظ
               </Button>
             </DialogFooter>

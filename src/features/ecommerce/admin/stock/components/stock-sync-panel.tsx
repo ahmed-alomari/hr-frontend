@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Can } from '@/components/shared/can';
 import { PageHeaderPrimaryButton } from '@/components/layouts/page-header-primary-button';
@@ -109,6 +109,7 @@ export function StockSyncPanel({
           label={run.isPending ? 'جارٍ المطابقة…' : 'مطابقة الآن'}
           className="h-10 px-3.5 text-sm"
           disabled={run.isPending}
+          loading={run.isPending}
           onClick={() => run.mutate()}
         />
       ) : null,
@@ -235,6 +236,7 @@ function WarehouseSetting({
           disabled={!canUpdate || !value || value === s.warehouseId || save.isPending}
           onClick={() => save.mutate()}
         >
+          {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           حفظ
         </Button>
       </div>
@@ -293,6 +295,7 @@ function DrainControl({
         disabled={!canUpdate || drain.isPending}
         onClick={() => drain.mutate()}
       >
+        {drain.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
         {s.state === 'draining' ? 'إيقاف التصريف واستئناف البيع' : 'بدء التصريف'}
       </Button>
     </section>
@@ -536,6 +539,7 @@ function LocalOpening({
         </>
       )}
       <Button size="sm" disabled={!canUpdate || !loaded || !valid || approve.isPending} onClick={() => approve.mutate()}>
+        {approve.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
         {draining ? 'اعتماد الكميات والبيع منها أثناء التصريف' : 'اعتماد الكميات واستئناف البيع المحلي'}
       </Button>
     </section>

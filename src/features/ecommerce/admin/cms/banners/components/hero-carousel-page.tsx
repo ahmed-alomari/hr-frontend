@@ -8,6 +8,7 @@ import {
   ArrowUp,
   ExternalLink,
   ImageOff,
+  Loader2,
   Pencil,
   Play,
   Plus,
@@ -734,6 +735,7 @@ export function HeroCarouselPage() {
               disabled={!form?.draft.imageUrl.trim() || save.isPending}
               onClick={saveSlideForm}
             >
+              {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {save.isPending ? tCommon('status.saving') : tCommon('actions.save')}
             </Button>
           </DialogFooter>

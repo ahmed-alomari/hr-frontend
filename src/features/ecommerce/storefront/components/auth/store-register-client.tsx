@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Eye, EyeOff, LogIn } from 'lucide-react';
+import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
 import {
   useIsStorefrontAuthenticated,
   useStorefrontCustomerUi,
@@ -216,6 +216,7 @@ export function StoreRegisterClient() {
         </div>
 
         <Button type="submit" className="h-11 w-full" disabled={submitting}>
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
           {submitting ? t('register.submitting') : t('register.submit')}
         </Button>
       </form>

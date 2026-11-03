@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { AlertTriangle, ChevronLeft, Info, Plus, Search, Shuffle, Trash2, UserCheck } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, Info, Loader2, Plus, Search, Shuffle, Trash2, UserCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -467,6 +467,7 @@ export function OrderStagesSettingsPanel({ companyId }: { companyId: string }) {
             disabled={save.isPending || problems.length > 0 || changes === 0}
             onClick={() => (releases.length > 0 ? setConfirmRelease(releases.join('، ')) : submit())}
           >
+            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             حفظ الصلاحيات
           </Button>
         </div>

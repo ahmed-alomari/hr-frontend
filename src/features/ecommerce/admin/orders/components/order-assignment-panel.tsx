@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Hand, UserCheck, UserRound, UserX } from 'lucide-react';
+import { Hand, Loader2, UserCheck, UserRound, UserX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -104,7 +104,7 @@ export function OrderAssignmentPanel({ order, companyId, stages }: Props) {
             disabled={assign.isPending}
             onClick={() => run(stages!.userId)}
           >
-            <Hand className="h-4 w-4" />
+            {assign.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hand className="h-4 w-4" />}
             استلام الطلب
           </Button>
         ) : null}
@@ -117,7 +117,7 @@ export function OrderAssignmentPanel({ order, companyId, stages }: Props) {
             disabled={assign.isPending}
             onClick={() => run(null)}
           >
-            <UserX className="h-4 w-4" />
+            {assign.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserX className="h-4 w-4" />}
             إرجاع للمرحلة
           </Button>
         ) : null}
@@ -143,6 +143,7 @@ export function OrderAssignmentPanel({ order, companyId, stages }: Props) {
             disabled={!target || assign.isPending}
             onClick={() => run(target === HANDLER_NONE ? null : target)}
           >
+            {assign.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {order.assignedUserId ? 'إعادة الإسناد' : 'إسناد'}
           </Button>
         </div>

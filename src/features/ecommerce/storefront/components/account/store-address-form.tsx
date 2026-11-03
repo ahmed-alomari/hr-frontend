@@ -22,8 +22,10 @@ import { Textarea } from '@/components/ui/textarea';
 /**
  * The customer's address form, the same in the address book and at checkout
  * (approved 2026-10-09): the store's country (shown, not chosen), city and
- * district, street, building, map pin and driver notes. No name to type —
- * an address is named after its district and city.
+ * district, street, map pin and driver notes. No name to type —
+ * an address is named after its district and city. No building field
+ * (2026-11-03); `building` stays in the state so an old address keeps its
+ * value when edited.
  */
 export type StoreAddressFormState = {
   label: string;
@@ -233,14 +235,6 @@ export function StoreAddressFields({
           value={form.street}
           onChange={(e) => setForm((prev) => ({ ...prev, street: e.target.value }))}
           required
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor={`${idPrefix}-building`}>{t('account.addresses.building')}</Label>
-        <Input
-          id={`${idPrefix}-building`}
-          value={form.building}
-          onChange={(e) => setForm((prev) => ({ ...prev, building: e.target.value }))}
         />
       </div>
       <div className="space-y-2">

@@ -2,7 +2,7 @@
 
 import { companyCurrencyCode } from '@/features/auth/lib/company-currency';
 import * as React from 'react';
-import { Archive, CreditCard, Pencil, Plus, RotateCcw } from 'lucide-react';
+import { Archive, CreditCard, Loader2, Pencil, Plus, RotateCcw } from 'lucide-react';
 import { PageHeaderPrimaryButton } from '@/components/layouts/page-header-primary-button';
 import { InlineFilterToggleButton } from '@/components/shared/inline-filter-toggle-button';
 import { Badge } from '@/components/ui/badge';
@@ -643,6 +643,7 @@ export function PaymentAccountsPanel({ companyId, currencyCode, onHeaderExtrasCh
                   إلغاء
                 </Button>
                 <Button type="submit" disabled={saving || !form.nameAr.trim()}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   حفظ
                 </Button>
               </DialogFooter>

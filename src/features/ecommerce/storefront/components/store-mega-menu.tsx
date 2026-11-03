@@ -13,6 +13,7 @@ import {
   buildCategoryTree,
   buildMegaMenuColumns,
 } from '@/features/ecommerce/storefront/utils/category-tree';
+import { LinkPendingSpinner } from '@/features/ecommerce/storefront/components/link-pending-spinner';
 import { Link } from '@/i18n/navigation';
 import { cn } from '@/shared/utils';
 
@@ -133,13 +134,14 @@ export function StoreCategoryNavBar({ categories, brands, promoLinks = [] }: Sto
                   href={item.href}
                   prefetch={false}
                   className={cn(
-                    'relative z-50 inline-flex shrink-0 items-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-semibold transition-colors',
+                    'relative z-50 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-semibold transition-colors',
                     item.highlight
                       ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                       : 'border border-border bg-background text-foreground hover:border-primary/40 hover:bg-muted',
                   )}
                 >
                   {item.label}
+                  <LinkPendingSpinner />
                 </Link>
               ))}
             </div>

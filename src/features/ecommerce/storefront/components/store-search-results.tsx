@@ -20,10 +20,15 @@ export function StoreSearchResults() {
 
   const { data, isLoading, isFetching, isError, refetch } = useStorefrontSearch(query, query.length > 0);
 
+  const [isNavigating, startTransition] = React.useTransition();
+  const searching = isNavigating || (query.length > 0 && isFetching);
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = input.trim();
-    router.replace(trimmed ? `/store/search?q=${encodeURIComponent(trimmed)}` : '/store/search');
+    startTransition(() => {
+      router.replace(trimmed ? `/store/search?q=${encodeURIComponent(trimmed)}` : '/store/search');
+    });
   }
 
   const totalResults =
@@ -51,8 +56,11 @@ export function StoreSearchResults() {
         </div>
         <button
           type="submit"
-          className="inline-flex h-11 items-center justify-center rounded-lg bg-primary px-6 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          disabled={searching}
+          aria-busy={searching}
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-70"
         >
+          {searching ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
           {t('search.submit')}
         </button>
       </form>

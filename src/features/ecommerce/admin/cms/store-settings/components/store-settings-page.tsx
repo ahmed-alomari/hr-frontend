@@ -102,6 +102,7 @@ export function StoreSettingsPage() {
           icon={Save}
           label={save.isPending ? tCommon('status.saving') : tCommon('actions.save')}
           disabled={!draft || save.isPending || !dirty}
+          loading={save.isPending}
           onClick={() => void persist()}
         />
       </div>

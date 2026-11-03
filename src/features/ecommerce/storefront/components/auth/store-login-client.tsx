@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Smartphone, UserPlus } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Smartphone, UserPlus } from 'lucide-react';
 import {
   useIsStorefrontAuthenticated,
   useStorefrontCustomerUi,
@@ -237,7 +237,11 @@ export function StoreLoginClient() {
               disabled={submitting}
               onClick={() => void onDeviceLogin()}
             >
-              <Smartphone className="h-4 w-4" aria-hidden />
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <Smartphone className="h-4 w-4" aria-hidden />
+              )}
               {submitting ? t('login.deviceLoginSubmitting') : t('login.deviceLogin')}
             </Button>
           </div>
@@ -289,6 +293,7 @@ export function StoreLoginClient() {
         </div>
 
         <Button type="submit" className="h-11 w-full" disabled={submitting}>
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
           {submitting ? t('login.submitting') : t('login.submit')}
         </Button>
       </form>

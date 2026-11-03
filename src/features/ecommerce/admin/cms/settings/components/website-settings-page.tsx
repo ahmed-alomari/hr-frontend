@@ -276,6 +276,7 @@ export function WebsiteSettingsPage() {
           icon={Save}
           label={save.isPending ? tCommon('status.saving') : tCommon('actions.save')}
           disabled={!draft || save.isPending || !dirty}
+          loading={save.isPending}
           onClick={() => {
             if (!draft) return;
             const errors = collectFieldErrors(draft);

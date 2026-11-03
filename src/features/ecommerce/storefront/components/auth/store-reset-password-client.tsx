@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { StoreAuthShell } from '@/features/ecommerce/storefront/components/auth/store-auth-shell';
 import { resetPartnerPassword } from '@/features/ecommerce/storefront/lib/api/partner-auth-api';
 import { customerErrorText } from '@/features/ecommerce/storefront/lib/customer-error';
@@ -100,6 +100,7 @@ export function StoreResetPasswordClient() {
             />
           </div>
           <Button type="submit" className="h-11 w-full" disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
             {saving ? t('resetPassword.saving') : t('resetPassword.submit')}
           </Button>
         </form>

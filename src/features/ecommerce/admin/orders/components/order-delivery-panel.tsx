@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { CalendarClock, MapPin, MessageSquarePlus } from 'lucide-react';
+import { CalendarClock, Loader2, MapPin, MessageSquarePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAddOrderNote } from '@/features/ecommerce/admin/orders/hooks/use-order-stages';
@@ -144,6 +144,7 @@ export function OrderInternalTrail({ order, companyId, stages }: Props) {
               disabled={!note.trim() || addNote.isPending}
               onClick={() => void submitNote(note)}
             >
+              {addNote.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               إضافة
             </Button>
           </div>

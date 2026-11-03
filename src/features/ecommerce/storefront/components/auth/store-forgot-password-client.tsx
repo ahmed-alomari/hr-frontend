@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { MailCheck } from 'lucide-react';
+import { Loader2, MailCheck } from 'lucide-react';
 import { StoreAuthShell } from '@/features/ecommerce/storefront/components/auth/store-auth-shell';
 import {
   StoreEmailInput,
@@ -78,6 +78,7 @@ export function StoreForgotPasswordClient() {
             {t('forgotPassword.mobileOnlyNote')}
           </p>
           <Button type="submit" className="h-11 w-full" disabled={sending}>
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
             {sending ? t('forgotPassword.sending') : t('forgotPassword.submit')}
           </Button>
         </form>

@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
-import { MapPin, Pencil, Plus, Star, Trash2 } from 'lucide-react';
+import { Loader2, MapPin, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PartnerAuthApiError } from '@/features/ecommerce/storefront/domain/partner-auth';
 import { useStorefrontCustomerUi } from '@/features/ecommerce/storefront/hooks/use-storefront-customer-ui';
@@ -329,6 +329,7 @@ export function StoreAccountAddressesClient() {
               disabled={busyId === deleteTargetId}
               onClick={() => void confirmDelete()}
             >
+              {busyId === deleteTargetId ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
               {busyId === deleteTargetId ? t('account.saving') : t('account.addresses.delete')}
             </Button>
           </DialogFooter>
@@ -348,6 +349,7 @@ export function StoreAccountAddressesClient() {
             </DialogBody>
             <DialogFooter className={dialogFormFooterClass}>
               <Button type="submit" disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
                 {saving ? t('account.saving') : t('account.save')}
               </Button>
               <Button
