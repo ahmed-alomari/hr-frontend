@@ -21,7 +21,7 @@ import {
 } from '@/features/ecommerce/storefront/lib/store-trusted-device';
 import { useStoreTrustedDeviceLogin } from '@/features/ecommerce/storefront/hooks/use-store-trusted-device-login';
 import { PartnerAuthApiError } from '@/features/ecommerce/storefront/domain/partner-auth';
-import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import {
   resolveStoreAuthReturnTo,
   storeLoginHref,
@@ -65,7 +65,7 @@ export function StoreLoginClient() {
   const [savedDevice, setSavedDevice] = React.useState<ReturnType<typeof readTrustedDevice>>(null);
 
   React.useEffect(() => {
-    setSavedDevice(readTrustedDevice(getStorefrontCompanyId()));
+    setSavedDevice(readTrustedDevice(getPublicStorefrontCompanyId()));
   }, []);
 
   // The device's key works with the email or mobile of its account (store setting on).
@@ -110,7 +110,7 @@ export function StoreLoginClient() {
       const session = await loginPartner({
         identifier: loginId,
         password,
-        companyId: getStorefrontCompanyId(),
+        companyId: getPublicStorefrontCompanyId(),
       });
       setSession(session);
       rememberTrustedDevice(session);
@@ -137,7 +137,7 @@ export function StoreLoginClient() {
     } catch (error) {
       // Revoked (password reset) or no longer trusted: the password still works.
       if (error instanceof PartnerAuthApiError && error.status === 401) {
-        forgetTrustedDevice(getStorefrontCompanyId());
+        forgetTrustedDevice(getPublicStorefrontCompanyId());
         setSavedDevice(null);
       }
       toast.error(customerErrorText(error, t('login.errors.generic')));

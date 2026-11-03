@@ -1,4 +1,4 @@
-import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import {
   PartnerAuthApiError,
   type PartnerAuthSessionPayload,
@@ -159,7 +159,7 @@ export async function registerPartner(
   const dto = await partnerAuthFetch<PartnerSessionApiDto>('/public/partners/auth/register', {
     method: 'POST',
     body: JSON.stringify({
-      companyId: input.companyId || getStorefrontCompanyId(),
+      companyId: input.companyId || getPublicStorefrontCompanyId(),
       name: input.name.trim(),
       email: input.email?.trim().toLowerCase() || null,
       mobile: input.mobile?.trim() || null,
@@ -178,7 +178,7 @@ export async function loginPartner(input: PartnerLoginInput): Promise<PartnerAut
     body: JSON.stringify({
       identifier: input.identifier.trim(),
       password: input.password,
-      companyId: input.companyId || getStorefrontCompanyId(),
+      companyId: input.companyId || getPublicStorefrontCompanyId(),
     }),
   });
   return mapSessionPayload(dto);
@@ -193,7 +193,7 @@ export async function deviceLoginPartner(input: {
   const dto = await partnerAuthFetch<PartnerSessionApiDto>('/public/partners/auth/device-login', {
     method: 'POST',
     body: JSON.stringify({
-      companyId: getStorefrontCompanyId(),
+      companyId: getPublicStorefrontCompanyId(),
       identifier: input.identifier,
       deviceToken: input.deviceToken,
     }),
@@ -233,7 +233,7 @@ export async function updatePartnerProfile(
 export async function requestPartnerPasswordReset(email: string): Promise<{ message: string }> {
   return partnerAuthFetch<{ message: string }>('/public/partners/auth/forgot-password', {
     method: 'POST',
-    body: JSON.stringify({ companyId: getStorefrontCompanyId(), email: email.trim().toLowerCase() }),
+    body: JSON.stringify({ companyId: getPublicStorefrontCompanyId(), email: email.trim().toLowerCase() }),
   });
 }
 
@@ -241,7 +241,7 @@ export async function requestPartnerPasswordReset(email: string): Promise<{ mess
 export async function resetPartnerPassword(token: string, password: string): Promise<{ message: string }> {
   return partnerAuthFetch<{ message: string }>('/public/partners/auth/reset-password', {
     method: 'POST',
-    body: JSON.stringify({ companyId: getStorefrontCompanyId(), token: token.trim(), password }),
+    body: JSON.stringify({ companyId: getPublicStorefrontCompanyId(), token: token.trim(), password }),
   });
 }
 

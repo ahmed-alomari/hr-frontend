@@ -1,7 +1,7 @@
 import { companyConfigApi } from '@/features/ecommerce/storefront/lib/api/company-config-api';
 import { applyStorefrontTheme } from '@/features/ecommerce/storefront/lib/get-storefront-theme-colors';
 import { DEFAULT_STOREFRONT_TYPOGRAPHY } from '@/features/ecommerce/storefront/lib/storefront-fonts';
-import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import { storefrontBrandsRepository } from '@/features/ecommerce/storefront/lib/repositories/brands-repository';
 import { storefrontCategoriesRepository } from '@/features/ecommerce/storefront/lib/repositories/categories-repository';
 import { storefrontProductsRepository } from '@/features/ecommerce/storefront/lib/repositories/products-repository';
@@ -29,18 +29,18 @@ function withBranding(config: StorefrontCompanyConfig): StorefrontCompanyConfig 
 /** Client-safe storefront data access (no next-intl/server / React cache). */
 export const clientStorefrontData = {
   companyId(): string {
-    return getStorefrontCompanyId();
+    return getPublicStorefrontCompanyId();
   },
 
   async getConfig(locale: StorefrontLocale): Promise<StorefrontCompanyConfig | null> {
-    const config = await companyConfigApi.getByCompanyId(getStorefrontCompanyId(), locale);
+    const config = await companyConfigApi.getByCompanyId(getPublicStorefrontCompanyId(), locale);
     if (!config) return null;
     return withBranding(config);
   },
 
   async getNavCategories(locale: StorefrontLocale) {
     const result = await storefrontCategoriesRepository.list({
-      companyId: getStorefrontCompanyId(),
+      companyId: getPublicStorefrontCompanyId(),
       locale,
       limit: 200,
     });
@@ -52,14 +52,14 @@ export const clientStorefrontData = {
     options?: { page?: number; limit?: number; search?: string },
   ) {
     return storefrontBrandsRepository.list({
-      companyId: getStorefrontCompanyId(),
+      companyId: getPublicStorefrontCompanyId(),
       locale,
       ...options,
     });
   },
 
   async getBrandBySlug(locale: StorefrontLocale, slug: string) {
-    return storefrontBrandsRepository.getBySlug(getStorefrontCompanyId(), slug, locale);
+    return storefrontBrandsRepository.getBySlug(getPublicStorefrontCompanyId(), slug, locale);
   },
 
   async getCategories(
@@ -67,18 +67,18 @@ export const clientStorefrontData = {
     options?: { page?: number; limit?: number; search?: string },
   ) {
     return storefrontCategoriesRepository.list({
-      companyId: getStorefrontCompanyId(),
+      companyId: getPublicStorefrontCompanyId(),
       locale,
       ...options,
     });
   },
 
   async getCategoryBySlug(locale: StorefrontLocale, slug: string) {
-    return storefrontCategoriesRepository.getBySlug(getStorefrontCompanyId(), slug, locale);
+    return storefrontCategoriesRepository.getBySlug(getPublicStorefrontCompanyId(), slug, locale);
   },
 
   async getCategoryById(locale: StorefrontLocale, id: string) {
-    return storefrontCategoriesRepository.getById(getStorefrontCompanyId(), id, locale);
+    return storefrontCategoriesRepository.getById(getPublicStorefrontCompanyId(), id, locale);
   },
 
   async getProducts(
@@ -86,34 +86,34 @@ export const clientStorefrontData = {
     options: Omit<StorefrontProductListQuery, 'companyId' | 'locale'>,
   ) {
     return storefrontProductsRepository.list({
-      companyId: getStorefrontCompanyId(),
+      companyId: getPublicStorefrontCompanyId(),
       locale,
       ...options,
     });
   },
 
   async getProductBySlug(locale: StorefrontLocale, slug: string) {
-    return storefrontProductsRepository.getBySlug(getStorefrontCompanyId(), slug, locale);
+    return storefrontProductsRepository.getBySlug(getPublicStorefrontCompanyId(), slug, locale);
   },
 
   async getHomepage(locale: StorefrontLocale, homeTitleFallback: string) {
-    return loadStorefrontHomepage(getStorefrontCompanyId(), locale, homeTitleFallback);
+    return loadStorefrontHomepage(getPublicStorefrontCompanyId(), locale, homeTitleFallback);
   },
 
   async getAbout(locale: StorefrontLocale) {
-    return storefrontContentRepository.getAbout(getStorefrontCompanyId(), locale);
+    return storefrontContentRepository.getAbout(getPublicStorefrontCompanyId(), locale);
   },
 
   async getContact(locale: StorefrontLocale) {
-    return storefrontContentRepository.getContact(getStorefrontCompanyId(), locale);
+    return storefrontContentRepository.getContact(getPublicStorefrontCompanyId(), locale);
   },
 
   async getFaq(locale: StorefrontLocale) {
-    return storefrontContentRepository.getFaq(getStorefrontCompanyId(), locale);
+    return storefrontContentRepository.getFaq(getPublicStorefrontCompanyId(), locale);
   },
 
   async getLegal(locale: StorefrontLocale, slug: LegalPageSlug) {
-    return storefrontContentRepository.getLegalPage(getStorefrontCompanyId(), slug, locale);
+    return storefrontContentRepository.getLegalPage(getPublicStorefrontCompanyId(), slug, locale);
   },
 
   async getOrderByNumber(
@@ -121,7 +121,7 @@ export const clientStorefrontData = {
     options?: { phone?: string | null; accessToken?: string | null },
   ) {
     return storefrontOrdersRepository.getByOrderNumber(
-      getStorefrontCompanyId(),
+      getPublicStorefrontCompanyId(),
       orderNumber,
       {
         phone: options?.phone,

@@ -12,7 +12,7 @@ import {
 import { registerPartner } from '@/features/ecommerce/storefront/lib/api/partner-auth-api';
 import { rememberTrustedDevice } from '@/features/ecommerce/storefront/lib/store-trusted-device';
 import { PartnerAuthApiError } from '@/features/ecommerce/storefront/domain/partner-auth';
-import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import {
   resolveStoreAuthReturnTo,
   storeLoginHref,
@@ -101,7 +101,7 @@ export function StoreRegisterClient() {
     setSubmitting(true);
     try {
       const session = await registerPartner({
-        companyId: getStorefrontCompanyId(),
+        companyId: getPublicStorefrontCompanyId(),
         name: name.trim(),
         email: method === 'email' ? email.trim().toLowerCase() : null,
         mobile: method === 'mobile' ? mobileE164 : null,

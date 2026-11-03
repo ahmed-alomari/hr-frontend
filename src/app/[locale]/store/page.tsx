@@ -4,7 +4,7 @@ import { StoreHomePageCsr } from '@/features/ecommerce/storefront/components/sto
 import { ProductsBrowsePage } from '@/features/ecommerce/storefront/components/products-browse-page';
 import { storeHomeMetadata } from '@/features/ecommerce/storefront/lib/seo';
 import { getStorefrontCompanyConfig } from '@/features/ecommerce/storefront/lib/get-storefront-company-config';
-import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import { isStorefrontCsrEnabled } from '@/features/ecommerce/storefront/lib/is-storefront-csr';
 import { loadStorefrontHomepage } from '@/features/ecommerce/storefront/page-builder/services/page.service';
 import {
@@ -28,7 +28,7 @@ export default async function Page({ params }: Props) {
   if (isStorefrontCsrEnabled()) return <StoreHomePageCsr />;
 
   const { locale } = await params;
-  const companyId = getStorefrontCompanyId();
+  const companyId = getPublicStorefrontCompanyId();
   const config = await getStorefrontCompanyConfig();
   const page = await loadStorefrontHomepage(
     companyId,

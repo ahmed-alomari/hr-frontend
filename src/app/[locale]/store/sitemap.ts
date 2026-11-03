@@ -3,7 +3,7 @@ import { publicConfig } from '@/shared/config';
 import { storefrontProductsRepository } from '@/features/ecommerce/storefront/lib/repositories/products-repository';
 import { storefrontCategoriesRepository } from '@/features/ecommerce/storefront/lib/repositories/categories-repository';
 import { storefrontBrandsRepository } from '@/features/ecommerce/storefront/lib/repositories/brands-repository';
-import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import { localizedStorePath } from '@/features/ecommerce/storefront/lib/store-paths';
 import { routing, type StorefrontLocale } from '@/i18n/routing';
 
@@ -24,7 +24,7 @@ function localizedEntries(
 
 /** Storefront sitemap — static CMS routes plus repository-backed dynamic URLs for all locales. */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const companyId = getStorefrontCompanyId();
+  const companyId = getPublicStorefrontCompanyId();
   const locale = routing.defaultLocale as StorefrontLocale;
   const now = new Date();
 

@@ -2,7 +2,7 @@ import { cache } from 'react';
 import { getLocale } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { companyConfigApi } from '@/features/ecommerce/storefront/lib/api/company-config-api';
-import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import { applyStorefrontTheme } from '@/features/ecommerce/storefront/lib/get-storefront-theme-colors';
 import { DEFAULT_STOREFRONT_TYPOGRAPHY } from '@/features/ecommerce/storefront/lib/storefront-fonts';
 import type { StorefrontCompanyConfig } from '@/features/ecommerce/storefront/domain/storefront-models';
@@ -23,7 +23,7 @@ function withBranding(config: StorefrontCompanyConfig): StorefrontCompanyConfig 
 
 export const getStorefrontCompanyConfig = cache(async (): Promise<StorefrontCompanyConfig> => {
   const locale = (await getLocale()) as StorefrontLocale;
-  const companyId = getStorefrontCompanyId();
+  const companyId = getPublicStorefrontCompanyId();
   const config = await companyConfigApi.getByCompanyId(companyId, locale);
   if (!config) notFound();
   return withBranding(config);
@@ -31,7 +31,7 @@ export const getStorefrontCompanyConfig = cache(async (): Promise<StorefrontComp
 
 export const getStorefrontCompanyConfigForLocale = cache(
   async (locale: StorefrontLocale): Promise<StorefrontCompanyConfig> => {
-    const companyId = getStorefrontCompanyId();
+    const companyId = getPublicStorefrontCompanyId();
     const config = await companyConfigApi.getByCompanyId(companyId, locale);
     if (!config) notFound();
     return withBranding(config);

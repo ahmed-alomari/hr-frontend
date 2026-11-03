@@ -11,7 +11,7 @@ import { createStoreProductReview } from '@/features/ecommerce/shared/lib/api/st
 import { StoreHttpError } from '@/features/ecommerce/storefront/lib/api/store-http';
 import type { StorefrontCustomerOrder } from '@/features/ecommerce/storefront/domain/checkout';
 import { useStorefrontCustomerUi } from '@/features/ecommerce/storefront/hooks/use-storefront-customer-ui';
-import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import { Link } from '@/i18n/navigation';
 import { cn } from '@/shared/utils';
 import { customerErrorText } from '@/features/ecommerce/storefront/lib/customer-error';
@@ -193,7 +193,7 @@ export function OrderDeliveredReviews({ order }: { order: StorefrontCustomerOrde
   const products = uniqueDeliveredProducts(order);
   if (products.length === 0) return null;
 
-  const companyId = order.companyId || getStorefrontCompanyId();
+  const companyId = order.companyId || getPublicStorefrontCompanyId();
 
   return (
     <section className="rounded-3xl border border-border bg-card p-5 shadow-soft sm:p-6">

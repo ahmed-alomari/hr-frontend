@@ -28,8 +28,20 @@ export function resolveStorefrontCompanyId(companyId?: string | null): string {
 }
 
 /**
- * Resolve storefront / catalog tenant id.
+ * The public store's company: always the deployment's store, never the admin
+ * session. The admin panel shares the store's origin, so a signed-in admin
+ * whose active company differs would otherwise ask for another company's
+ * cities and districts (empty → free-text fields) and catalog. Matches what
+ * the server renders.
+ */
+export function getPublicStorefrontCompanyId(): string {
+  return STOREFRONT_FALLBACK_COMPANY_ID;
+}
+
+/**
+ * Resolve storefront / catalog tenant id for admin screens.
  * Prefer explicit env override; on the client also honor the logged-in default company.
+ * The public store uses {@link getPublicStorefrontCompanyId}.
  */
 export function getStorefrontCompanyId(): string {
   if (typeof window !== 'undefined') {
