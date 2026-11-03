@@ -34,24 +34,21 @@ export const PDF_WATERMARK_LEVELS: ReadonlyArray<{ value: number; label: string 
 
 /** Text sizes of the employment-contract PDF (percent of the standard size). */
 export const PDF_CONTRACT_FONT_SCALES: ReadonlyArray<{ value: number; label?: string }> = [
-  { value: 50, label: 'أصغر حجم' },
+  { value: 30, label: 'أصغر حجم' },
+  { value: 35 },
+  { value: 40 },
+  { value: 45 },
+  { value: 50, label: 'صغير جدًا' },
   { value: 55 },
   { value: 60 },
   { value: 65 },
-  { value: 70 },
-  { value: 75, label: 'صغير جدًا' },
+  { value: 70, label: 'صغير' },
+  { value: 75 },
   { value: 80 },
-  { value: 85, label: 'صغير' },
+  { value: 85, label: 'متوسط' },
   { value: 90 },
   { value: 95 },
   { value: 100, label: 'عادي' },
-  { value: 105 },
-  { value: 110, label: 'كبير' },
-  { value: 115 },
-  { value: 120, label: 'كبير جدًا' },
-  { value: 130 },
-  { value: 140 },
-  { value: 150, label: 'أكبر حجم' },
 ];
 
 export function companyToSettingsForm(company: CompanyResponseDto): CompanySettingsFormState {

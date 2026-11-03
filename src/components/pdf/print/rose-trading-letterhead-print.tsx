@@ -21,6 +21,8 @@ export type RoseTradingLetterheadPrintProps = {
   companyNameEn?: string;
   /** س.ت / C.R — defaults from active company */
   commercialReg?: string;
+  /** Space under the gold rule (px); dense documents such as the contract use less. */
+  marginBottom?: number;
 };
 
 /**
@@ -32,6 +34,7 @@ export function RoseTradingLetterheadPrint({
   companyNameAr,
   companyNameEn,
   commercialReg,
+  marginBottom = 18,
 }: RoseTradingLetterheadPrintProps) {
   const letterhead = useResolvedPdfLetterhead({
     companyNameAr,
@@ -46,7 +49,7 @@ export function RoseTradingLetterheadPrint({
   const cr = letterhead.commercialReg.trim();
 
   return (
-    <div style={{ marginBottom: 18, paddingBottom: 14, borderBottom: `6px double ${LETTERHEAD_GOLD}` }}>
+    <div style={{ marginBottom, paddingBottom: 14, borderBottom: `6px double ${LETTERHEAD_GOLD}` }}>
       <div
         dir="ltr"
         style={{
