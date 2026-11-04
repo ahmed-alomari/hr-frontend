@@ -27,14 +27,22 @@ export function resolveOrderLinePrepMode(
   }
 }
 
-/** The note shown instead of the allocation form (null: allocate). */
+/**
+ * The note shown instead of the allocation form (null: allocate, or nothing
+ * to say). A local order says where it took its quantity only where the
+ * store can be linked to inventory (2026-11-04): without the link app it
+ * is how every order works.
+ */
 export function orderLinePrepNote(
   mode: OrderLinePrepMode,
   productTracksInventory: boolean,
+  storeCanLinkInventory = true,
 ): string | null {
   switch (mode) {
     case 'local':
-      return 'يُصرف من كمية المنتج — الطلب أُنشئ والمتجر غير مربوط بالمخازن.';
+      return storeCanLinkInventory
+        ? 'يُصرف من كمية المنتج — الطلب أُنشئ والمتجر غير مربوط بالمخازن.'
+        : null;
     case 'none':
       return 'بلا أثر مخزني — يُشحن الصنف دون حركة مخزون.';
     case 'unresolved':

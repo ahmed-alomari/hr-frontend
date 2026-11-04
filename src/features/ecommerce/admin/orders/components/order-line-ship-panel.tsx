@@ -98,7 +98,10 @@ export function OrderLineShipPanel({
     line.allocations[0]?.warehouseId || (sellsFromInventory ? stockWarehouseId : '') || '';
   // Stock figures are inventory's: not asked for once it is disabled (a
   // shipped inventory order stays readable from its own lines).
-  const inventoryOn = useCompanyApps().isEnabled(APP.inventory);
+  const companyApps = useCompanyApps();
+  const inventoryOn = companyApps.isEnabled(APP.inventory);
+  // Where the store can be linked to inventory, a local order says so.
+  const storeCanLinkInventory = companyApps.isEnabled(APP.storeStockSync);
   const needsStockContext = (open || isShipped) && sellsFromInventory && inventoryOn;
 
   const { data: product } = useQuery({
@@ -112,7 +115,7 @@ export function OrderLineShipPanel({
   // own never turns tracking off.
   const productTracksInventory = product?.inventory.trackInventory ?? true;
   const trackInventory = sellsFromInventory && productTracksInventory;
-  const prepNote = orderLinePrepNote(prepMode, productTracksInventory);
+  const prepNote = orderLinePrepNote(prepMode, productTracksInventory, storeCanLinkInventory);
   const sourceUnresolved = prepMode === 'unresolved';
   const lineVariantId = line.variantId ?? null;
 
@@ -454,13 +457,13 @@ export function OrderLineShipPanel({
             >
               {prepNote}
             </div>
-          ) : (
+          ) : sellsFromInventory ? (
             <p className="text-xs text-muted-foreground">
               خصم المخزون يتم عند تغيير حالة الطلب إلى «تم الشحن». التوزيع هنا للتجهيز فقط
               {lineVariantId ? ' · التوفر حسب متغير هذا البند فقط.' : ' · التوفر للمنتج الأساسي.'}
               {lockedWarehouseId ? ' · التخصيص مقيّد بنفس المستودع لأول تخصيص.' : ''}
             </p>
-          )}
+          ) : null}
 
           {variantOutOfStockHint ? (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">

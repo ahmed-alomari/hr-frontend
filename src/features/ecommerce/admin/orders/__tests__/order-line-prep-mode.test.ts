@@ -32,6 +32,10 @@ describe('orderLinePrepNote', () => {
     expect(note).not.toContain('تتبع المخزون معطّل');
   });
 
+  it('local order where the store cannot link inventory: nothing to say', () => {
+    expect(orderLinePrepNote('local', true, false)).toBeNull();
+  });
+
   it('unresolved order: choose the source first', () => {
     expect(orderLinePrepNote('unresolved', true)).toContain('تبويب «المخزون»');
   });

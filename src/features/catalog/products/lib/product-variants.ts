@@ -159,8 +159,12 @@ export function syncProductVariants(args: SyncArgs): ProductVariant[] {
       combinationKey: existing?.combinationKey && existing.combinationKey === labelKey
         ? existing.combinationKey
         : labelKey,
-      sku: existing?.sku || `${args.productSku || 'SKU'}-${combo.map((c) => c.valueNameAr).join('-')}`.slice(0, 64),
-      nameAr: existing?.nameAr || `${args.productNameAr || 'منتج'} (${labelSuffix})`,
+      // The same rule as the store import (2026-11-04): «SKU-قيمة-قيمة»
+      // without spaces, and «اسم المنتج / قيمة / قيمة».
+      sku:
+        existing?.sku ||
+        [args.productSku || 'SKU', ...combo.map((c) => c.valueNameAr.replace(/\s+/g, ''))].join('-').slice(0, 64),
+      nameAr: existing?.nameAr || `${args.productNameAr || 'منتج'} / ${labelSuffix}`,
       attributeValueIds,
       attributeLabels: labels,
       salePrice: { amount: saleAmount, currency } satisfies Money,
