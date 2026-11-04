@@ -498,7 +498,11 @@ function SheetColumns({
   onChange: (header: string, field: string) => void;
 }) {
   const used = new Set(sheet.columns.map((c) => c.field).filter(Boolean));
-  const missing = sheet.fields.filter((f) => f.required && !used.has(f.key));
+  // «خاصية: …» columns carry the attributes instead of «الخصائص».
+  const hasAttributeColumns = sheet.columns.some((c) => c.field?.startsWith(ATTRIBUTE_FIELD));
+  const missing = sheet.fields.filter(
+    (f) => f.required && !used.has(f.key) && !(f.key === 'attributes' && hasAttributeColumns),
+  );
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm font-medium">
@@ -590,7 +594,9 @@ function ValueCorrections({
 }) {
   // Replacements already applied: those values left the list, kept here to undo.
   const replaced = corrections.filter((c) => c.to !== null);
-  const pending = values.filter((v) => v.status !== 'create').length;
+  // Waiting for the user's choice: likely typos only (a value that cannot be
+  // created and has no suggestion is fixed in the file).
+  const pending = values.filter((v) => v.status === 'needsChoice').length;
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -629,30 +635,38 @@ function ValueCorrections({
                       <Badge variant={badge.variant}>{badge.label}</Badge>
                     </p>
                   </div>
-                  <Select
-                    value={current}
-                    disabled={disabled}
-                    onValueChange={(next) =>
-                      onAnswer(value, next === UNSET ? undefined : next === CREATE ? null : next)
-                    }
-                  >
-                    <SelectTrigger className="h-9 w-full sm:w-64">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={UNSET}>
-                        {value.status === 'create' ? 'تُنشأ كما هي' : 'لم تختر بعد'}
-                      </SelectItem>
-                      {value.suggestions.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          استبدل بـ «{s}»
+                  {value.status === 'error' && !value.suggestions.length ? (
+                    <p className="text-xs text-muted-foreground sm:w-64">
+                      {value.field === 'attribute'
+                        ? 'ليست من خصائص المنتج: امسحها من السطر، أو أضفها للمنتج من صفحته أولاً.'
+                        : 'غير موجودة في النظام: صحّحها في الملف، أو أضفها من إعداداتها أولاً.'}
+                    </p>
+                  ) : (
+                    <Select
+                      value={current}
+                      disabled={disabled}
+                      onValueChange={(next) =>
+                        onAnswer(value, next === UNSET ? undefined : next === CREATE ? null : next)
+                      }
+                    >
+                      <SelectTrigger className="h-9 w-full sm:w-64">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={UNSET}>
+                          {value.status === 'create' ? 'تُنشأ كما هي' : 'لم تختر بعد'}
                         </SelectItem>
-                      ))}
-                      {value.canCreate && value.status !== 'create' ? (
-                        <SelectItem value={CREATE}>أنشئها كما هي</SelectItem>
-                      ) : null}
-                    </SelectContent>
-                  </Select>
+                        {value.suggestions.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            استبدل بـ «{s}»
+                          </SelectItem>
+                        ))}
+                        {value.canCreate && value.status !== 'create' ? (
+                          <SelectItem value={CREATE}>أنشئها كما هي</SelectItem>
+                        ) : null}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               );
             })}

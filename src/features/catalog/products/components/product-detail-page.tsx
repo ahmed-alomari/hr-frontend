@@ -424,6 +424,7 @@ export function ProductDetailPage({ productId }: Props) {
           nameError={form.formState.errors.nameAr?.message}
           currency={product.price.currency}
           locked={Boolean(product.systemCode)}
+          ownQuantity={product.ownQuantity ?? null}
         />
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">

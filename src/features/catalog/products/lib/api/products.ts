@@ -119,6 +119,7 @@ type ProductDto = {
   saleOk?: boolean;
   purchaseOk?: boolean;
   systemCode?: string | null;
+  ownQuantity?: number | string | null;
   isNewProduct?: boolean;
   newUntil?: string | null;
   isTodayDeal?: boolean;
@@ -396,6 +397,7 @@ function mapFullProduct(dto: ProductFullDto): Product {
     saleOk: dto.saleOk,
     purchaseOk: dto.purchaseOk,
     systemCode: dto.systemCode ?? null,
+    ownQuantity: dto.ownQuantity === null || dto.ownQuantity === undefined ? null : Number(dto.ownQuantity),
     isNewProduct: Boolean(dto.isNewProduct),
     newUntil: dto.newUntil ?? null,
     isTodayDeal: Boolean(dto.isTodayDeal),

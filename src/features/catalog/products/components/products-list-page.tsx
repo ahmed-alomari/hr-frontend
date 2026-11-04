@@ -631,8 +631,15 @@ export function ProductsListPage() {
         ),
     },
     {
-      key: 'quantity',
+      // The product's own quantity: itself and all its variants (2026-11-04).
+      key: 'ownQuantity',
       title: 'الكمية',
+      sortKey: 'ownQuantity',
+      render: (product) => <OwnQuantity value={product.ownQuantity} />,
+    },
+    {
+      key: 'quantity',
+      title: 'في المخازن',
       sortKey: 'stock',
       hideOnMobile: true,
       render: (product) => <span className="tabular-nums">{product.inventory.quantity}</span>,
@@ -731,9 +738,15 @@ export function ProductsListPage() {
               {product.costPrice ? formatPrice(product.costPrice) : '—'}
             </p>
           </div>
+          <div className="text-end">
+            <p className="text-[11px] text-muted-foreground">الكمية</p>
+            <p className="font-medium tabular-nums text-foreground">
+              <OwnQuantity value={product.ownQuantity} />
+            </p>
+          </div>
           {sections.inventory ? (
             <div className="text-end">
-              <p className="text-[11px] text-muted-foreground">الكمية</p>
+              <p className="text-[11px] text-muted-foreground">في المخازن</p>
               <p className="font-medium tabular-nums text-foreground">{product.inventory.quantity}</p>
             </div>
           ) : null}
@@ -835,5 +848,14 @@ export function ProductsListPage() {
         onClose={() => setProductToDelete(null)}
       />
     </div>
+  );
+}
+
+/** The product's own quantity, or «غير متتبَّعة» when no quantity is kept. */
+function OwnQuantity({ value }: { value: number | null | undefined }) {
+  return value === null || value === undefined ? (
+    <span className="text-xs text-muted-foreground">غير متتبَّعة</span>
+  ) : (
+    <span className="tabular-nums">{value}</span>
   );
 }

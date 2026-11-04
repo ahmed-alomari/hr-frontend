@@ -17,7 +17,8 @@ export const PRODUCTS_SORT_OPTIONS: readonly (ListSortOption & AppRequirement)[]
   { key: 'name', label: 'الاسم' },
   { key: 'sku', label: 'رمز المنتج' },
   { key: 'price', label: 'السعر' },
-  { key: 'stock', label: 'الكمية', requiresApp: APP.inventory },
+  { key: 'ownQuantity', label: 'الكمية' },
+  { key: 'stock', label: 'في المخازن', requiresApp: APP.inventory },
   { key: 'createdAt', label: 'تاريخ الإضافة' },
   { key: 'updatedAt', label: 'آخر تحديث' },
 ];
@@ -31,7 +32,8 @@ export const PRODUCTS_GROUP_OPTIONS: readonly ListGroupOption[] = [
 /** Columns the user may hide (the product and the price always show). */
 export const PRODUCTS_COLUMN_OPTIONS: readonly (ListColumnOption & AppRequirement)[] = [
   { key: 'costPrice', label: 'تكلفة الكاتالوج' },
-  { key: 'quantity', label: 'الكمية', requiresApp: APP.inventory },
+  { key: 'ownQuantity', label: 'الكمية' },
+  { key: 'quantity', label: 'في المخازن', requiresApp: APP.inventory },
   { key: 'stockStatus', label: 'التوفر', requiresApp: APP.storeAdmin },
   { key: 'status', label: 'الحالة' },
 ];
@@ -54,8 +56,14 @@ export function productsExportColumns(names: {
       value: (p) => (p.costPrice ? formatPrice(p.costPrice) : ''),
     },
     {
-      key: 'quantity',
+      key: 'ownQuantity',
       label: 'الكمية',
+      kind: 'number',
+      value: (p) => (p.ownQuantity === null || p.ownQuantity === undefined ? '' : String(p.ownQuantity)),
+    },
+    {
+      key: 'quantity',
+      label: 'في المخازن',
       kind: 'number',
       requiresApp: APP.inventory,
       value: (p) => String(p.inventory.quantity ?? ''),

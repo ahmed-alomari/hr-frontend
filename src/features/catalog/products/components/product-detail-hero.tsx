@@ -25,6 +25,8 @@ type Props = {
   currency: string;
   /** A system item: its status is fixed. */
   locked?: boolean;
+  /** The product's own quantity (itself + all its variants); null: not tracked. */
+  ownQuantity?: number | null;
 };
 
 const STATUS_BADGE_VARIANT: Record<ProductStatus, BadgeProps['variant']> = {
@@ -48,6 +50,7 @@ export function ProductDetailHero({
   nameError,
   currency,
   locked = false,
+  ownQuantity = null,
 }: Props) {
   const { imageUrl, pickImage, uploading } = useProductImageField(control, setValue);
   const productsBasePath = useProductsBasePath();
@@ -191,8 +194,14 @@ export function ProductDetailHero({
             label="تكلفة الكاتالوج"
             value={costPrice ? formatPrice({ amount: costPrice, currency }) : '—'}
           />
+          {/* The quantity the channels sell from: the product and all its variants. */}
+          <ProductStatTile
+            className="w-fit min-w-24 shrink-0"
+            label="الكمية"
+            value={ownQuantity === null ? 'غير متتبَّعة' : ownQuantity}
+          />
           {sections.inventory ? (
-            <ProductStatTile className="w-fit min-w-24 shrink-0" label="الكمية" value={stockQuantity} />
+            <ProductStatTile className="w-fit min-w-24 shrink-0" label="في المخازن" value={stockQuantity} />
           ) : null}
         </div>
       </div>

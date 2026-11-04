@@ -170,6 +170,8 @@ export type Product = TenantScoped &
     purchaseOk?: boolean;
     /** System item (`delivery`): never archived; code, type, status and sale flags fixed. */
     systemCode?: string | null;
+    /** The product's own quantity (itself + all its variants) channels sell from; null: not tracked. */
+    ownQuantity?: number | null;
     /** Offer flags — optional end dates mean “no expiry”. */
     isNewProduct?: boolean;
     newUntil?: string | null;
@@ -227,7 +229,7 @@ export type ProductListQuery = {
   isTodayDeal?: boolean;
   isWholesale?: boolean;
   isDiscounted?: boolean;
-  sort?: 'name' | 'price' | 'stock' | 'sku' | 'createdAt' | 'updatedAt';
+  sort?: 'name' | 'price' | 'stock' | 'ownQuantity' | 'sku' | 'createdAt' | 'updatedAt';
   sortDirection?: 'asc' | 'desc';
   /** Server group field (category, brand, status); with `groupValue`, one group's products. */
   groupBy?: string;
