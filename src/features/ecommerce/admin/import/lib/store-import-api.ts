@@ -19,6 +19,28 @@ export type StoreImportIssue = {
   suggestions?: string[];
 };
 
+/** A value the system lacks (category, brand, unit, attribute or its value). */
+export type StoreImportValueField = 'category' | 'brand' | 'uom' | 'attribute' | 'attributeValue';
+
+export type StoreImportUnknownValue = {
+  field: StoreImportValueField;
+  attribute: string | null;
+  value: string;
+  rows: number;
+  suggestions: string[];
+  /** needsChoice: close to a system value, waits for a choice; create: will be created; error: cannot be created. */
+  status: 'needsChoice' | 'create' | 'error';
+  canCreate: boolean;
+};
+
+/** The user's answer for an unknown value: `to` replaces it in every row, null creates it as written. */
+export type StoreImportCorrection = {
+  field: StoreImportValueField;
+  attribute?: string | null;
+  from: string;
+  to: string | null;
+};
+
 export type StoreImportColumn = {
   index: number;
   header: string;
@@ -27,7 +49,12 @@ export type StoreImportColumn = {
   samples: string[];
 };
 
-export type StoreImportField = { key: string; labelAr: string; required: boolean; helpAr: string };
+export type StoreImportField = {
+  key: string;
+  labelAr: string;
+  required: boolean;
+  helpAr: string;
+};
 
 export type StoreImportSheet = {
   key: StoreImportSheetKey;
@@ -57,6 +84,8 @@ export type StoreImportPreview = {
   errors: number;
   warnings: number;
   issues: StoreImportIssue[];
+  /** Unknown values, each once (older servers omit it). */
+  values?: StoreImportUnknownValue[];
   canCommit: boolean;
 };
 
@@ -67,6 +96,7 @@ export type StoreImportOptions = {
   publish?: boolean;
   /** Create and link missing categories and brands (default), or refuse them. */
   createMissing?: boolean;
+  corrections?: StoreImportCorrection[];
 };
 
 const base = (companyId: string) => `/store-admin/companies/${resolveStorefrontCompanyId(companyId)}/import`;
@@ -81,7 +111,9 @@ function form(file: File, options: StoreImportOptions): FormData {
 /** The preview a refused commit carries (the file changed or the catalog did). */
 export function previewFromError(error: unknown): StoreImportPreview | null {
   if (!(error instanceof ApiError)) return null;
-  const payload = error.payload as { error?: { preview?: StoreImportPreview } } | null;
+  const payload = error.payload as {
+    error?: { preview?: StoreImportPreview };
+  } | null;
   return payload?.error?.preview ?? null;
 }
 
@@ -90,6 +122,13 @@ export const storeImportApi = {
     return apiDownloadToDevice(`${base(companyId)}/template`, {
       query: { format, sheet },
       defaultFileName: format === 'csv' ? `store-${sheet}-template.csv` : 'store-products-template.xlsx',
+    });
+  },
+
+  /** The store's products as an import file: edit it and upload it back. */
+  downloadForEditing(companyId: string) {
+    return apiDownloadToDevice(`${base(companyId)}/export`, {
+      defaultFileName: `store-products-${new Date().toISOString().slice(0, 10)}.xlsx`,
     });
   },
 

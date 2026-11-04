@@ -2,7 +2,16 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Loader2, RefreshCw, Upload, XCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Download,
+  FileSpreadsheet,
+  Loader2,
+  RefreshCw,
+  Upload,
+  XCircle,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { Badge } from '@/components/ui/badge';
@@ -17,15 +26,34 @@ import { cn } from '@/shared/utils';
 import {
   previewFromError,
   storeImportApi,
+  type StoreImportCorrection,
   type StoreImportIssue,
   type StoreImportOptions,
   type StoreImportPreview,
   type StoreImportSheet,
   type StoreImportSheetKey,
+  type StoreImportUnknownValue,
+  type StoreImportValueField,
 } from '../lib/store-import-api';
 
 const SKIP = '__skip__';
-const SHEET_LABEL: Record<StoreImportSheetKey, string> = { products: 'المنتجات', variants: 'المتغيرات' };
+const CREATE = '__create__';
+const UNSET = '__unset__';
+/** A «خاصية: اللون» column of the variants sheet (the server's field key). */
+const ATTRIBUTE_FIELD = 'attribute:';
+const VALUE_FIELD_LABEL: Record<StoreImportValueField, string> = {
+  category: 'التصنيف',
+  brand: 'العلامة التجارية',
+  uom: 'وحدة القياس',
+  attribute: 'الخاصية',
+  attributeValue: 'قيمة الخاصية',
+};
+const sameCorrection = (a: StoreImportCorrection, b: { field: string; attribute?: string | null; from: string }) =>
+  a.field === b.field && (a.attribute ?? null) === (b.attribute ?? null) && a.from === b.from;
+const SHEET_LABEL: Record<StoreImportSheetKey, string> = {
+  products: 'المنتجات',
+  variants: 'المتغيرات',
+};
 const MAX_SHOWN_ISSUES = 200;
 
 /** The mapping the server applied, as the user can edit it (header → field). */
@@ -53,6 +81,11 @@ export function StoreImportPage() {
   const [createMissing, setCreateMissing] = React.useState(true);
   const createMissingRef = React.useRef(createMissing);
   createMissingRef.current = createMissing;
+  // Answers for values the system lacks: replace in every row, or create.
+  const [corrections, setCorrections] = React.useState<StoreImportCorrection[]>([]);
+  const correctionsRef = React.useRef(corrections);
+  correctionsRef.current = corrections;
+  const [exporting, setExporting] = React.useState(false);
   const [preview, setPreview] = React.useState<StoreImportPreview | null>(null);
   const [busy, setBusy] = React.useState<'preview' | 'commit' | null>(null);
   const [done, setDone] = React.useState<StoreImportPreview | null>(null);
@@ -67,6 +100,7 @@ export function StoreImportPage() {
       mapping?: StoreImportOptions['mapping'];
       sheet?: StoreImportSheetKey | null;
       createMissing?: boolean;
+      corrections?: StoreImportCorrection[];
     }) => {
       setBusy('preview');
       setDone(null);
@@ -75,6 +109,7 @@ export function StoreImportPage() {
           mapping: next.mapping,
           sheet: /\.csv$/i.test(next.file.name) ? (next.sheet ?? undefined) : undefined,
           createMissing: next.createMissing ?? createMissingRef.current,
+          corrections: next.corrections ?? correctionsRef.current,
         });
         setPreview(result);
         setMapping(Object.fromEntries(result.sheets.map((s) => [s.key, mappingOf(s)])));
@@ -94,7 +129,31 @@ export function StoreImportPage() {
     setMapping({});
     setDone(null);
     setCsvSheet(null);
-    if (picked) void runPreview({ file: picked });
+    setCorrections([]);
+    if (picked) void runPreview({ file: picked, corrections: [] });
+  }
+
+  /** The user's answer for one unknown value: a replacement, create (null), or none. */
+  function answer(value: StoreImportUnknownValue, to: string | null | undefined) {
+    if (!file) return;
+    const key = {
+      field: value.field,
+      attribute: value.attribute,
+      from: value.value,
+    };
+    const next = corrections.filter((c) => !sameCorrection(c, key));
+    if (to !== undefined) next.push({ ...key, to });
+    setCorrections(next);
+    void runPreview({ file, mapping, sheet: csvSheet, corrections: next });
+  }
+
+  async function exportForEditing() {
+    setExporting(true);
+    try {
+      await storeImportApi.downloadForEditing(companyId);
+    } finally {
+      setExporting(false);
+    }
   }
 
   function changeColumn(sheet: StoreImportSheetKey, header: string, field: string) {
@@ -117,6 +176,7 @@ export function StoreImportPage() {
         mapping,
         publish,
         createMissing,
+        corrections,
         // The kind the preview read, so the commit reads the file the same way.
         sheet: isCsv ? (csvSheet ?? preview.sheets[0]?.key) : undefined,
       });
@@ -161,13 +221,18 @@ export function StoreImportPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base">١. القالب والملف</CardTitle>
           <CardDescription>
-            حمّل القالب واملأه، أو ارفع ملفك كما هو وطابق أعمدته في الخطوة التالية. المنتج الذي رمزه موجود يُحدَّث.
-            الصور تُوضع داخل ملف Excel نفسه في خلية «الصور» (إدراج ← صور ← وضع في الخلية)، أو تُكتب روابطها. ملف CSV
-            لا يحمل صوراً، فيقبل الروابط فقط. نوع الملف يُعرف تلقائياً.
+            لتعديل منتجاتك: صدّرها، وعدّل الملف، ثم ارفعه كما هو فيُحدَّث كل سطر برمزه دون أخطاء. وفي الملف قوائم منسدلة
+            للتصنيفات والعلامات والوحدات والخصائص. أو حمّل القالب واملأه، أو ارفع ملفك كما هو وطابق أعمدته في الخطوة
+            التالية. المنتج الذي رمزه موجود يُحدَّث. الصور تُوضع داخل ملف Excel نفسه في خلية «الصور» (إدراج ← صور ← وضع
+            في الخلية)، أو تُكتب روابطها. ملف CSV لا يحمل صوراً، فيقبل الروابط فقط. نوع الملف يُعرف تلقائياً.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={exporting} onClick={() => void exportForEditing()}>
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              تصدير المنتجات للتعديل
+            </Button>
             <Button variant="outline" size="sm" onClick={() => void storeImportApi.downloadTemplate(companyId, 'xlsx')}>
               <Download className="h-4 w-4" />
               قالب Excel (منتجات ومتغيرات)
@@ -201,7 +266,11 @@ export function StoreImportPage() {
               pickFile(e.dataTransfer.files?.[0] ?? null);
             }}
           >
-            {file ? <FileSpreadsheet className="h-7 w-7 text-primary" /> : <Upload className="h-7 w-7 text-muted-foreground" />}
+            {file ? (
+              <FileSpreadsheet className="h-7 w-7 text-primary" />
+            ) : (
+              <Upload className="h-7 w-7 text-muted-foreground" />
+            )}
             <span className="text-sm font-medium">{file ? file.name : 'اختر ملف Excel أو CSV أو اسحبه هنا'}</span>
             <span className="text-xs text-muted-foreground">
               Excel أو CSV، حتى 50 ميغابايت (مع الصور) و5000 سطر في الورقة
@@ -272,6 +341,26 @@ export function StoreImportPage() {
             </CardContent>
           </Card>
 
+          {preview.values?.length || corrections.length ? (
+            <ValueCorrections
+              values={preview.values ?? []}
+              corrections={corrections}
+              disabled={busy !== null}
+              onAnswer={answer}
+              onUndo={(c) => {
+                if (!file) return;
+                const next = corrections.filter((x) => !sameCorrection(x, c));
+                setCorrections(next);
+                void runPreview({
+                  file,
+                  mapping,
+                  sheet: csvSheet,
+                  corrections: next,
+                });
+              }}
+            />
+          ) : null}
+
           {/* 3 — review */}
           <Card>
             <CardHeader className="pb-3">
@@ -299,14 +388,20 @@ export function StoreImportPage() {
                   onCheckedChange={(v) => {
                     const next = v === true;
                     setCreateMissing(next);
-                    if (file) void runPreview({ file, mapping, sheet: csvSheet, createMissing: next });
+                    if (file)
+                      void runPreview({
+                        file,
+                        mapping,
+                        sheet: csvSheet,
+                        createMissing: next,
+                      });
                   }}
                 />
                 <span>
                   إنشاء ما لا يوجد وربطه
                   <span className="block text-xs text-muted-foreground">
-                    التصنيفات والعلامات التجارية المكتوبة في الملف وغير الموجودة في النظام تُنشأ وتُربط بالمنتجات.
-                    إن ألغيته صارت أخطاء تُصحَّح في الملف، ولا يُنشأ شيء جديد.
+                    التصنيفات والعلامات التجارية المكتوبة في الملف وغير الموجودة في النظام تُنشأ وتُربط بالمنتجات. إن
+                    ألغيته صارت أخطاء تُصحَّح في الملف، ولا يُنشأ شيء جديد.
                   </span>
                 </span>
               </label>
@@ -327,7 +422,8 @@ export function StoreImportPage() {
               ) : null}
               {preview.counts.quantitiesSet ? (
                 <p className="text-sm text-muted-foreground">
-                  تُضبط كمية المنتج لـ {preview.counts.quantitiesSet} منتجاً أو متغيراً (الكمية في الملف هي الكمية الجديدة).
+                  تُضبط كمية المنتج لـ {preview.counts.quantitiesSet} منتجاً أو متغيراً (الكمية في الملف هي الكمية
+                  الجديدة).
                 </p>
               ) : null}
 
@@ -422,40 +518,166 @@ function SheetColumns({
                   {column.samples.join(' · ') || '—'}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                {column.field && column.confidence < 1 ? (
-                  <Badge variant="warning" title="اسم مشابه: تأكد من المطابقة">
-                    تخمين
-                  </Badge>
-                ) : null}
-                <Select
-                  value={column.field ?? SKIP}
-                  disabled={disabled}
-                  onValueChange={(value) => onChange(column.header, value)}
-                >
-                  <SelectTrigger className={cn('h-9 w-full sm:w-52', !column.field && 'text-muted-foreground')}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={SKIP}>لا يُستورد</SelectItem>
-                    {sheet.fields.map((field) => (
-                      <SelectItem key={field.key} value={field.key}>
-                        {field.labelAr}
-                        {field.required ? ' *' : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {column.field?.startsWith(ATTRIBUTE_FIELD) ? (
+                // A «خاصية: …» column: read as that attribute's values.
+                <Badge variant="subtle" className="self-start sm:self-center">
+                  قيم الخاصية «{column.field.slice(ATTRIBUTE_FIELD.length)}»
+                </Badge>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {column.field && column.confidence < 1 ? (
+                    <Badge variant="warning" title="اسم مشابه: تأكد من المطابقة">
+                      تخمين
+                    </Badge>
+                  ) : null}
+                  <Select
+                    value={column.field ?? SKIP}
+                    disabled={disabled}
+                    onValueChange={(value) => onChange(column.header, value)}
+                  >
+                    <SelectTrigger className={cn('h-9 w-full sm:w-52', !column.field && 'text-muted-foreground')}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={SKIP}>لا يُستورد</SelectItem>
+                      {sheet.fields.map((field) => (
+                        <SelectItem key={field.key} value={field.key}>
+                          {field.labelAr}
+                          {field.required ? ' *' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           ))}
       </div>
       {missing.length ? (
-        <p className="text-xs text-destructive">
-          حقول إلزامية بلا عمود: {missing.map((f) => f.labelAr).join('، ')}
-        </p>
+        <p className="text-xs text-destructive">حقول إلزامية بلا عمود: {missing.map((f) => f.labelAr).join('، ')}</p>
       ) : null}
     </div>
+  );
+}
+
+const STATUS_BADGE: Record<
+  StoreImportUnknownValue['status'],
+  { label: string; variant: 'destructive' | 'warning' | 'subtle' }
+> = {
+  needsChoice: { label: 'اختر', variant: 'warning' },
+  error: { label: 'غير موجودة', variant: 'destructive' },
+  create: { label: 'ستُنشأ', variant: 'subtle' },
+};
+
+/**
+ * Values of the file the system lacks, each once with its rows count: the
+ * user replaces it with a system value (in every row) or creates it as
+ * written. A value close to a system value waits here instead of being
+ * created (2026-11-04).
+ */
+function ValueCorrections({
+  values,
+  corrections,
+  disabled,
+  onAnswer,
+  onUndo,
+}: {
+  values: StoreImportUnknownValue[];
+  corrections: StoreImportCorrection[];
+  disabled: boolean;
+  onAnswer: (value: StoreImportUnknownValue, to: string | null | undefined) => void;
+  onUndo: (correction: StoreImportCorrection) => void;
+}) {
+  // Replacements already applied: those values left the list, kept here to undo.
+  const replaced = corrections.filter((c) => c.to !== null);
+  const pending = values.filter((v) => v.status !== 'create').length;
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">تصحيح القيم</CardTitle>
+        <CardDescription>
+          قيم في الملف غير موجودة في النظام. القيمة القريبة من قيمة موجودة لا تُنشأ حتى تختار: استبدلها بالقيمة الموجودة
+          في كل الأسطر، أو أنشئها كما هي. لا حاجة لتعديل الملف.
+          {pending ? ` بانتظار اختيارك: ${pending}.` : ''}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {values.length ? (
+          <div className="divide-y divide-border/60 rounded-xl border border-border/60">
+            {values.map((value) => {
+              const chosen = corrections.find((c) =>
+                sameCorrection(c, {
+                  field: value.field,
+                  attribute: value.attribute,
+                  from: value.value,
+                }),
+              );
+              const current = chosen ? (chosen.to === null ? CREATE : chosen.to) : UNSET;
+              const badge = STATUS_BADGE[value.status];
+              return (
+                <div
+                  key={`${value.field}|${value.attribute ?? ''}|${value.value}`}
+                  className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-muted-foreground">
+                      {VALUE_FIELD_LABEL[value.field]}
+                      {value.attribute ? ` «${value.attribute}»` : ''} · {value.rows} سطر
+                    </p>
+                    <p className="flex items-center gap-2 text-sm font-medium" dir="auto">
+                      {value.value}
+                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                    </p>
+                  </div>
+                  <Select
+                    value={current}
+                    disabled={disabled}
+                    onValueChange={(next) =>
+                      onAnswer(value, next === UNSET ? undefined : next === CREATE ? null : next)
+                    }
+                  >
+                    <SelectTrigger className="h-9 w-full sm:w-64">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UNSET}>
+                        {value.status === 'create' ? 'تُنشأ كما هي' : 'لم تختر بعد'}
+                      </SelectItem>
+                      {value.suggestions.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          استبدل بـ «{s}»
+                        </SelectItem>
+                      ))}
+                      {value.canCreate && value.status !== 'create' ? (
+                        <SelectItem value={CREATE}>أنشئها كما هي</SelectItem>
+                      ) : null}
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        {replaced.length ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-muted-foreground">استبدالات مطبّقة:</span>
+            {replaced.map((c) => (
+              <button
+                key={`${c.field}|${c.attribute ?? ''}|${c.from}`}
+                type="button"
+                disabled={disabled}
+                onClick={() => onUndo(c)}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 hover:bg-muted"
+                title="تراجع"
+              >
+                «{c.from}» ← «{c.to}»
+                <XCircle className="h-3 w-3" />
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -502,7 +724,9 @@ function ImportDone({ result }: { result: StoreImportPreview }) {
         </p>
         <p className="text-sm text-muted-foreground">
           {c.productsCreated} منتج جديد، {c.productsUpdated} محدَّث، {c.variantsCreated} متغير جديد، {c.variantsUpdated}{' '}
-          متغير محدَّث{c.categoriesCreated.length ? `، ${c.categoriesCreated.length} تصنيف جديد` : ''}{c.brandsCreated?.length ? `، ${c.brandsCreated.length} علامة تجارية جديدة` : ''}.
+          متغير محدَّث
+          {c.categoriesCreated.length ? `، ${c.categoriesCreated.length} تصنيف جديد` : ''}
+          {c.brandsCreated?.length ? `، ${c.brandsCreated.length} علامة تجارية جديدة` : ''}.
         </p>
         <Link href={ecommerceAdminRoutes.products} className="text-sm text-primary underline-offset-4 hover:underline">
           الذهاب إلى المنتجات
