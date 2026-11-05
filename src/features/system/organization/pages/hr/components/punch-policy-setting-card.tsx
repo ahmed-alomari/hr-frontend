@@ -32,7 +32,6 @@ export type PunchPolicyValues = {
   singleSessionPerPeriod: boolean;
   missingCheckOutCredit: MissingCheckOutCredit;
   continuousAcrossPeriods: boolean;
-  minuteAccountingFrom: string | null;
 };
 
 const MISSING_CHECK_OUT_OPTIONS: {
@@ -182,76 +181,6 @@ function NumberSettingRow({
         {dirty && !valid
           ? `أدخل رقماً صحيحاً من ${min} إلى ${max}`
           : `المسموح: من ${min} إلى ${max}`}
-      </p>
-    </div>
-  );
-}
-
-/** Start date of per-minute accounting: a date to start from, or off. */
-function MinuteAccountingRow({
-  value,
-  disabled,
-  onSave,
-}: {
-  value: string | null;
-  disabled?: boolean;
-  onSave: (value: string | null) => void;
-}) {
-  const [draft, setDraft] = React.useState(value ?? '');
-  React.useEffect(() => {
-    setDraft(value ?? '');
-  }, [value]);
-
-  const valid = /^\d{4}-\d{2}-\d{2}$/.test(draft);
-  const dirty = draft !== (value ?? '');
-
-  return (
-    <div className={cn('space-y-2 bg-card px-4 py-3.5', disabled && 'opacity-60')}>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 space-y-0.5">
-          <p className="text-sm font-medium leading-tight">المحاسبة بالدقيقة</p>
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            {value ? `مفعّلة من ${value}` : 'غير مفعّلة — تُطبَّق القواعد السابقة'}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Input
-            type="date"
-            className="h-9 w-40 text-sm"
-            value={draft}
-            disabled={disabled}
-            aria-label="تاريخ بدء المحاسبة بالدقيقة"
-            onChange={(e) => setDraft(e.target.value)}
-          />
-          <Button
-            type="button"
-            size="sm"
-            className="h-9"
-            disabled={disabled || !dirty || !valid}
-            onClick={() => onSave(draft)}
-          >
-            حفظ
-          </Button>
-          {value ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-9"
-              disabled={disabled}
-              onClick={() => onSave(null)}
-            >
-              إيقاف
-            </Button>
-          ) : null}
-        </div>
-      </div>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        من هذا التاريخ: «حاضر» فقط لمن أكمل دقائق الفترة كاملة، وكل دقيقة ناقصة (تأخير أو
-        انصراف مبكر أو خروج أثناء الفترة) تُخصم من الراتب حتى داخل السماحية والنقص المسموح،
-        والحضور بلا انصراف أو الانصراف بلا حضور لا يُحسب حتى يُعتمد طلب تصحيح. الخصم = دقائق
-        النقص × (الأجر اليومي ÷ دقائق فترات اليوم). يُعاد احتساب أيام الفترة تلقائياً عند
-        ترحيل الحضور إلى الرواتب. لا يمكن اختيار تاريخ داخل فترة راتب مقفلة أو قبلها.
       </p>
     </div>
   );
@@ -442,16 +371,12 @@ export function PunchPolicySettingCard({ values, disabled, hideHeader, onChange 
           </div>
           <p className="text-[11px] leading-relaxed text-muted-foreground">
             {missingCheckOut.hint} يُطبَّق على تفاصيل اليوم وملخصات الحضور عند إعادة الاحتساب.
-            {values.minuteAccountingFrom
-              ? ` من ${values.minuteAccountingFrom} تُطبَّق المحاسبة بالدقيقة: لا تُحسب ساعات حتى يُصحَّح الانصراف.`
-              : null}
+          </p>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            الحضور يُحسب بالدقيقة: «حاضر» فقط لمن أكمل دقائق الفترة، وكل دقيقة ناقصة تُخصم، والحضور
+            بلا انصراف أو الانصراف بلا حضور لا يُحسب حتى يُعتمد طلب تصحيح مهما كان هذا الخيار.
           </p>
         </div>
-        <MinuteAccountingRow
-          value={values.minuteAccountingFrom}
-          disabled={disabled}
-          onSave={(v) => onChange({ minuteAccountingFrom: v })}
-        />
         </div>
 
         <GroupTitle>شروط عامة</GroupTitle>
