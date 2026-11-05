@@ -114,7 +114,7 @@ export function UserDetailDialog({
     <Dialog open={!!user} onOpenChange={(v) => !v && onOpenChange(false)}>
       <DialogContent
         dir="rtl"
-        className="flex max-h-[min(90vh,820px)] flex-col overflow-visible border-border p-0 sm:max-w-4xl [&>button]:start-4 [&>button]:end-auto"
+        className="flex max-h-[min(92vh,900px)] flex-col overflow-visible border-border p-0 sm:max-w-6xl [&>button]:start-4 [&>button]:end-auto"
       >
         <DialogTitle className="sr-only">{displayName}</DialogTitle>
         <DialogDescription className="sr-only">تفاصيل المستخدم وصلاحياته</DialogDescription>
