@@ -1,6 +1,5 @@
 import { z } from 'zod';
-
-const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+import { isValidSlug, SLUG_MESSAGE } from '@/features/catalog/constants/slug';
 
 export const categoryFormSchema = z.object({
   nameAr: z.string().trim().min(1, 'اسم التصنيف مطلوب'),
@@ -8,10 +7,7 @@ export const categoryFormSchema = z.object({
   slug: z
     .string()
     .trim()
-    .refine(
-      (value) => value === '' || slugPattern.test(value),
-      'الرابط المختصر يجب أن يكون بأحرف إنجليزية صغيرة وأرقام وشرطات فقط',
-    ),
+    .refine((value) => value === '' || isValidSlug(value), SLUG_MESSAGE),
   description: z.string().trim().optional(),
   parentId: z.string().nullable(),
   imageUrl: z.union([z.string().trim().url('رابط الصورة غير صالح'), z.literal('')]).optional(),

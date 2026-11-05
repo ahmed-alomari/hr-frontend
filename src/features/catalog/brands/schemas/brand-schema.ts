@@ -1,6 +1,5 @@
 import { z } from 'zod';
-
-const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+import { isValidSlug, SLUG_MESSAGE } from '@/features/catalog/constants/slug';
 
 export const brandFormSchema = z.object({
   nameAr: z.string().trim().min(1, 'اسم العلامة التجارية مطلوب'),
@@ -11,9 +10,7 @@ export const brandFormSchema = z.object({
     .trim()
     .optional()
     .or(z.literal(''))
-    .refine((value) => !value || slugPattern.test(value), {
-      message: 'الرابط المختصر يجب أن يكون بأحرف إنجليزية صغيرة وأرقام وشرطات فقط',
-    }),
+    .refine((value) => !value || isValidSlug(value), { message: SLUG_MESSAGE }),
   description: z.string().trim().optional().or(z.literal('')),
   websiteUrl: z.union([z.string().trim().url('رابط الموقع غير صالح'), z.literal('')]).optional(),
   logoUrl: z.union([z.string().trim().url('رابط الشعار غير صالح'), z.literal('')]).optional(),

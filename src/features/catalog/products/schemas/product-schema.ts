@@ -1,10 +1,9 @@
 import { z } from 'zod';
 import { PRODUCT_VARIANT_CUSTOM_UOM_ENABLED } from '@/features/catalog/products/constants/product-feature-flags';
+import { isValidSlug, SLUG_MESSAGE } from '@/features/catalog/constants/slug';
 
 export { STOCK_STATUS_OPTIONS } from '@/features/ecommerce/domain/constants/stock-status';
 export { PRODUCT_STATUS_OPTIONS } from '@/features/ecommerce/domain/constants/product-status';
-
-const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
  * Uploaded product photos are stored as `/uploads/...`, not as absolute URLs.
@@ -128,10 +127,7 @@ export const productFormSchema = z
     slug: z
       .string()
       .trim()
-      .refine(
-        (value) => value === '' || slugPattern.test(value),
-        'الرابط المختصر يجب أن يكون بأحرف إنجليزية صغيرة وأرقام وشرطات فقط',
-      ),
+      .refine((value) => value === '' || isValidSlug(value), SLUG_MESSAGE),
     shortDescription: z.string().trim().optional(),
     description: z.string().trim().optional(),
     categoryId: z.string().optional(),
