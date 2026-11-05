@@ -195,6 +195,7 @@ function fromBackendInput(dto: MonthlyInputResponseDto, baseSalarySnapshot = 0):
       return { kind: 'absence_days', value: days, note: dto.note ?? '' };
     }
     case 'lateness_deduction':
+    case 'shortage_deduction':
       return { kind: 'late_minutes', value: amount, note: dto.note ?? '' };
     case 'advance_installment':
     case 'loan_installment':

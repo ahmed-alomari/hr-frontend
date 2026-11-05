@@ -76,6 +76,8 @@ export interface HrCompanySettings {
   missingCheckOutCredit?: MissingCheckOutCredit;
   /** One check-in / check-out may span several periods of the day. Default false. */
   continuousAcrossPeriods?: boolean;
+  /** Work date (YYYY-MM-DD) from which attendance is counted to the minute; null = off. */
+  minuteAccountingFrom?: string | null;
   createdAt: string;
   updatedAt: string;
   createdBy?: string | null;

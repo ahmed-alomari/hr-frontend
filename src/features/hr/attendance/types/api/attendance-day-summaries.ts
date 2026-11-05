@@ -2,6 +2,8 @@ export type AttendanceDayStatus =
   | 'present'
   | 'partial'
   | 'late'
+  /** Per-minute accounting: left before a period ended, not late. */
+  | 'early_leave'
   | 'absent'
   | 'rest_day'
   | 'unscheduled'

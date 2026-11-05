@@ -12,6 +12,7 @@ export type HrNotificationKey = Exclude<
   | 'openSessionMaxHours'
   | 'minMinutesBetweenPunches'
   | 'missingCheckOutCredit'
+  | 'minuteAccountingFrom'
 >;
 
 export type NotificationToggleItem = {
