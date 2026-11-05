@@ -10,7 +10,7 @@ export type PdfCompanyLetterhead = {
   watermarkEnabled: boolean;
   /** Its opacity, 0–1 (from the company's percent). */
   watermarkOpacity: number;
-  /** Employment-contract text size, as a factor (company setting, 0.7–1.3). */
+  /** Employment-contract text size, as a factor (company setting, 0.3–1). */
   contractFontScale: number;
 };
 

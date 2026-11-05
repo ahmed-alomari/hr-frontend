@@ -23,8 +23,10 @@ export type CompanyResponseDto = {
   pdfWatermarkEnabled?: boolean;
   /** Its visibility in percent (2–40). */
   pdfWatermarkOpacity?: number;
-  /** Employment-contract PDF text size in percent (70–130, 100 = standard). */
+  /** Employment-contract PDF text size in percent (30–100, 100 = standard). */
   pdfContractFontScale?: number;
+  /** Employee signature size on signed PDFs, in percent (30–200, 100 = standard). */
+  pdfEmployeeSignatureScale?: number;
   timezone: string;
   currencyCode: string;
   languageCode: string;
@@ -57,6 +59,7 @@ export type CreateCompanyDto = {
   pdfWatermarkEnabled?: boolean;
   pdfWatermarkOpacity?: number;
   pdfContractFontScale?: number;
+  pdfEmployeeSignatureScale?: number;
   timezone?: string;
   currencyCode?: string;
   languageCode?: string;

@@ -14,7 +14,8 @@ import { uploadsApi } from '@/features/hr/lib/api/uploads';
 import {
   companyToSettingsForm,
   isValidHexColor,
-  PDF_CONTRACT_FONT_SCALES,
+  PDF_CONTRACT_FONT_SCALE,
+  PDF_EMPLOYEE_SIGNATURE_SCALE,
   PDF_WATERMARK_LEVELS,
   settingsFormToUpdateDto,
   type CompanySettingsFormState,
@@ -38,6 +39,84 @@ function FormField({
     <div className={cn('space-y-1.5', className)}>
       <Label className="text-xs text-muted-foreground">{label}</Label>
       {children}
+    </div>
+  );
+}
+
+function PercentScaleControl({
+  label,
+  hint,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (next: number) => void;
+}) {
+  const [draft, setDraft] = React.useState(String(value));
+  React.useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commit = (raw: string) => {
+    const parsed = Number(raw);
+    const next = Number.isFinite(parsed)
+      ? Math.min(max, Math.max(min, Math.round(parsed)))
+      : value;
+    onChange(next);
+    setDraft(String(next));
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">{hint}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={min}
+            max={max}
+            step={1}
+            dir="ltr"
+            value={draft}
+            aria-label={label}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => commit(draft)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commit(draft);
+              }
+            }}
+            className="h-9 w-20 text-center"
+          />
+          <span className="text-xs text-muted-foreground">%</span>
+        </div>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        dir="ltr"
+        value={value}
+        aria-label={label}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-2 w-full cursor-pointer accent-primary"
+      />
+      <div className="flex justify-between text-[11px] text-muted-foreground" dir="ltr">
+        <span>{min}%</span>
+        <span>{max}%</span>
+      </div>
     </div>
   );
 }
@@ -307,36 +386,23 @@ export function CompanySettingsTab() {
           ) : null}
         </div>
 
-        <div className="space-y-3">
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground">حجم خط عقد العمل</p>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
-              حجم نص بنود العقد في ملف PDF؛ الخط الأصغر يجمع بنودًا أكثر في الصفحة الواحدة.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="حجم خط عقد العمل">
-            {PDF_CONTRACT_FONT_SCALES.map((size) => {
-              const active = form.pdfContractFontScale === size.value;
-              return (
-                <button
-                  key={size.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => patch({ pdfContractFontScale: size.value })}
-                  className={cn(
-                    'rounded-lg border px-3 py-1.5 text-xs transition',
-                    active
-                      ? 'border-primary bg-primary/10 font-semibold text-primary'
-                      : 'border-border hover:border-primary/40',
-                  )}
-                >
-                  {size.label ? `${size.label} (${size.value}%)` : `${size.value}%`}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <PercentScaleControl
+          label="حجم خط عقد العمل"
+          hint="حجم نص بنود العقد في ملف PDF. أي رقم بين 30 و 100؛ الخط الأصغر يجمع بنودًا أكثر في الصفحة الواحدة."
+          value={form.pdfContractFontScale}
+          min={PDF_CONTRACT_FONT_SCALE.min}
+          max={PDF_CONTRACT_FONT_SCALE.max}
+          onChange={(pdfContractFontScale) => patch({ pdfContractFontScale })}
+        />
+
+        <PercentScaleControl
+          label="حجم توقيع الموظف"
+          hint="أي رقم بين 30 و 200. يُطبع توقيع الموظف بهذا الحجم في كل صفحة من العقد والخطاب وأي ملف PDF يتطلّب توقيعه."
+          value={form.pdfEmployeeSignatureScale}
+          min={PDF_EMPLOYEE_SIGNATURE_SCALE.min}
+          max={PDF_EMPLOYEE_SIGNATURE_SCALE.max}
+          onChange={(pdfEmployeeSignatureScale) => patch({ pdfEmployeeSignatureScale })}
+        />
 
         <div className="space-y-3">
           <p className="text-xs font-semibold text-muted-foreground">البيانات الأساسية</p>

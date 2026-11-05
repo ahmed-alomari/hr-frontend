@@ -20,6 +20,7 @@ export type CompanySettingsFormState = {
   pdfWatermarkEnabled: boolean;
   pdfWatermarkOpacity: number;
   pdfContractFontScale: number;
+  pdfEmployeeSignatureScale: number;
 };
 
 /** Visibility levels of the logo background on printed pages (percent). */
@@ -32,24 +33,16 @@ export const PDF_WATERMARK_LEVELS: ReadonlyArray<{ value: number; label: string 
   { value: 30, label: 'قوية جدًا' },
 ];
 
-/** Text sizes of the employment-contract PDF (percent of the standard size). */
-export const PDF_CONTRACT_FONT_SCALES: ReadonlyArray<{ value: number; label?: string }> = [
-  { value: 30, label: 'أصغر حجم' },
-  { value: 35 },
-  { value: 40 },
-  { value: 45 },
-  { value: 50, label: 'صغير جدًا' },
-  { value: 55 },
-  { value: 60 },
-  { value: 65 },
-  { value: 70, label: 'صغير' },
-  { value: 75 },
-  { value: 80 },
-  { value: 85, label: 'متوسط' },
-  { value: 90 },
-  { value: 95 },
-  { value: 100, label: 'عادي' },
-];
+/** Employment-contract text size, any integer percent in this range. */
+export const PDF_CONTRACT_FONT_SCALE = { min: 30, max: 100 } as const;
+
+/** Employee signature size on signed PDFs, any integer percent in this range. */
+export const PDF_EMPLOYEE_SIGNATURE_SCALE = { min: 30, max: 200 } as const;
+
+function clampScale(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return 100;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
 
 export function companyToSettingsForm(company: CompanyResponseDto): CompanySettingsFormState {
   return {
@@ -71,7 +64,16 @@ export function companyToSettingsForm(company: CompanyResponseDto): CompanySetti
     secondaryColor: company.secondaryColor ?? '',
     pdfWatermarkEnabled: company.pdfWatermarkEnabled ?? true,
     pdfWatermarkOpacity: company.pdfWatermarkOpacity ?? 10,
-    pdfContractFontScale: company.pdfContractFontScale ?? 100,
+    pdfContractFontScale: clampScale(
+      company.pdfContractFontScale ?? 100,
+      PDF_CONTRACT_FONT_SCALE.min,
+      PDF_CONTRACT_FONT_SCALE.max,
+    ),
+    pdfEmployeeSignatureScale: clampScale(
+      company.pdfEmployeeSignatureScale ?? 100,
+      PDF_EMPLOYEE_SIGNATURE_SCALE.min,
+      PDF_EMPLOYEE_SIGNATURE_SCALE.max,
+    ),
   };
 }
 
@@ -106,6 +108,15 @@ export function settingsFormToUpdateDto(form: CompanySettingsFormState): UpdateC
     secondaryColor: emptyToNull(form.secondaryColor),
     pdfWatermarkEnabled: form.pdfWatermarkEnabled,
     pdfWatermarkOpacity: form.pdfWatermarkOpacity,
-    pdfContractFontScale: form.pdfContractFontScale,
+    pdfContractFontScale: clampScale(
+      form.pdfContractFontScale,
+      PDF_CONTRACT_FONT_SCALE.min,
+      PDF_CONTRACT_FONT_SCALE.max,
+    ),
+    pdfEmployeeSignatureScale: clampScale(
+      form.pdfEmployeeSignatureScale,
+      PDF_EMPLOYEE_SIGNATURE_SCALE.min,
+      PDF_EMPLOYEE_SIGNATURE_SCALE.max,
+    ),
   };
 }
