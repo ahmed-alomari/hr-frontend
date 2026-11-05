@@ -17,7 +17,14 @@ export type StoreImportIssue = {
   message: string;
   fix: string | null;
   suggestions?: string[];
+  /** The fix as a click, when it has one meaning (older servers omit it). */
+  action?: StoreImportIssueAction;
 };
+
+/** `skipRow` leaves the row out; `keepStored` reads the field as the system has it. */
+export type StoreImportIssueAction = { type: 'skipRow' } | { type: 'keepStored'; field: string };
+
+export type StoreImportRowRef = { sheet: StoreImportSheetKey; row: number };
 
 /** A value the system lacks (category, brand, unit, attribute or its value). */
 export type StoreImportValueField = 'category' | 'brand' | 'uom' | 'attribute' | 'attributeValue';
@@ -74,6 +81,11 @@ export type StoreImportPreview = {
     productsUpdated: number;
     variantsCreated: number;
     variantsUpdated: number;
+    /** Rows that match a record and change nothing; older servers omit them. */
+    productsUnchanged?: number;
+    variantsUnchanged?: number;
+    /** Rows left out by one-click fixes. */
+    rowsSkipped?: number;
     categoriesCreated: string[];
     /** Older servers omit it. */
     brandsCreated?: string[];
@@ -97,6 +109,9 @@ export type StoreImportOptions = {
   /** Create and link missing categories and brands (default), or refuse them. */
   createMissing?: boolean;
   corrections?: StoreImportCorrection[];
+  /** One-click fixes: rows left out, cells read as the system has them. */
+  skipRows?: StoreImportRowRef[];
+  keepCells?: Array<StoreImportRowRef & { field: string }>;
 };
 
 const base = (companyId: string) => `/store-admin/companies/${resolveStorefrontCompanyId(companyId)}/import`;

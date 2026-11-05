@@ -9,7 +9,9 @@ import {
   FileSpreadsheet,
   Loader2,
   RefreshCw,
+  Undo2,
   Upload,
+  Wand2,
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -28,7 +30,9 @@ import {
   storeImportApi,
   type StoreImportCorrection,
   type StoreImportIssue,
+  type StoreImportIssueAction,
   type StoreImportOptions,
+  type StoreImportRowRef,
   type StoreImportPreview,
   type StoreImportSheet,
   type StoreImportSheetKey,
@@ -55,6 +59,36 @@ const SHEET_LABEL: Record<StoreImportSheetKey, string> = {
   variants: 'المتغيرات',
 };
 const MAX_SHOWN_ISSUES = 200;
+
+/** The review's one-click fixes, sent with the preview and the commit. */
+type Fixes = {
+  skipRows: StoreImportRowRef[];
+  keepCells: Array<StoreImportRowRef & { field: string }>;
+};
+const NO_FIXES: Fixes = { skipRows: [], keepCells: [] };
+const ACTION_LABEL: Record<StoreImportIssueAction['type'], string> = {
+  skipRow: 'تجاهل السطر',
+  keepStored: 'أبقِ ما في النظام',
+};
+
+/** The fixes with these issues' actions added (each row and cell once). */
+function withFixes(current: Fixes, issues: StoreImportIssue[]): Fixes {
+  const skipRows = [...current.skipRows];
+  const keepCells = [...current.keepCells];
+  for (const issue of issues) {
+    if (!issue.action || !issue.row) continue;
+    const ref = { sheet: issue.sheet, row: issue.row };
+    if (issue.action.type === 'skipRow') {
+      if (!skipRows.some((r) => r.sheet === ref.sheet && r.row === ref.row)) skipRows.push(ref);
+    } else {
+      const field = issue.action.field;
+      if (!keepCells.some((c) => c.sheet === ref.sheet && c.row === ref.row && c.field === field)) {
+        keepCells.push({ ...ref, field });
+      }
+    }
+  }
+  return { skipRows, keepCells };
+}
 
 /** The mapping the server applied, as the user can edit it (header → field). */
 function mappingOf(sheet: StoreImportSheet): Record<string, string> {
@@ -85,6 +119,10 @@ export function StoreImportPage() {
   const [corrections, setCorrections] = React.useState<StoreImportCorrection[]>([]);
   const correctionsRef = React.useRef(corrections);
   correctionsRef.current = corrections;
+  // One-click fixes (2026-11-05): rows left out, cells read as the system has them.
+  const [fixes, setFixes] = React.useState<Fixes>(NO_FIXES);
+  const fixesRef = React.useRef(fixes);
+  fixesRef.current = fixes;
   const [exporting, setExporting] = React.useState(false);
   const [preview, setPreview] = React.useState<StoreImportPreview | null>(null);
   const [busy, setBusy] = React.useState<'preview' | 'commit' | null>(null);
@@ -101,6 +139,7 @@ export function StoreImportPage() {
       sheet?: StoreImportSheetKey | null;
       createMissing?: boolean;
       corrections?: StoreImportCorrection[];
+      fixes?: Fixes;
     }) => {
       setBusy('preview');
       setDone(null);
@@ -110,6 +149,7 @@ export function StoreImportPage() {
           sheet: /\.csv$/i.test(next.file.name) ? (next.sheet ?? undefined) : undefined,
           createMissing: next.createMissing ?? createMissingRef.current,
           corrections: next.corrections ?? correctionsRef.current,
+          ...(next.fixes ?? fixesRef.current),
         });
         setPreview(result);
         setMapping(Object.fromEntries(result.sheets.map((s) => [s.key, mappingOf(s)])));
@@ -130,7 +170,22 @@ export function StoreImportPage() {
     setDone(null);
     setCsvSheet(null);
     setCorrections([]);
-    if (picked) void runPreview({ file: picked, corrections: [] });
+    setFixes(NO_FIXES);
+    if (picked) void runPreview({ file: picked, corrections: [], fixes: NO_FIXES });
+  }
+
+  /** Applies the issues' one-click fixes (one, or every clear one) and checks again. */
+  function applyFixes(list: StoreImportIssue[]) {
+    if (!file) return;
+    const next = withFixes(fixes, list);
+    setFixes(next);
+    void runPreview({ file, mapping, sheet: csvSheet, fixes: next });
+  }
+
+  function undoFixes() {
+    if (!file) return;
+    setFixes(NO_FIXES);
+    void runPreview({ file, mapping, sheet: csvSheet, fixes: NO_FIXES });
   }
 
   /** The user's answer for one unknown value: a replacement, create (null), or none. */
@@ -177,6 +232,7 @@ export function StoreImportPage() {
         publish,
         createMissing,
         corrections,
+        ...fixes,
         // The kind the preview read, so the commit reads the file the same way.
         sheet: isCsv ? (csvSheet ?? preview.sheets[0]?.key) : undefined,
       });
@@ -198,6 +254,8 @@ export function StoreImportPage() {
     const all = preview?.issues ?? [];
     return (onlyErrors ? all.filter((i) => i.level === 'error') : all).slice(0, MAX_SHOWN_ISSUES);
   }, [preview, onlyErrors]);
+  const fixable = React.useMemo(() => (preview?.issues ?? []).filter((i) => i.action && i.row), [preview]);
+  const fixesApplied = fixes.skipRows.length + fixes.keepCells.length;
 
   if (!allowed) {
     return (
@@ -380,6 +438,12 @@ export function StoreImportPage() {
                 <Count label="متغيرات جديدة" value={preview.counts.variantsCreated} />
                 <Count label="متغيرات تُحدَّث" value={preview.counts.variantsUpdated} />
               </div>
+              {preview.counts.productsUnchanged || preview.counts.variantsUnchanged ? (
+                <p className="text-sm text-muted-foreground">
+                  بلا تغيير: {preview.counts.productsUnchanged ?? 0} منتج و{preview.counts.variantsUnchanged ?? 0} متغير
+                  كما هي في النظام، فلا يُكتب عليها شيء.
+                </p>
+              ) : null}
               <label className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm">
                 <Checkbox
                   className="mt-0.5"
@@ -438,7 +502,43 @@ export function StoreImportPage() {
                 ) : null}
               </div>
 
-              {issues.length ? <IssuesList issues={issues} sheets={preview.sheets} /> : null}
+              {fixable.length || fixesApplied ? (
+                <div className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm sm:flex-row sm:items-center">
+                  <p className="flex-1">
+                    {fixable.length
+                      ? `${fixable.length} ملاحظة لها إصلاح واضح يُطبَّق بضغطة، دون تعديل الملف.`
+                      : 'طُبّقت الإصلاحات، والملف نفسه لم يتغير.'}
+                    {fixesApplied ? (
+                      <span className="block text-xs text-muted-foreground">
+                        مطبّق: {fixes.skipRows.length} سطر متجاهل، و{fixes.keepCells.length} خلية تُقرأ كما في النظام.
+                      </span>
+                    ) : null}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {fixable.length ? (
+                      <Button size="sm" disabled={busy !== null} onClick={() => applyFixes(fixable)}>
+                        <Wand2 className="h-4 w-4" />
+                        طبّق الإصلاحات ({fixable.length})
+                      </Button>
+                    ) : null}
+                    {fixesApplied ? (
+                      <Button size="sm" variant="outline" disabled={busy !== null} onClick={undoFixes}>
+                        <Undo2 className="h-4 w-4" />
+                        تراجع عنها
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {issues.length ? (
+                <IssuesList
+                  issues={issues}
+                  sheets={preview.sheets}
+                  disabled={busy !== null}
+                  onFix={(issue) => applyFixes([issue])}
+                />
+              ) : null}
               {preview.issues.length > issues.length && !onlyErrors ? (
                 <p className="text-xs text-muted-foreground">تُعرض أول {MAX_SHOWN_ISSUES} ملاحظة.</p>
               ) : null}
@@ -469,7 +569,11 @@ export function StoreImportPage() {
             </CardContent>
             {!preview.canCommit ? (
               <p className="px-6 pb-4 text-xs text-muted-foreground">
-                {preview.errors ? 'صحّح الأخطاء في الملف ثم ارفعه مرة أخرى.' : 'لا توجد أسطر للاستيراد.'}
+                {!preview.errors
+                  ? 'لا توجد أسطر للاستيراد.'
+                  : fixable.length
+                    ? 'طبّق الإصلاحات الواضحة أعلاه، وصحّح الباقي في الملف ثم ارفعه مرة أخرى.'
+                    : 'صحّح الأخطاء في الملف ثم ارفعه مرة أخرى.'}
               </p>
             ) : null}
           </Card>
@@ -695,19 +799,29 @@ function ValueCorrections({
   );
 }
 
-function IssuesList({ issues, sheets }: { issues: StoreImportIssue[]; sheets: StoreImportSheet[] }) {
+function IssuesList({
+  issues,
+  sheets,
+  disabled,
+  onFix,
+}: {
+  issues: StoreImportIssue[];
+  sheets: StoreImportSheet[];
+  disabled: boolean;
+  onFix: (issue: StoreImportIssue) => void;
+}) {
   const label = (issue: StoreImportIssue) =>
     sheets.find((s) => s.key === issue.sheet)?.fields.find((f) => f.key === issue.field)?.labelAr ?? null;
   return (
     <ul className="flex max-h-[28rem] flex-col divide-y divide-border/60 overflow-y-auto rounded-xl border border-border/60">
       {issues.map((issue, i) => (
-        <li key={i} className="flex gap-3 px-3 py-2 text-sm">
+        <li key={i} className="flex flex-wrap gap-x-3 gap-y-2 px-3 py-2 text-sm sm:flex-nowrap">
           {issue.level === 'error' ? (
             <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
           ) : (
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
           )}
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 basis-[calc(100%-1.75rem)] sm:basis-auto">
             <p className="text-xs text-muted-foreground">
               {SHEET_LABEL[issue.sheet]}
               {issue.row ? ` · السطر ${issue.row}` : ''}
@@ -721,6 +835,18 @@ function IssuesList({ issues, sheets }: { issues: StoreImportIssue[]; sheets: St
               </p>
             ) : null}
           </div>
+          {issue.action && issue.row ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ms-7 h-8 shrink-0 self-start sm:ms-0"
+              disabled={disabled}
+              onClick={() => onFix(issue)}
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+              {ACTION_LABEL[issue.action.type]}
+            </Button>
+          ) : null}
         </li>
       ))}
     </ul>
@@ -739,6 +865,10 @@ function ImportDone({ result }: { result: StoreImportPreview }) {
         <p className="text-sm text-muted-foreground">
           {c.productsCreated} منتج جديد، {c.productsUpdated} محدَّث، {c.variantsCreated} متغير جديد، {c.variantsUpdated}{' '}
           متغير محدَّث
+          {c.productsUnchanged || c.variantsUnchanged
+            ? `، و${(c.productsUnchanged ?? 0) + (c.variantsUnchanged ?? 0)} سطراً بلا تغيير`
+            : ''}
+          {c.rowsSkipped ? `، و${c.rowsSkipped} سطراً متجاهلاً` : ''}
           {c.categoriesCreated.length ? `، ${c.categoriesCreated.length} تصنيف جديد` : ''}
           {c.brandsCreated?.length ? `، ${c.brandsCreated.length} علامة تجارية جديدة` : ''}.
         </p>
