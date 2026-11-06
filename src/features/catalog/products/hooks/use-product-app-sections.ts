@@ -54,7 +54,7 @@ export const PRODUCT_INVENTORY_DOCS = [
   {
     key: 'replenish',
     label: 'تجديد المخزون',
-    hint: 'طلبات تجديد المخزون وحالاتها — أنشئ طلبًا ثم صدّقه من المستودع',
+    hint: 'أوامر شراء هذا المنتج وحالة استلامها — أنشئ أمر شراء ثم استلمه عند وصول البضاعة',
     requiresApp: APP.inventory,
   },
   {

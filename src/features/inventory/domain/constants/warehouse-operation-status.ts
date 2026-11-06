@@ -1,4 +1,5 @@
 import type {
+  PurchaseOrderReceiptState,
   WarehouseOperationKind,
   WarehouseOperationStatus,
 } from '@/features/inventory/domain/types/warehouse';
@@ -9,6 +10,24 @@ export const WAREHOUSE_OPERATION_STATUS_LABELS_AR: Record<WarehouseOperationStat
   ready: 'جاهز',
   done: 'منتهي',
   cancelled: 'ملغى',
+};
+
+/** A confirmed purchase order's receiving progress. */
+export const PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR: Record<PurchaseOrderReceiptState, string> = {
+  pending: 'بانتظار الاستلام',
+  partial: 'مستلم جزئياً',
+  received: 'مستلم بالكامل',
+  closed: 'أُغلق المتبقي',
+};
+
+export const PURCHASE_ORDER_RECEIPT_STATE_BADGE: Record<
+  PurchaseOrderReceiptState,
+  'subtle' | 'warning' | 'success' | 'outline'
+> = {
+  pending: 'subtle',
+  partial: 'warning',
+  received: 'success',
+  closed: 'outline',
 };
 
 /** Workflow steps shown in the picking header (excludes cancelled). */

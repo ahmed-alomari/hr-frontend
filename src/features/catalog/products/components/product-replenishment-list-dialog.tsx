@@ -6,7 +6,12 @@ import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/stor
 import { useWarehouseOperations } from '@/features/inventory/admin/operations/hooks/use-warehouse-operations';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
 import { WarehouseOperationDetailDialog } from '@/features/inventory/admin/operations/components/warehouse-operation-detail-dialog';
-import { WAREHOUSE_OPERATION_STATUS_LABELS_AR } from '@/features/inventory/domain/constants/warehouse-operation-status';
+import {
+  PURCHASE_ORDER_RECEIPT_STATE_BADGE,
+  PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR,
+  WAREHOUSE_OPERATION_KIND_LABELS_AR,
+  WAREHOUSE_OPERATION_STATUS_LABELS_AR,
+} from '@/features/inventory/domain/constants/warehouse-operation-status';
 import { REPLENISHMENT_SOURCE_DOCUMENT } from '@/features/catalog/products/constants/replenishment';
 import type { WarehouseOperation } from '@/features/inventory/domain/types/warehouse';
 import { Button } from '@/components/ui/button';
@@ -29,7 +34,7 @@ import {
 export { REPLENISHMENT_SOURCE_DOCUMENT };
 
 export function isReplenishmentOperation(op: WarehouseOperation): boolean {
-  if (op.kind === 'replenishment') return true;
+  if (op.kind === 'purchase_order' || op.kind === 'replenishment') return true;
   if (op.kind !== 'receipt') return false;
   const source = op.sourceDocument?.trim() ?? '';
   const notes = op.notes?.trim() ?? '';
@@ -42,7 +47,12 @@ function useProductReplenishmentOperations(
   enabled: boolean,
   refreshKey = 0,
 ) {
-  // Replenishment docs may be kind=replenishment or legacy kind=receipt tagged via sourceDocument.
+  // Replenishing is a purchase order now; older requests were kind=replenishment
+  // or a receipt tagged via sourceDocument, and stay listed.
+  const purchaseOrders = useWarehouseOperations(
+    { companyId, productId, kind: 'purchase_order', limit: 100 },
+    { enabled, refetchOnOpen: true, refreshKey },
+  );
   const replenishment = useWarehouseOperations(
     { companyId, productId, kind: 'replenishment', limit: 100 },
     { enabled, refetchOnOpen: true, refreshKey },
@@ -54,16 +64,20 @@ function useProductReplenishmentOperations(
 
   const items = React.useMemo(() => {
     const byId = new Map<string, WarehouseOperation>();
-    for (const op of [...(replenishment.data?.items ?? []), ...(receipts.data?.items ?? [])]) {
+    for (const op of [
+      ...(purchaseOrders.data?.items ?? []),
+      ...(replenishment.data?.items ?? []),
+      ...(receipts.data?.items ?? []),
+    ]) {
       byId.set(op.id, op);
     }
     return [...byId.values()].filter(isReplenishmentOperation);
-  }, [replenishment.data?.items, receipts.data?.items]);
+  }, [purchaseOrders.data?.items, replenishment.data?.items, receipts.data?.items]);
 
   return {
     items,
-    isLoading: replenishment.isLoading || receipts.isLoading,
-    isFetching: replenishment.isFetching || receipts.isFetching,
+    isLoading: purchaseOrders.isLoading || replenishment.isLoading || receipts.isLoading,
+    isFetching: purchaseOrders.isFetching || replenishment.isFetching || receipts.isFetching,
   };
 }
 
@@ -137,11 +151,11 @@ export function ProductReplenishmentListDialog({
           <div className={dialogShellHeaderClass}>
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
               <RefreshCw className="h-4 w-4 text-primary" />
-              طلبات تجديد المخزون
+              تجديد المخزون
             </DialogTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              طلبات التجديد الخاصة بـ «{productNameAr}» وحالاتها (مسودة → جاهز → منتهي). الكمية تُحدَّث بعد
-              التصديق من المستودع.
+              أوامر الشراء الخاصة بـ «{productNameAr}» وحالة استلامها، مع طلبات التجديد السابقة. الكمية لا
+              تدخل المخزون إلا بتصديق سند استلام من أمر الشراء.
             </p>
           </div>
 
@@ -150,7 +164,7 @@ export function ProductReplenishmentListDialog({
               <p className="text-sm text-muted-foreground">جاري التحميل…</p>
             ) : itemsSorted.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-                لا توجد طلبات تجديد بعد. أنشئ طلبًا جديدًا ليظهر هنا مع حالته.
+                لا توجد أوامر شراء لهذا المنتج بعد. أنشئ أمر شراء ليظهر هنا مع حالة استلامه.
               </p>
             ) : (
               <ul className="space-y-2">
@@ -180,9 +194,17 @@ export function ProductReplenishmentListDialog({
                             <p className="text-xs text-muted-foreground">{op.sourceDocument}</p>
                           ) : null}
                         </div>
-                        <Badge variant={statusBadgeVariant(op.status)}>
-                          {WAREHOUSE_OPERATION_STATUS_LABELS_AR[op.status]}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Badge variant="outline">{WAREHOUSE_OPERATION_KIND_LABELS_AR[op.kind]}</Badge>
+                          <Badge variant={statusBadgeVariant(op.status)}>
+                            {WAREHOUSE_OPERATION_STATUS_LABELS_AR[op.status]}
+                          </Badge>
+                          {op.receiptState ? (
+                            <Badge variant={PURCHASE_ORDER_RECEIPT_STATE_BADGE[op.receiptState]}>
+                              {PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR[op.receiptState]}
+                            </Badge>
+                          ) : null}
+                        </div>
                       </button>
                     </li>
                   );
@@ -200,7 +222,7 @@ export function ProductReplenishmentListDialog({
                   onCreateRequest();
                 }}
               >
-                طلب تجديد جديد
+                أمر شراء جديد
               </Button>
             ) : null}
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

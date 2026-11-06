@@ -46,6 +46,11 @@ export type WarehouseOperationKindMeta = {
   navLabelKey: string;
   /** مسار الصفحة العامة تحت /inventory/… */
   pathSegment: string;
+  /**
+   * لم يعد يُنشأ (الخادم يرفضه): الشراء = أمر شراء ثم استلام، والإدخال
+   * المباشر = استلام مخزون. مستنداته السابقة تبقى للعرض والتصديق والتراجع.
+   */
+  retired?: boolean;
 };
 
 export const WAREHOUSE_OPERATION_KIND_META: Record<WarehouseOperationKind, WarehouseOperationKindMeta> =
@@ -163,10 +168,10 @@ export const WAREHOUSE_OPERATION_KIND_META: Record<WarehouseOperationKind, Wareh
       pathSegment: 'purchase-orders',
     },
     purchase: {
-      labelAr: 'الشراء',
-      title: 'استلامات الشراء',
+      labelAr: 'الشراء (سابق)',
+      title: 'مستندات الشراء السابقة',
       createLabel: 'مستند شراء',
-      empty: 'لا توجد استلامات شراء بعد.',
+      empty: 'لا توجد مستندات شراء سابقة.',
       needsFrom: false,
       needsTo: true,
       needsDestWarehouse: false,
@@ -175,12 +180,13 @@ export const WAREHOUSE_OPERATION_KIND_META: Record<WarehouseOperationKind, Wareh
       uiPlacement: 'header',
       navLabelKey: 'opPurchase',
       pathSegment: 'purchases',
+      retired: true,
     },
     replenishment: {
-      labelAr: 'تجديد المخزون',
-      title: 'تجديد المخزون',
+      labelAr: 'تجديد المخزون (سابق)',
+      title: 'مستندات التجديد السابقة',
       createLabel: 'طلب تجديد',
-      empty: 'لا توجد طلبات تجديد بعد.',
+      empty: 'لا توجد مستندات تجديد سابقة.',
       needsFrom: false,
       needsTo: true,
       needsDestWarehouse: false,
@@ -189,6 +195,7 @@ export const WAREHOUSE_OPERATION_KIND_META: Record<WarehouseOperationKind, Wareh
       uiPlacement: 'header',
       navLabelKey: 'opReplenishment',
       pathSegment: 'replenishment',
+      retired: true,
     },
     opening: {
       labelAr: 'الرصيد الافتتاحي',

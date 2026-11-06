@@ -3,6 +3,7 @@ import type { ListGroupsResult } from '@/components/ui/list-group';
 import { toNumber } from '@/features/inventory/lib/api/numbers';
 import type {
   CreateWarehouseOperationInput,
+  ReplenishmentSuggestion,
   UpdateWarehouseOperationInput,
   WarehouseOperation,
   WarehouseOperationLine,
@@ -126,6 +127,11 @@ function mapOperation(dto: OperationDto, lines: WarehouseOperationLine[]): Wareh
       dto.totalDemandQuantity != null ? toNumber(dto.totalDemandQuantity) : undefined,
     totalQuantity: dto.totalQuantity != null ? toNumber(dto.totalQuantity) : undefined,
     linesPartial: dto.linesPartial,
+    receiptsClosedAt: dto.receiptsClosedAt ?? null,
+    backorderOfId: dto.backorderOfId ?? null,
+    receiptState: dto.receiptState ?? null,
+    orderedQuantity: dto.orderedQuantity != null ? toNumber(dto.orderedQuantity) : null,
+    receivedQuantity: dto.receivedQuantity != null ? toNumber(dto.receivedQuantity) : null,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
     ...(dto.groupKey !== undefined ? { groupKey: dto.groupKey } : {}),
@@ -313,6 +319,8 @@ export function fetchWarehouseOperationGroups(query: WarehouseOperationListQuery
       kind: query.kind,
       status: query.status,
       partnerId: query.partnerId,
+      purchaseOrderId: query.purchaseOrderId,
+      receiptState: query.receiptState,
       occurredAtFrom: query.occurredAtFrom,
       occurredAtTo: query.occurredAtTo,
       search: query.search,
@@ -320,6 +328,82 @@ export function fetchWarehouseOperationGroups(query: WarehouseOperationListQuery
       groupBy: query.groupBy,
     },
   });
+}
+
+/** One line by id (e.g. the purchase-order line a receipt line fills). */
+export async function fetchWarehouseOperationLine(
+  companyId: string,
+  id: string,
+): Promise<(WarehouseOperationLine & { operationId: string }) | null> {
+  const result = await apiRequest<PaginatedResult<OperationLineDto>>(
+    '/inventory/warehouse-operation-lines',
+    { query: { companyId, id, limit: 1 }, throwOnError: true, silent: true },
+  );
+  const dto = result.items?.[0];
+  return dto ? { ...mapLine(dto), operationId: dto.operationId } : null;
+}
+
+async function purchaseOrderReceiptsAction(
+  companyId: string,
+  id: string,
+  action: 'close-receipts' | 'reopen-receipts',
+): Promise<WarehouseOperation> {
+  const dto = await apiRequest<OperationDto>(
+    `/inventory/warehouse-operations/${id}/${action}`,
+    { method: 'POST', silent: true },
+  );
+  const lines = await fetchLinesByOperationId(id, companyId || dto.companyId);
+  return mapOperation(dto, lines);
+}
+
+/** The rest of a purchase order will not arrive: further receipts are refused. */
+export function closePurchaseOrderReceipts(companyId: string, id: string) {
+  return purchaseOrderReceiptsAction(companyId, id, 'close-receipts');
+}
+
+/** The rest of a purchase order is expected again. */
+export function reopenPurchaseOrderReceipts(companyId: string, id: string) {
+  return purchaseOrderReceiptsAction(companyId, id, 'reopen-receipts');
+}
+
+/** New price of a confirmed order line: what is still to be received takes it. */
+export async function changePurchaseOrderLinePrice(
+  companyId: string,
+  id: string,
+  lineId: string,
+  unitCost: number,
+): Promise<WarehouseOperation> {
+  const dto = await apiRequest<OperationDto>(
+    `/inventory/warehouse-operations/${id}/lines/${lineId}/price`,
+    { method: 'POST', body: { unitCost }, silent: true },
+  );
+  const lines = await fetchLinesByOperationId(id, companyId || dto.companyId);
+  return mapOperation(dto, lines);
+}
+
+export async function fetchReplenishmentSuggestions(query: {
+  companyId: string;
+  warehouseId?: string;
+  search?: string;
+}): Promise<ReplenishmentSuggestion[]> {
+  const result = await apiRequest<{ items: ReplenishmentSuggestion[] }>(
+    '/inventory/warehouse-operations/replenishment-suggestions',
+    {
+      query: {
+        companyId: query.companyId,
+        warehouseId: query.warehouseId,
+        search: query.search,
+      },
+      throwOnError: true,
+    },
+  );
+  return (result.items ?? []).map((item) => ({
+    ...item,
+    onHand: toNumber(item.onHand),
+    onOrder: toNumber(item.onOrder),
+    threshold: toNumber(item.threshold),
+    suggestedQuantity: toNumber(item.suggestedQuantity),
+  }));
 }
 
 export async function receiveWarehouseTransfer(
@@ -354,6 +438,8 @@ export const warehouseOperationsApi: AdminWarehouseOperationsPort & {
           kind: query.kind,
           status: query.status,
           partnerId: query.partnerId,
+          purchaseOrderId: query.purchaseOrderId,
+          receiptState: query.receiptState,
           occurredAtFrom: query.occurredAtFrom,
           occurredAtTo: query.occurredAtTo,
           search: query.search,
@@ -510,6 +596,9 @@ export const warehouseOperationsApi: AdminWarehouseOperationsPort & {
     if (patch.partnerName !== undefined) headerPatch.partnerName = patch.partnerName ?? null;
     if (patch.sourceDocument !== undefined) {
       headerPatch.sourceDocument = patch.sourceDocument ?? null;
+    }
+    if (patch.receiptRemainder !== undefined) {
+      headerPatch.receiptRemainder = patch.receiptRemainder;
     }
 
     // Sync lines BEFORE locking the operation (`done` / `cancelled`). Backend rejects

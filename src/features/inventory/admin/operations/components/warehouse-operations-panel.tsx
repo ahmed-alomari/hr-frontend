@@ -19,8 +19,13 @@ import {
   type WarehouseOperationFormValues,
 } from '@/features/inventory/admin/schemas/warehouse-schemas';
 import { WAREHOUSE_OPERATION_KIND_META } from '@/features/inventory/domain/constants/warehouse-operation-kinds';
-import { WAREHOUSE_OPERATION_STATUS_LABELS_AR } from '@/features/inventory/domain/constants/warehouse-operation-status';
+import {
+  PURCHASE_ORDER_RECEIPT_STATE_BADGE,
+  PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR,
+  WAREHOUSE_OPERATION_STATUS_LABELS_AR,
+} from '@/features/inventory/domain/constants/warehouse-operation-status';
 import type {
+  PurchaseOrderReceiptState,
   WarehouseOperation,
   WarehouseOperationKind,
   WarehouseOperationStatus,
@@ -136,6 +141,17 @@ function statusBadgeVariant(
   return 'subtle';
 }
 
+/** A confirmed purchase order's receiving progress (nothing for other documents). */
+function ReceiptStateBadge({ operation }: { operation: WarehouseOperation }) {
+  const state = operation.receiptState;
+  if (!state) return null;
+  return (
+    <Badge variant={PURCHASE_ORDER_RECEIPT_STATE_BADGE[state]}>
+      {PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR[state]}
+    </Badge>
+  );
+}
+
 /** Matches inventory-stock-mode-contract.md */
 type StockLineMode = 'product' | 'variants';
 
@@ -176,6 +192,12 @@ export function WarehouseOperationsPanel({
     'all',
   );
   const [period, setPeriod] = usePersistedFilterState(filterKey('period'), { from: '', to: '' });
+  const isPurchaseOrder = kind === 'purchase_order';
+  const canCreate = !meta.retired;
+  const [storedReceiptState, setFilterReceiptState] = usePersistedFilterState<
+    PurchaseOrderReceiptState | 'all'
+  >(filterKey('receiptState'), 'all');
+  const filterReceiptState = isPurchaseOrder ? storedReceiptState : 'all';
   const partnerLabel = operationPartnerLabel(kind);
   const stateKeys = listStateKeys('inventory', listPage, scopedToWarehouse ? null : companyId);
   const sort = useListSort(stateKeys.sort, operationsSortOptions(partnerLabel));
@@ -218,7 +240,7 @@ export function WarehouseOperationsPanel({
 
   React.useEffect(() => {
     setPage(1);
-  }, [filterWarehouseId, filterStatus, kind, warehouseId, period.from, period.to, sort.sortKey]);
+  }, [filterWarehouseId, filterStatus, filterReceiptState, kind, warehouseId, period.from, period.to, sort.sortKey]);
 
   const listWarehouseId = scopedToWarehouse
     ? warehouseId
@@ -231,6 +253,7 @@ export function WarehouseOperationsPanel({
     warehouseId: listWarehouseId,
     kind,
     status: filterStatus !== 'all' ? filterStatus : undefined,
+    receiptState: filterReceiptState !== 'all' ? filterReceiptState : undefined,
     search: search || undefined,
     // A day is the user's whole day (its local start and end), as the moves report reads it.
     occurredAtFrom: localDayBoundary(period.from),
@@ -498,6 +521,7 @@ export function WarehouseOperationsPanel({
     operationsExportColumns({
       partnerLabel,
       warehouseName: (id) => (id ? (warehouseNameById.get(id) ?? '') : ''),
+      receiptState: isPurchaseOrder,
     }),
     columnVisibility.isVisible,
   );
@@ -505,12 +529,18 @@ export function WarehouseOperationsPanel({
     search ? `بحث: ${search}` : null,
     filterWarehouseId !== 'all' ? `المستودع: ${warehouseNameById.get(filterWarehouseId) ?? ''}` : null,
     filterStatus !== 'all' ? `الحالة: ${WAREHOUSE_OPERATION_STATUS_LABELS_AR[filterStatus]}` : null,
+    filterReceiptState !== 'all'
+      ? `الاستلام: ${PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR[filterReceiptState]}`
+      : null,
     period.from || period.to ? `الفترة: ${period.from || '…'} — ${period.to || '…'}` : null,
     sort.label,
     group.label,
   ].filter((line): line is string => Boolean(line));
   const activeFilterCount =
-    (filterWarehouseId !== 'all' ? 1 : 0) + (filterStatus !== 'all' ? 1 : 0) + (period.from || period.to ? 1 : 0);
+    (filterWarehouseId !== 'all' ? 1 : 0) +
+    (filterStatus !== 'all' ? 1 : 0) +
+    (filterReceiptState !== 'all' ? 1 : 0) +
+    (period.from || period.to ? 1 : 0);
 
   /** Every filtered document (all pages) in the screen's order, grouped like the screen. */
   const getExportRows = async () => {
@@ -544,14 +574,16 @@ export function WarehouseOperationsPanel({
           <ListGroupMenu model={group} />
           <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
           {headerExtra}
-          <PageHeaderPrimaryButton
-            icon={Plus}
-            label={meta.createLabel}
-            onClick={() => setOpen(true)}
-            disabled={!companyId || allWarehouses.length === 0}
-          >
-            {meta.createLabel}
-          </PageHeaderPrimaryButton>
+          {canCreate ? (
+            <PageHeaderPrimaryButton
+              icon={Plus}
+              label={meta.createLabel}
+              onClick={() => setOpen(true)}
+              disabled={!companyId || allWarehouses.length === 0}
+            >
+              {meta.createLabel}
+            </PageHeaderPrimaryButton>
+          ) : null}
           <RegisterExportMenu
             title={`سجل ${meta.title}`}
             fileName={`inventory-${kind}`}
@@ -565,6 +597,7 @@ export function WarehouseOperationsPanel({
       ),
     [
       scopedToWarehouse,
+      canCreate,
       meta.createLabel,
       meta.title,
       companyId,
@@ -595,6 +628,7 @@ export function WarehouseOperationsPanel({
             setSearchInput('');
             setFilterWarehouseId('all');
             setFilterStatus('all');
+            setFilterReceiptState('all');
             setPeriod({ from: '', to: '' });
           }}
           showStatusSection={false}
@@ -630,10 +664,40 @@ export function WarehouseOperationsPanel({
                 })),
               ],
             },
+            ...(isPurchaseOrder
+              ? [
+                  {
+                    id: 'receiptState',
+                    value: filterReceiptState,
+                    onChange: (value: string) =>
+                      setFilterReceiptState(value as PurchaseOrderReceiptState | 'all'),
+                    placeholder: 'كل حالات الاستلام',
+                    options: [
+                      { value: 'all', label: 'كل حالات الاستلام' },
+                      ...(
+                        Object.keys(PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR) as PurchaseOrderReceiptState[]
+                      ).map((state) => ({
+                        value: state,
+                        label: PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR[state],
+                      })),
+                    ],
+                  },
+                ]
+              : []),
           ]}
         />
       ),
-    [scopedToWarehouse, searchInput, filterWarehouseId, filterStatus, allWarehouses, period.from, period.to],
+    [
+      scopedToWarehouse,
+      searchInput,
+      filterWarehouseId,
+      filterStatus,
+      filterReceiptState,
+      isPurchaseOrder,
+      allWarehouses,
+      period.from,
+      period.to,
+    ],
   );
 
   React.useEffect(() => {
@@ -648,12 +712,7 @@ export function WarehouseOperationsPanel({
       quantity: isCountLike ? 0 : 1,
       theoreticalQuantity: isCountLike ? 0 : undefined,
       sourceWarehouseId: defaultWh,
-      sourceDocument:
-        kind === 'replenishment'
-          ? 'تجديد المخزون يدويًا'
-          : kind === 'purchase'
-            ? 'أمر شراء'
-            : '',
+      sourceDocument: '',
     });
   }, [open, form, isCountLike, kind, warehouseId, allWarehouses]);
 
@@ -969,9 +1028,12 @@ export function WarehouseOperationsPanel({
       title: 'الحالة',
       sortKey: 'status',
       render: (row) => (
-        <Badge variant={statusBadgeVariant(row.status)}>
-          {WAREHOUSE_OPERATION_STATUS_LABELS_AR[row.status]}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-1">
+          <Badge variant={statusBadgeVariant(row.status)}>
+            {WAREHOUSE_OPERATION_STATUS_LABELS_AR[row.status]}
+          </Badge>
+          <ReceiptStateBadge operation={row} />
+        </div>
       ),
     },
     {
@@ -1008,6 +1070,7 @@ export function WarehouseOperationsPanel({
             <Badge variant={statusBadgeVariant(row.status)}>
               {WAREHOUSE_OPERATION_STATUS_LABELS_AR[row.status]}
             </Badge>
+            <ReceiptStateBadge operation={row} />
             {row.status === 'done' ? null : (
               <Button
                 variant="ghost"
@@ -1703,10 +1766,12 @@ export function WarehouseOperationsPanel({
               ) : undefined
             }
             actions={
-              <Button onClick={() => setOpen(true)} disabled={!companyId || allWarehouses.length === 0}>
-                <Plus className="h-4 w-4" />
-                {meta.createLabel}
-              </Button>
+              canCreate ? (
+                <Button onClick={() => setOpen(true)} disabled={!companyId || allWarehouses.length === 0}>
+                  <Plus className="h-4 w-4" />
+                  {meta.createLabel}
+                </Button>
+              ) : undefined
             }
           />
         </div>
@@ -1744,6 +1809,12 @@ export function WarehouseOperationsPanel({
 
   return (
     <div className="flex flex-col gap-4">
+      {meta.retired ? (
+        <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          لم يعد يُنشأ هذا النوع من المستندات، والمستندات السابقة تبقى هنا للعرض والتصديق والتراجع.
+          للشراء: أنشئ «أمر شراء» ثم استلمه بسند استلام. لإدخال بضاعة مباشرة: استخدم «استلام مخزون».
+        </p>
+      ) : null}
       {isError ? <p className="text-sm text-destructive">تعذر تحميل {meta.title}.</p> : null}
 
       {groupBy ? (

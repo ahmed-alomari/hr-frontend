@@ -8,6 +8,7 @@ export function productMoveRequestRelatedDoc(
   kind: WarehouseOperationKind,
 ): ProductRelatedDocKey | null {
   switch (kind) {
+    case 'purchase_order':
     case 'replenishment':
       return 'replenish';
     case 'receipt':
@@ -32,7 +33,7 @@ export function productMoveRequestListRestore(kind: WarehouseOperationKind): {
   movesListKind: ProductMovesListKind | null;
 } {
   const relatedDoc = productMoveRequestRelatedDoc(kind);
-  if (kind === 'replenishment') {
+  if (kind === 'purchase_order' || kind === 'replenishment') {
     return { relatedDoc, openReplenishmentList: true, movesListKind: null };
   }
   if (isProductMovesListKind(kind)) {

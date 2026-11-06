@@ -586,7 +586,7 @@ export function ProductDetailPage({ productId }: Props) {
         onCreateRequest={() => {
           setReplenishmentListOpen(false);
           setActiveRelatedDoc('replenish');
-          setMoveRequestKind('replenishment');
+          setMoveRequestKind('purchase_order');
         }}
       />
 

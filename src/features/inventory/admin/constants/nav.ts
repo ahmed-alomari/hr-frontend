@@ -104,7 +104,17 @@ export const inventoryAdminNavGroups: InventoryAdminNavGroup[] = [
         items: [opItem('adjustment'), opItem('physical_count'), opItem('scrap')],
       },
       {
-        items: [opItem('purchase_order'), opItem('purchase'), opItem('replenishment'), opItem('opening')],
+        items: [
+          opItem('purchase_order'),
+          {
+            labelAr: 'تجديد المخزون',
+            href: inventoryAdminRoutes.operationsForKind(
+              WAREHOUSE_OPERATION_KIND_META.replenishment.pathSegment,
+            ),
+            icon: OP_ICONS.replenishment,
+          },
+          opItem('opening'),
+        ],
       },
     ],
   },

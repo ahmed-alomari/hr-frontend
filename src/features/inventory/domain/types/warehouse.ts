@@ -175,8 +175,32 @@ export type WarehouseOperation = TenantScoped & {
   totalQuantity?: number;
   /** Fetch full document before editing when true. */
   linesPartial?: boolean;
+  /** Purchase order: when its remainder was closed (the rest will not arrive). */
+  receiptsClosedAt?: string | null;
+  /** Receipt: the receipt of the same purchase order whose shortfall it brings. */
+  backorderOfId?: string | null;
+  /** Confirmed purchase order only; null otherwise. */
+  receiptState?: PurchaseOrderReceiptState | null;
+  /** Purchase order: totals across its lines. */
+  orderedQuantity?: number | null;
+  receivedQuantity?: number | null;
   createdAt: string;
   updatedAt: string;
+};
+
+/** How far a confirmed purchase order has been received (server-derived). */
+export type PurchaseOrderReceiptState = 'pending' | 'partial' | 'received' | 'closed';
+
+/** A product at or below its low-stock threshold, counting open purchase orders. */
+export type ReplenishmentSuggestion = {
+  productId: string;
+  productName: string;
+  sku: string;
+  onHand: number;
+  onOrder: number;
+  threshold: number;
+  suggestedQuantity: number;
+  hasVariants: boolean;
 };
 
 export type WarehouseOperationLinesMode = 'full' | 'preview' | 'none';
@@ -190,6 +214,10 @@ export type WarehouseOperationListQuery = {
   productId?: string;
   /** The linked contact (supplier, customer, …). */
   partnerId?: string;
+  /** Documents with a line received against this purchase order. */
+  purchaseOrderId?: string;
+  /** Confirmed purchase orders in this receipt state. */
+  receiptState?: PurchaseOrderReceiptState;
   occurredAtFrom?: string;
   occurredAtTo?: string;
   search?: string;
@@ -212,4 +240,10 @@ export type CreateWarehouseOperationInput = Omit<
   WarehouseOperation,
   'id' | 'createdAt' | 'updatedAt' | 'reference'
 >;
-export type UpdateWarehouseOperationInput = Partial<CreateWarehouseOperationInput>;
+export type UpdateWarehouseOperationInput = Partial<CreateWarehouseOperationInput> & {
+  /**
+   * Posting a receipt of purchase orders with less than they still expect:
+   * `backorder` (default) leaves the rest on a new receipt, `close` closes it.
+   */
+  receiptRemainder?: 'backorder' | 'close';
+};

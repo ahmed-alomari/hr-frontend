@@ -1,5 +1,5 @@
-import { InventoryOperationKindPage } from '@/features/inventory/admin/operations/components/inventory-operation-kind-page';
+import { ReplenishmentPage } from '@/features/inventory/admin/replenishment/components/replenishment-page';
 
 export default function Page() {
-  return <InventoryOperationKindPage kind="replenishment" />;
+  return <ReplenishmentPage />;
 }

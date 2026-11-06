@@ -13,7 +13,10 @@ import {
   collectStockShortages,
   formatStockShortageMessage,
 } from '@/features/inventory/admin/operations/lib/validate-operation-stock';
-import { REPLENISHMENT_SOURCE_DOCUMENT } from '@/features/catalog/products/constants/replenishment';
+import {
+  PRODUCT_PAGE_REPLENISHMENT_SOURCE_DOCUMENT,
+  REPLENISHMENT_SOURCE_DOCUMENT,
+} from '@/features/catalog/products/constants/replenishment';
 import { WAREHOUSE_OPERATION_KIND_META } from '@/features/inventory/domain/constants/warehouse-operation-kinds';
 import type { ProductFormInput } from '@/features/catalog/products/schemas/product-schema';
 import type {
@@ -91,6 +94,14 @@ const STOCKABLE_LOCATION_TYPES = new Set<WarehouseLocationType>([
   'production',
   'supplier',
 ]);
+
+function sourceDocumentFor(kind: WarehouseOperationKind): string {
+  if (kind === 'purchase_order') return PRODUCT_PAGE_REPLENISHMENT_SOURCE_DOCUMENT;
+  if (kind === 'replenishment') return REPLENISHMENT_SOURCE_DOCUMENT;
+  if (kind === 'receipt') return 'استلام مخزون يدوي';
+  if (kind === 'issue') return 'صرف مخزون يدوي';
+  return 'نقل بين مواقع يدوي';
+}
 
 function newLineId() {
   return `opl-${Math.random().toString(36).slice(2, 9)}`;
@@ -255,7 +266,11 @@ export function ProductStockMoveRequestDialog({
     stockEffect === 'outbound' || stockEffect === 'move' || stockEffect === 'transfer';
   const title = kindMeta.createLabel;
   const Icon =
-    stockEffect === 'inbound' ? RefreshCw : stockEffect === 'outbound' ? PackageMinus : ArrowLeftRight;
+    stockEffect === 'inbound' || stockEffect === 'order'
+      ? RefreshCw
+      : stockEffect === 'outbound'
+        ? PackageMinus
+        : ArrowLeftRight;
   const hasQty = multiProductMode
     ? lineDrafts.some((line) => line.quantity > 0)
     : lines.some((line) => line.quantity > 0);
@@ -380,7 +395,7 @@ export function ProductStockMoveRequestDialog({
           kind,
           status: 'draft',
           occurredAt: new Date().toISOString(),
-          sourceDocument: 'نقل بين مواقع يدوي',
+          sourceDocument: sourceDocumentFor(kind),
           notes: `طلب ${kindMeta.labelAr} — ${opLines.length} أصناف`,
           lines: opLines,
         });
@@ -457,14 +472,7 @@ export function ProductStockMoveRequestDialog({
         kind,
         status: 'draft',
         occurredAt: new Date().toISOString(),
-        sourceDocument:
-          kind === 'replenishment'
-            ? REPLENISHMENT_SOURCE_DOCUMENT
-            : kind === 'receipt'
-              ? 'استلام مخزون يدوي'
-              : kind === 'issue'
-                ? 'صرف مخزون يدوي'
-                : 'نقل بين مواقع يدوي',
+        sourceDocument: sourceDocumentFor(kind),
         notes: `طلب ${kindMeta.labelAr} للمنتج ${productNameAr} (${stockMode === 'product' ? 'منتج أساسي' : 'متغيرات'})`,
         lines: opLines,
       });

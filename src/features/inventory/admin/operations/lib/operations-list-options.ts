@@ -2,7 +2,10 @@ import type { ListColumnOption } from '@/components/ui/list-columns-picker';
 import { dateListGroupOptions, type ListGroupOption } from '@/components/ui/list-group';
 import type { ListSortOption } from '@/components/ui/list-sort';
 import type { RegisterExportColumn } from '@/components/pdf/lib/register-export-rows';
-import { WAREHOUSE_OPERATION_STATUS_LABELS_AR } from '@/features/inventory/domain/constants/warehouse-operation-status';
+import {
+  PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR,
+  WAREHOUSE_OPERATION_STATUS_LABELS_AR,
+} from '@/features/inventory/domain/constants/warehouse-operation-status';
 import type { WarehouseOperation, WarehouseOperationStatus } from '@/features/inventory/domain/types/warehouse';
 import { formatDateTime } from '@/shared/utils';
 
@@ -50,6 +53,8 @@ export const OPERATIONS_COLUMN_OPTIONS: readonly ListColumnOption[] = [
 export function operationsExportColumns(opts: {
   partnerLabel: string;
   warehouseName: (id: string | undefined) => string;
+  /** Purchase orders: their receiving progress. */
+  receiptState?: boolean;
 }): RegisterExportColumn<WarehouseOperation>[] {
   return [
     { label: 'المرجع', kind: 'code', value: (o) => o.reference || '' },
@@ -81,5 +86,15 @@ export function operationsExportColumns(opts: {
       kind: 'status',
       value: (o) => WAREHOUSE_OPERATION_STATUS_LABELS_AR[o.status] ?? o.status,
     },
+    ...(opts.receiptState
+      ? [
+          {
+            label: 'الاستلام',
+            kind: 'status' as const,
+            value: (o: WarehouseOperation) =>
+              o.receiptState ? PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR[o.receiptState] : '',
+          },
+        ]
+      : []),
   ];
 }

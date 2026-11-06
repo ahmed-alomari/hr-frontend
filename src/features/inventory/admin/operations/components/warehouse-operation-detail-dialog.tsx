@@ -13,13 +13,21 @@ import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import { useWarehouseOperationMutations } from '@/features/inventory/admin/operations/hooks/use-warehouse-operation-mutations';
 import { useOpenOperationProductReservations } from '@/features/inventory/admin/operations/hooks/use-open-operation-product-reservations';
 import {
+  changePurchaseOrderLinePrice,
+  closePurchaseOrderReceipts,
   fetchWarehouseOperationAudit,
+  fetchWarehouseOperationLine,
   receiveWarehouseTransfer,
+  reopenPurchaseOrderReceipts,
   warehouseOperationsApi,
 } from '@/features/inventory/admin/operations/lib/api/warehouse-operations';
 import { useCan } from '@/features/auth/hooks/use-can';
 import { warehouseOperationsQueryKeys } from '@/features/inventory/admin/hooks/query-keys';
 import { operationNeedsFullLinesFetch } from '@/features/inventory/admin/operations/lib/operation-list-line-totals';
+import {
+  fromDateTimeLocalInput,
+  toDateTimeLocalInput,
+} from '@/features/inventory/admin/operations/lib/datetime-local';
 import { inventoryStockService } from '@/features/inventory/services/inventory-stock.service';
 import {
   collectStockShortages,
@@ -29,13 +37,17 @@ import {
 } from '@/features/inventory/admin/operations/lib/validate-operation-stock';
 import { WAREHOUSE_OPERATION_KIND_META } from '@/features/inventory/domain/constants/warehouse-operation-kinds';
 import {
+  PURCHASE_ORDER_RECEIPT_STATE_BADGE,
+  PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR,
   WAREHOUSE_OPERATION_FLOW_STEPS,
   WAREHOUSE_OPERATION_KIND_LABELS_AR,
   WAREHOUSE_OPERATION_STATUS_LABELS_AR,
 } from '@/features/inventory/domain/constants/warehouse-operation-status';
 import type {
+  UpdateWarehouseOperationInput,
   WarehouseOperation,
   WarehouseOperationLine,
+  WarehouseOperationListQuery,
   WarehouseOperationStatus,
 } from '@/features/inventory/domain/types/warehouse';
 import { Button } from '@/components/ui/button';
@@ -61,7 +73,9 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
+  DialogHeader,
   DialogTitle,
   dialogMobileFullScreenClass,
   dialogShellBodyClass,
@@ -352,6 +366,52 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
     queryFn: () => fetchWarehouseOperationAudit(operation!.id),
     enabled: open && Boolean(companyId && operation?.id),
   });
+  /**
+   * A posted purchase order: its received quantities change as its receipts
+   * are posted, so they are read fresh, and its receipts (drafts included)
+   * are listed so a second click opens the open receipt instead of a copy.
+   */
+  const isPostedPurchaseOrder = kind === 'purchase_order' && status === 'done';
+  const { data: purchaseOrderFresh } = useQuery({
+    queryKey: [...warehouseOperationsQueryKeys.detail(companyId, operation?.id ?? ''), 'po-progress'],
+    queryFn: () => warehouseOperationsApi.getById(companyId, operation!.id),
+    enabled: open && isPostedPurchaseOrder && Boolean(companyId && operation?.id),
+  });
+  const linkedReceiptsQuery: WarehouseOperationListQuery = {
+    companyId,
+    kind: 'receipt',
+    purchaseOrderId: operation?.id,
+    linesMode: 'preview',
+    limit: 50,
+    sortBy: 'occurredAt',
+    sortDir: 'desc',
+  };
+  const { data: linkedReceiptsData, isLoading: linkedReceiptsLoading } = useQuery({
+    queryKey: warehouseOperationsQueryKeys.list(linkedReceiptsQuery),
+    queryFn: () => warehouseOperationsApi.getAll(linkedReceiptsQuery),
+    enabled: open && isPostedPurchaseOrder && Boolean(companyId && operation?.id),
+  });
+  const linkedReceipts = linkedReceiptsData?.items ?? [];
+  const openLinkedReceipt = linkedReceipts.find(
+    (row) => row.status === 'draft' || row.status === 'ready',
+  );
+  const [linkedOperation, setLinkedOperation] = React.useState<WarehouseOperation | null>(null);
+  /** A confirmed order line's new price, being entered. */
+  const [priceEdit, setPriceEdit] = React.useState<{ lineId: string; productName: string; value: string } | null>(null);
+  const [pricePending, setPricePending] = React.useState(false);
+  const [closurePending, setClosurePending] = React.useState(false);
+  /** A receipt posting less than its orders' remainder: a backorder for the rest, or close it. */
+  const [partialPrompt, setPartialPrompt] = React.useState<{
+    orderIds: string[];
+    received: number;
+    remaining: number;
+  } | null>(null);
+  const poReceiptsClosed = Boolean(
+    purchaseOrderFresh ? purchaseOrderFresh.receiptsClosedAt : operation?.receiptsClosedAt,
+  );
+  const poReceiptState = isPostedPurchaseOrder
+    ? ((purchaseOrderFresh ?? operation)?.receiptState ?? null)
+    : null;
   const [tab, setTab] = React.useState('operations');
   /** Phones: the document fields fold away so the lines come first (open for a draft). */
   const [phoneDetailsOpen, setPhoneDetailsOpen] = React.useState(false);
@@ -377,7 +437,7 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
     setPartnerId(documentOperation.partnerId ?? '');
     setPartnerName(documentOperation.partnerName ?? '');
     setSourceDocument(documentOperation.sourceDocument ?? '');
-    setOccurredAt(documentOperation.occurredAt.slice(0, 16));
+    setOccurredAt(toDateTimeLocalInput(documentOperation.occurredAt));
     // Avoid flicker from stale list props:
     // - after validate: local done must not regress to ready
     // - after undo: local ready must not jump back to done
@@ -721,17 +781,17 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
   const destinationLine = lines[0] ?? documentOperation.lines[0];
 
   async function savePatch(
-    patch: Partial<WarehouseOperation> & { lines?: WarehouseOperation['lines'] },
+    patch: UpdateWarehouseOperationInput,
     successMessage: string,
     options?: { includeLines?: boolean },
-  ) {
-    if (!companyId || !documentOperation) return;
+  ): Promise<boolean> {
+    if (!companyId || !documentOperation) return false;
     const includeLines = options?.includeLines === true || patch.lines !== undefined;
 
     // Backend locks fully validated ops — use undoValidation for done → ready.
     if (status === 'done' || documentOperation?.status === 'done') {
       toast.error('لا يمكن تعديل مستند منتهٍ. استخدم «تراجع عن التصديق» أولاً.');
-      return;
+      return false;
     }
 
     try {
@@ -745,20 +805,22 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
           partnerId: partnerId.trim() || null,
           partnerName: partnerName.trim() || undefined,
           sourceDocument: sourceDocument.trim() || undefined,
-          occurredAt: occurredAt ? new Date(occurredAt).toISOString() : documentOperation.occurredAt,
+          occurredAt: fromDateTimeLocalInput(occurredAt) ?? documentOperation.occurredAt,
         },
       });
       if (!updated) {
         toast.error('تعذر تحديث المستند.');
-        return;
+        return false;
       }
       setStatus(updated.status);
       setLines(updated.lines.map((line) => ({ ...line })));
       setHeaderFromLocationId(updated.lines[0]?.fromLocationId ?? '');
       setHeaderToLocationId(updated.lines[0]?.toLocationId ?? '');
       toast.success(successMessage);
+      return true;
     } catch {
       // ApiError already toasted in useWarehouseOperationMutations.onError
+      return false;
     }
   }
 
@@ -793,7 +855,37 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
     }
   }
 
-  async function validate(confirmedDuplicateOpening = false) {
+  /**
+   * A receipt filling purchase-order lines with less than their remainder:
+   * what it leaves on the orders. Read fresh, since other receipts may have
+   * been posted since this one was opened.
+   */
+  async function purchaseOrderShortfall(
+    linesToPost: WarehouseOperationLine[],
+  ): Promise<{ orderIds: string[]; received: number; remaining: number } | null> {
+    const linked = linesToPost.filter((line) => line.purchaseOrderLineId);
+    if (kind !== 'receipt' || linked.length === 0) return null;
+    const orderLines = await Promise.all(
+      linked.map((line) => fetchWarehouseOperationLine(companyId, line.purchaseOrderLineId!)),
+    );
+    const orderIds = new Set<string>();
+    let received = 0;
+    let remaining = 0;
+    linked.forEach((line, index) => {
+      const orderLine = orderLines[index];
+      if (!orderLine) return;
+      const left = Math.max(0, orderedQty(orderLine) - (orderLine.receivedQuantity ?? 0));
+      received += line.quantity;
+      remaining += left;
+      if (line.quantity < left - 1e-6) orderIds.add(orderLine.operationId);
+    });
+    return orderIds.size > 0 ? { orderIds: [...orderIds], received, remaining } : null;
+  }
+
+  async function validate(
+    confirmedDuplicateOpening = false,
+    receiptRemainder?: 'backorder' | 'close',
+  ) {
     if (kind === 'opening' && !confirmedDuplicateOpening) {
       const others = await otherOpeningReferences();
       if (others.length > 0) {
@@ -822,7 +914,63 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
       return;
     }
     if (!(await assertStockBeforeSave(linesToValidate))) return;
-    await savePatch({ status: 'done', lines: linesToValidate }, 'تم تصديق المستند');
+    if (!receiptRemainder) {
+      let shortfall: Awaited<ReturnType<typeof purchaseOrderShortfall>>;
+      try {
+        shortfall = await purchaseOrderShortfall(linesToValidate);
+      } catch {
+        toast.error('تعذر قراءة المتبقي من أمر الشراء. حاول مرة أخرى.');
+        return;
+      }
+      if (shortfall) {
+        setPartialPrompt(shortfall);
+        return;
+      }
+    }
+    setPartialPrompt(null);
+    await savePatch(
+      { status: 'done', lines: linesToValidate, ...(receiptRemainder ? { receiptRemainder } : {}) },
+      receiptRemainder === 'close'
+        ? 'تم تصديق الاستلام وأُغلق المتبقي من أمر الشراء'
+        : receiptRemainder === 'backorder'
+          ? 'تم تصديق الاستلام، وأُنشئ سند استلام للمتبقي'
+          : 'تم تصديق المستند',
+    );
+  }
+
+  async function setPurchaseOrderReceiptsClosed(close: boolean) {
+    if (!companyId || !documentOperation || closurePending) return;
+    setClosurePending(true);
+    try {
+      const updated = close
+        ? await closePurchaseOrderReceipts(companyId, documentOperation.id)
+        : await reopenPurchaseOrderReceipts(companyId, documentOperation.id);
+      queryClient.setQueryData(
+        [...warehouseOperationsQueryKeys.detail(companyId, documentOperation.id), 'po-progress'],
+        updated,
+      );
+      void queryClient.invalidateQueries({ queryKey: warehouseOperationsQueryKeys.root(companyId) });
+      toast.success(
+        close
+          ? 'أُغلق المتبقي من أمر الشراء؛ لن يُنتظر استلامه.'
+          : 'أُعيد فتح المتبقي؛ يمكن استلامه الآن.',
+      );
+    } catch (error) {
+      const { displayMessage } = handleApiError(error, 'ecommerce.warehouseOperations.update');
+      toast.error(displayMessage);
+    } finally {
+      setClosurePending(false);
+    }
+  }
+
+  function confirmCloseReceipts() {
+    toast.warning(
+      `سيُغلق المتبقي (${formatLineQuantity(purchaseOrderRemaining)}) من أمر الشراء ولن يُستلم منه شيء بعد ذلك. يمكن إعادة فتحه لاحقاً.`,
+      {
+        duration: 15_000,
+        action: { label: 'إغلاق المتبقي', onClick: () => void setPurchaseOrderReceiptsClosed(true) },
+      },
+    );
   }
 
   async function undoValidation() {
@@ -919,7 +1067,7 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
   }
 
   function lineProductField(line: WarehouseOperationLine) {
-    return canEditProducts ? (
+    return canEditProducts && !line.purchaseOrderLineId ? (
       <div className="space-y-1">
         <ProductSinglePicker
           companyId={companyId ?? ''}
@@ -959,7 +1107,7 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
   }
 
   function lineVariantField(line: WarehouseOperationLine) {
-    return canEditProducts && line.productId ? (
+    return canEditProducts && line.productId && !line.purchaseOrderLineId ? (
       <OperationLineVariantSelect
         companyId={companyId ?? ''}
         productId={line.productId}
@@ -987,7 +1135,7 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
   ) {
     return (
       <>
-        {editable && status !== 'ready' ? (
+        {editable && status !== 'ready' && !line.purchaseOrderLineId ? (
           <FlexibleQuantityInput
             className={
               phone
@@ -1055,8 +1203,9 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
 
   function lineCostField(line: WarehouseOperationLine, view: ReturnType<typeof lineView>) {
     // The purchase cost stays editable until posting (draft and ready): a
-    // ready document without it could not be validated otherwise.
-    return editable ? (
+    // ready document without it could not be validated otherwise. A line
+    // received against a purchase order takes the order's price.
+    return editable && !line.purchaseOrderLineId ? (
       <OperationUnitCostInput
         value={line.unitCost ?? ''}
         disabled={isSaving || !line.productId}
@@ -1071,6 +1220,7 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
   }
 
   function lineRemoveButton(line: WarehouseOperationLine, phone = false) {
+    if (line.purchaseOrderLineId) return null;
     return (
       <Button
         type="button"
@@ -1090,16 +1240,41 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
     return (line.demandQuantity ?? 0) > 0 ? (line.demandQuantity ?? 0) : line.quantity;
   }
 
+  /** Received so far on a purchase-order line: posted receipts only, read fresh. */
+  function receivedQty(line: WarehouseOperationLine): number {
+    const fresh = purchaseOrderFresh?.lines.find((row) => row.id === line.id);
+    return fresh?.receivedQuantity ?? line.receivedQuantity ?? 0;
+  }
+
   function poProgress(line: WarehouseOperationLine) {
     if (kind !== 'purchase_order') return null;
     const ordered = orderedQty(line);
-    const received = line.receivedQuantity ?? 0;
+    const received = receivedQty(line);
     const left = Math.max(0, ordered - received);
+    const canChangePrice =
+      isPostedPurchaseOrder && canPost && canReadCost && !poReceiptsClosed && left > 1e-6;
     return (
-      <p className="mt-1 text-xs text-muted-foreground">
-        المطلوب {formatLineQuantity(ordered)} · المستلم {formatLineQuantity(received)} · المتبقي{' '}
-        {formatLineQuantity(left)}
-      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+        <span>
+          المطلوب {formatLineQuantity(ordered)} · المستلم {formatLineQuantity(received)} · المتبقي{' '}
+          {formatLineQuantity(left)}
+        </span>
+        {canChangePrice ? (
+          <button
+            type="button"
+            className="text-primary underline-offset-2 hover:underline"
+            onClick={() =>
+              setPriceEdit({
+                lineId: line.id,
+                productName: line.productName ?? '',
+                value: line.unitCost ?? '',
+              })
+            }
+          >
+            تعديل السعر
+          </button>
+        ) : null}
+      </div>
     );
   }
 
@@ -1149,53 +1324,48 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
     );
   }
 
-  async function createReceiptFromOrder() {
-    if (!companyId || !documentOperation) return;
-    const stockBin = filterOperationToLocations('receipt', locations)[0];
-    if (!stockBin) {
-      toast.error('أضف موقعاً داخلياً في المستودع قبل إنشاء الاستلام.');
+  const purchaseOrderRemaining = lines.reduce(
+    (sum, line) => sum + (line.productId ? Math.max(0, orderedQty(line) - receivedQty(line)) : 0),
+    0,
+  );
+
+  /** A receipt of purchase orders: opened, cancelled and closed by the orders only. */
+  const isPurchaseOrderReceipt =
+    kind === 'receipt' &&
+    (lines.some((line) => line.purchaseOrderLineId) || Boolean(documentOperation.backorderOfId));
+
+  /** The receipt a click on «الاستلامات» opens: the one waiting, else the latest. */
+  const activeLinkedReceipts = linkedReceipts.filter((row) => row.status !== 'cancelled');
+  const receiptToOpen = openLinkedReceipt ?? activeLinkedReceipts[0] ?? null;
+
+  async function savePurchaseOrderLinePrice() {
+    if (!companyId || !documentOperation || !priceEdit || pricePending) return;
+    const unitCost = lineUnitCostNumber(priceEdit.value);
+    if (unitCost == null || unitCost < 0) {
+      toast.error('أدخل سعراً صحيحاً.');
       return;
     }
-    const remaining = lines
-      .filter((line) => line.productId && orderedQty(line) - (line.receivedQuantity ?? 0) > 1e-6)
-      .map((line) => {
-        const quantity = orderedQty(line) - (line.receivedQuantity ?? 0);
-        return {
-          id: newOperationLineDraftId(),
-          productId: line.productId,
-          variantId: line.variantId,
-          productName: line.productName,
-          sku: line.sku,
-          demandQuantity: quantity,
-          quantity,
-          productUomLineId: line.productUomLineId,
-          toLocationId: stockBin.id,
-          unitCost: canReadCost ? line.unitCost : undefined,
-          purchaseOrderLineId: line.id,
-        };
-      });
-    if (remaining.length === 0) {
-      toast.error('لا توجد كمية متبقية على أمر الشراء.');
-      return;
-    }
+    setPricePending(true);
     try {
-      const created = await warehouseOperationsApi.create({
+      const updated = await changePurchaseOrderLinePrice(
         companyId,
-        warehouseId: documentOperation.warehouseId,
-        kind: 'receipt',
-        status: 'draft',
-        occurredAt: new Date().toISOString(),
-        partnerId: documentOperation.partnerId,
-        partnerName: documentOperation.partnerName,
-        sourceDocument: documentOperation.reference,
-        notes: `استلام من ${documentOperation.reference}`,
-        lines: remaining,
-      });
+        documentOperation.id,
+        priceEdit.lineId,
+        unitCost,
+      );
+      setLines(updated.lines.map((line) => ({ ...line })));
+      queryClient.setQueryData(
+        [...warehouseOperationsQueryKeys.detail(companyId, documentOperation.id), 'po-progress'],
+        updated,
+      );
       void queryClient.invalidateQueries({ queryKey: warehouseOperationsQueryKeys.root(companyId) });
-      toast.success(`أُنشئ سند الاستلام ${created.reference}. راجع الكمية والتكلفة ثم صدّقه.`);
+      setPriceEdit(null);
+      toast.success('تم تعديل السعر؛ تُستلم الكمية المتبقية به، والمستلم يبقى بسعره.');
     } catch (error) {
-      const { displayMessage } = handleApiError(error, 'ecommerce.warehouseOperations.create');
+      const { displayMessage } = handleApiError(error, 'ecommerce.warehouseOperations.update');
       toast.error(displayMessage);
+    } finally {
+      setPricePending(false);
     }
   }
 
@@ -1242,7 +1412,7 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
           إرجاع إلى مسودة
         </Button>
       ) : null}
-      {status === 'cancelled' && kind !== 'physical_count' ? (
+      {status === 'cancelled' && kind !== 'physical_count' && !isPurchaseOrderReceipt ? (
         <Button
           type="button"
           size="sm"
@@ -1277,7 +1447,7 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
           حفظ
         </Button>
       ) : null}
-      {status !== 'done' && status !== 'cancelled' ? (
+      {status !== 'done' && status !== 'cancelled' && !isPurchaseOrderReceipt ? (
         <Button
           type="button"
           size="sm"
@@ -1300,14 +1470,45 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
           تعبئة النظامي من المخزون
         </Button>
       ) : null}
-      {kind === 'purchase_order' && status === 'done' ? (
+      {isPostedPurchaseOrder &&
+      !linkedReceiptsLoading &&
+      receiptToOpen ? (
         <Button
           type="button"
           size="sm"
+          variant={openLinkedReceipt ? 'default' : 'outline'}
           disabled={isSaving}
-          onClick={() => void createReceiptFromOrder()}
+          onClick={() => setLinkedOperation(receiptToOpen)}
         >
-          إنشاء استلام للكمية المتبقية
+          {`الاستلامات (${activeLinkedReceipts.length})`}
+        </Button>
+      ) : null}
+      {isPostedPurchaseOrder &&
+      canPost &&
+      !linkedReceiptsLoading &&
+      !poReceiptsClosed &&
+      purchaseOrderRemaining > 1e-6 ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={isSaving || closurePending}
+          onClick={confirmCloseReceipts}
+        >
+          <X className="h-4 w-4" />
+          إغلاق المتبقي
+        </Button>
+      ) : null}
+      {isPostedPurchaseOrder && canPost && poReceiptsClosed && purchaseOrderRemaining > 1e-6 ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={isSaving || closurePending}
+          onClick={() => void setPurchaseOrderReceiptsClosed(false)}
+        >
+          <Undo2 className="h-4 w-4" />
+          إعادة فتح المتبقي
         </Button>
       ) : null}
       {kind === 'transfer' &&
@@ -1340,6 +1541,11 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
                 <Badge variant={statusBadgeVariant(status)}>
                   {WAREHOUSE_OPERATION_STATUS_LABELS_AR[status]}
                 </Badge>
+                {poReceiptState ? (
+                  <Badge variant={PURCHASE_ORDER_RECEIPT_STATE_BADGE[poReceiptState]}>
+                    {PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR[poReceiptState]}
+                  </Badge>
+                ) : null}
               </DialogTitle>
               <p className="text-xs text-muted-foreground">
                 {WAREHOUSE_OPERATION_KIND_LABELS_AR[kind]}
@@ -1798,6 +2004,56 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
                   ) : null}
                 </table>
               </div>
+
+              {isPostedPurchaseOrder ? (
+                <div className="space-y-2 rounded-xl border border-border/70 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="text-sm font-semibold">سندات الاستلام من هذا الأمر</h4>
+                    <span className="text-xs text-muted-foreground">
+                      {purchaseOrderRemaining <= 1e-6
+                        ? 'استُلم الأمر بالكامل'
+                        : poReceiptsClosed
+                          ? `أُغلق المتبقي ${formatLineQuantity(purchaseOrderRemaining)} — لن يُستلم`
+                          : `المتبقي ${formatLineQuantity(purchaseOrderRemaining)}`}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    الكمية لا تدخل المخزون ولا تُحسب «مستلمة» إلا بعد تصديق سند الاستلام.
+                  </p>
+                  {linkedReceiptsLoading ? (
+                    <p className="text-xs text-muted-foreground">جاري التحميل…</p>
+                  ) : linkedReceipts.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">لا توجد سندات استلام بعد.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {linkedReceipts.map((receipt) => (
+                        <li key={receipt.id}>
+                          <button
+                            type="button"
+                            className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 text-start text-sm hover:bg-muted/40"
+                            onClick={() => setLinkedOperation(receipt)}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span dir="ltr" className="font-medium">
+                                {receipt.reference}
+                              </span>
+                              <Badge variant={statusBadgeVariant(receipt.status)}>
+                                {WAREHOUSE_OPERATION_STATUS_LABELS_AR[receipt.status]}
+                              </Badge>
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatDateTime(receipt.occurredAt)}
+                              {receipt.totalQuantity != null
+                                ? ` · الكمية ${formatLineQuantity(receipt.totalQuantity)}`
+                                : ''}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
             </TabsContent>
 
             <TabsContent value="notes" className="mt-3">
@@ -1864,6 +2120,72 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
         status={scanStatus ? <p className="font-medium">{scanStatus}</p> : null}
         onCode={(code) => void addScannedCode(code)}
       />
+      {isPostedPurchaseOrder ? (
+        <WarehouseOperationDetailDialog
+          open={Boolean(linkedOperation)}
+          onOpenChange={(next) => {
+            if (!next) setLinkedOperation(null);
+          }}
+          operation={linkedOperation}
+        />
+      ) : null}
+      <Dialog open={Boolean(partialPrompt)} onOpenChange={(next) => !next && setPartialPrompt(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>استلام أقل من المتبقي في أمر الشراء</DialogTitle>
+            <DialogDescription>
+              {partialPrompt
+                ? `يستلم هذا السند ${formatLineQuantity(partialPrompt.received)} من أصل المتبقي ${formatLineQuantity(partialPrompt.remaining)}. هل ستصل بقية البضاعة لاحقاً؟`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            «إنشاء استلام متبقٍّ» ينشئ سند استلام جديداً بالكمية الباقية وينتظرها. «لا استلام متبقٍّ» يعني أن المورد
+            لن يرسل البقية: يُغلق المتبقي من أمر الشراء ولا يُحسب في تجديد المخزون، ويمكن إعادة فتحه من الأمر لاحقاً.
+          </p>
+          <DialogFooter className="gap-2 sm:justify-start">
+            <Button type="button" disabled={isSaving} onClick={() => void validate(true, 'backorder')}>
+              إنشاء استلام متبقٍّ
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSaving}
+              onClick={() => void validate(true, 'close')}
+            >
+              لا استلام متبقٍّ
+            </Button>
+            <Button type="button" variant="ghost" disabled={isSaving} onClick={() => setPartialPrompt(null)}>
+              إلغاء
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(priceEdit)} onOpenChange={(next) => !next && setPriceEdit(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>تعديل سعر الشراء</DialogTitle>
+            <DialogDescription>
+              {priceEdit?.productName}: السعر الجديد يقع على الكمية التي لم تُستلم بعد، وتأخذه سندات الاستلام
+              المفتوحة. ما استُلم يبقى بسعره.
+            </DialogDescription>
+          </DialogHeader>
+          <OperationUnitCostInput
+            value={priceEdit?.value ?? ''}
+            disabled={pricePending}
+            showRequiredHint
+            onChange={(raw) => setPriceEdit((prev) => (prev ? { ...prev, value: raw } : prev))}
+          />
+          <DialogFooter className="gap-2 sm:justify-start">
+            <Button type="button" disabled={pricePending} onClick={() => void savePurchaseOrderLinePrice()}>
+              حفظ السعر
+            </Button>
+            <Button type="button" variant="ghost" disabled={pricePending} onClick={() => setPriceEdit(null)}>
+              إلغاء
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
