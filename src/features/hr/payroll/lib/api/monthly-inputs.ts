@@ -7,6 +7,7 @@ export type MonthlyInputKindDto =
   | 'allowance_extra'
   | 'absence_deduction'
   | 'lateness_deduction'
+  | 'shortage_deduction'
   | 'unpaid_leave_deduction'
   | 'discipline_deduction'
   | 'advance_installment'

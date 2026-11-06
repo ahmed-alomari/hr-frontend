@@ -112,6 +112,7 @@ export function useEmployeeProfileModel(employee: Employee, onUpdated?: (updated
 
   return {
     employee,
+    onEmployeeUpdated: onUpdated,
     // `hasLinkedUser` comes from the `...permissions` spread below (same
     // `employee.hasUser ?? !!employee.userId` formula) — not re-listed here
     // to avoid a duplicate-key overwrite.

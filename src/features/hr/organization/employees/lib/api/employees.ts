@@ -30,6 +30,8 @@ export type EmployeeResponseDto = {
   bankAccount: string | null;
   iban: string | null;
   address: string | null;
+  /** Work city — printed in the employment contract ({{city}}). */
+  city?: string | null;
   gender: string | null;
   birthDate: string | null;
   maritalStatus: string | null;

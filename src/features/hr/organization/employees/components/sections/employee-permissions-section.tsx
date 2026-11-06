@@ -2,16 +2,16 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Ban, Check, Plus, Shield, UserPlus, X } from 'lucide-react';
+import { Check, Plus, Shield, UserPlus, X } from 'lucide-react';
 import { CreateUserAttentionButton } from '@/features/hr/organization/employees/components/create-user-attention-button';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select';
 import { systemPermissionsHref } from '@/features/system/permissions/constants/routes';
 import { RolesAssignmentEditor } from '@/components/shared/permissions/roles-assignment-editor';
+import { RolePermissionsBrowser } from '@/components/shared/permissions/role-permissions-browser';
 import { permissionLabel } from '@/components/shared/permissions/permission-labels';
 import type { EmployeeProfileModel } from '@/features/hr/organization/employees/hooks/useEmployeeProfileModel';
-import type { PermissionResponseDto } from '@/features/system/permissions/lib/api/permissions';
 import { cn } from '@/shared/utils';
 
 function SummaryPill({
@@ -39,71 +39,6 @@ function SummaryPill({
   );
 }
 
-function PermissionRow({
-  permission,
-  isDenied,
-  disabled,
-  onToggle,
-}: {
-  permission: PermissionResponseDto;
-  isDenied: boolean;
-  disabled: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <li
-      className={cn(
-        'flex flex-col gap-2 rounded-xl border px-3 py-2.5 transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-3',
-        isDenied ? 'border-destructive/30 bg-destructive/5' : 'border-border/60 bg-muted/10',
-      )}
-    >
-      <div className="flex min-w-0 items-start gap-2 sm:items-center">
-        {isDenied ? (
-          <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive sm:mt-0" />
-        ) : (
-          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success sm:mt-0" />
-        )}
-        <div className="min-w-0">
-          <p
-            className={cn(
-              'text-sm leading-snug',
-              isDenied ? 'line-through text-muted-foreground' : 'text-foreground',
-            )}
-          >
-            {permissionLabel(permission)}
-          </p>
-          <code className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground" dir="ltr">
-            {permission.code}
-          </code>
-        </div>
-      </div>
-      <Button
-        type="button"
-        variant={isDenied ? 'outline' : 'ghost'}
-        size="sm"
-        className={cn(
-          'h-8 w-full shrink-0 gap-1 text-xs sm:w-auto',
-          isDenied
-            ? 'border-success/30 text-success hover:bg-success/10'
-            : 'text-destructive hover:bg-destructive/10',
-        )}
-        disabled={disabled}
-        onClick={onToggle}
-      >
-        {isDenied ? (
-          <>
-            <Check className="h-3 w-3" /> استعادة
-          </>
-        ) : (
-          <>
-            <Ban className="h-3 w-3" /> حجب
-          </>
-        )}
-      </Button>
-    </li>
-  );
-}
-
 export function EmployeePermissionsSection({ model }: { model: EmployeeProfileModel }) {
   const {
     hasLinkedUser,
@@ -111,7 +46,9 @@ export function EmployeePermissionsSection({ model }: { model: EmployeeProfileMo
     rolePermissions,
     overlayMap,
     extraAllowPermissions,
+    allPermissions,
     allActionPermissions,
+    rolesPermissionsLoading,
     handleToggleDeny,
     handleGrantExtra,
     handleRemoveOverlay,
@@ -257,31 +194,24 @@ export function EmployeePermissionsSection({ model }: { model: EmployeeProfileMo
               ) : null}
             </h3>
           </div>
-          <p className="mb-4 text-xs text-muted-foreground">
-            اضغط «حجب» لإزالة صلاحية من هذا الموظف دون تغيير الأدوار.
+          <p className="mb-3 text-xs text-muted-foreground">
+            ابحث بالاسم العربي أو الرمز، ثم اضغط «حجب» لإزالة صلاحية من هذا الموظف دون تغيير الأدوار.
           </p>
 
-          {rolePermissions.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-border/70 bg-muted/10 px-3 py-6 text-center text-sm text-muted-foreground">
-              {hasLinkedUser ? 'عيّن أدواراً لعرض صلاحياتها هنا.' : 'اربط الموظف بحساب مستخدم أولاً.'}
-            </p>
-          ) : (
-            <ul className="max-h-[min(52vh,420px)] space-y-2 overflow-y-auto overscroll-contain pr-1">
-              {rolePermissions.map((p) => {
-                const overlay = overlayMap.get(p.id);
-                const isDenied = overlay?.effect === 'DENY';
-                return (
-                  <PermissionRow
-                    key={p.id}
-                    permission={p}
-                    isDenied={isDenied}
-                    disabled={!hasLinkedUser || isMutating}
-                    onToggle={() => handleToggleDeny(p.id)}
-                  />
-                );
-              })}
-            </ul>
-          )}
+          <RolePermissionsBrowser
+            permissions={rolePermissions}
+            catalog={allPermissions}
+            overlayMap={overlayMap}
+            disabled={!hasLinkedUser || isMutating}
+            onToggleDeny={handleToggleDeny}
+            emptyMessage={
+              !hasLinkedUser
+                ? 'اربط الموظف بحساب مستخدم أولاً.'
+                : rolesPermissionsLoading
+                  ? 'جاري تحميل صلاحيات الأدوار…'
+                  : 'عيّن أدواراً لعرض صلاحياتها هنا.'
+            }
+          />
         </div>
 
         <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-soft sm:p-5">

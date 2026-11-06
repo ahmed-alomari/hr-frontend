@@ -23,7 +23,17 @@ export const PERMISSION_ACTION_AR: Record<string, string> = {
 };
 
 export function permissionLabel(p: PermissionResponseDto): string {
+  const named = p.nameAr?.trim();
+  if (named) return named;
   const res = PERMISSION_RESOURCE_AR[p.resource ?? ''] ?? p.resource ?? '';
   const act = PERMISSION_ACTION_AR[p.action ?? ''] ?? p.action ?? '';
   return `${act}${res ? ` (${res})` : ''}`;
+}
+
+/** Text used to match a permission against a search box: Arabic name, code, resource, and parent group. */
+export function permissionHaystack(p: PermissionResponseDto, parentTitle?: string): string {
+  return [permissionLabel(p), p.nameEn, p.code, p.resource, p.action, parentTitle]
+    .filter((part): part is string => Boolean(part && part.trim()))
+    .join(' ')
+    .toLowerCase();
 }

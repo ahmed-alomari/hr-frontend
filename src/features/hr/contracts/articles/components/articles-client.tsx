@@ -56,7 +56,16 @@ const COMPENSATION_TOKENS: { token: string; label: string }[] = [
   { token: '{{totalSalary}}', label: 'الإجمالي شامل البدلات' },
   { token: '{{currency}}', label: 'العملة' },
 ];
-const COMPENSATION_TOKEN_RE = /\{\{(salary|baseSalary|allowancesList|allowancesTotal|totalSalary)\}\}/;
+/** Employee details an article can place in its text; each contract prints its own employee's values. */
+const EMPLOYEE_TOKENS: { token: string; label: string }[] = [
+  { token: '{{employeeName}}', label: 'اسم الموظف' },
+  { token: '{{jobTitle}}', label: 'المسمى الوظيفي' },
+  { token: '{{city}}', label: 'المدينة' },
+  { token: '{{branch}}', label: 'الفرع' },
+  { token: '{{nationality}}', label: 'الجنسية' },
+  { token: '{{nationalId}}', label: 'رقم الهوية' },
+];
+const COMPENSATION_TOKEN_RE =/\{\{(salary|baseSalary|allowancesList|allowancesTotal|totalSalary)\}\}/;
 
 function makeArticleCode() {
   return `ART-${Date.now().toString(36).toUpperCase()}`;
@@ -419,6 +428,19 @@ export function ContractArticlesClient() {
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <span className="text-xs text-muted-foreground">إدراج قيمة من العقد:</span>
             {COMPENSATION_TOKENS.map(t => (
+              <button
+                key={t.token}
+                type="button"
+                onClick={() => insertToken(t.token)}
+                className="rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-[11px] text-foreground hover:border-primary/40 hover:bg-primary/8 transition-colors"
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">إدراج بيانات الموظف:</span>
+            {EMPLOYEE_TOKENS.map(t => (
               <button
                 key={t.token}
                 type="button"

@@ -2,13 +2,15 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Ban, Check, ChevronDown, Plus, Shield, X } from 'lucide-react';
+import { Ban, Check, ChevronDown, Plus, Search, Shield, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select';
 import { systemPermissionsHref } from '@/features/system/permissions/constants/routes';
 import { RolesAssignmentEditor } from '@/components/shared/permissions/roles-assignment-editor';
-import { permissionLabel } from '@/components/shared/permissions/permission-labels';
+import { RolePermissionsBrowser } from '@/components/shared/permissions/role-permissions-browser';
+import { permissionHaystack, permissionLabel } from '@/components/shared/permissions/permission-labels';
 import type { UserPermissionsModel } from '@/features/system/organization/contacts/hooks/useUserPermissionsModel';
 
 type Props = {
@@ -35,16 +37,20 @@ export function UserPermissionsPanel({ model }: Props) {
     rolePermissions,
     overlayMap,
     extraAllowPermissions,
+    allPermissions,
     allActionPermissions,
     handleToggleDeny,
+    handleGrantExtra,
     handleGrantExtraBulk,
     handleDenyRolePermissionsBulk,
     handleRemoveOverlay,
     isMutating,
     hasCompany,
+    rolesPermissionsLoading,
     ...rolesModel
   } = model;
 
+  const [extraQuery, setExtraQuery] = React.useState('');
   const [addingExtra, setAddingExtra] = React.useState(false);
   const [addingDeny, setAddingDeny] = React.useState(false);
 
@@ -53,11 +59,30 @@ export function UserPermissionsPanel({ model }: Props) {
     [overlayMap],
   );
 
+  const parentTitleById = React.useMemo(() => {
+    const titles = new Map<string, string>();
+    for (const permission of allPermissions) {
+      if (permission.nameAr?.trim()) titles.set(permission.id, permission.nameAr.trim());
+    }
+    return titles;
+  }, [allPermissions]);
+
   const grantablePermissions = React.useMemo(() => {
     const inRole = new Set(rolePermissions.map((p) => p.id));
     const alreadyAllowed = new Set(extraAllowPermissions.map((p) => p.id));
     return allActionPermissions.filter((p) => !inRole.has(p.id) && !alreadyAllowed.has(p.id));
   }, [allActionPermissions, rolePermissions, extraAllowPermissions]);
+
+  const extraMatches = React.useMemo(() => {
+    const q = extraQuery.trim().toLowerCase();
+    if (!q) return [];
+    return grantablePermissions
+      .filter((permission) => {
+        const parentTitle = permission.parentId ? parentTitleById.get(permission.parentId) : undefined;
+        return permissionHaystack(permission, parentTitle).includes(q);
+      })
+      .slice(0, 12);
+  }, [extraQuery, grantablePermissions, parentTitleById]);
 
   const grantableOptions = React.useMemo(
     (): MultiSelectOption[] =>
@@ -69,23 +94,16 @@ export function UserPermissionsPanel({ model }: Props) {
     [grantablePermissions],
   );
 
-  const denyableRolePermissions = React.useMemo(
-    () =>
-      rolePermissions.filter((p) => {
-        const overlay = overlayMap.get(p.id);
-        return overlay?.effect !== 'DENY';
-      }),
-    [rolePermissions, overlayMap],
-  );
-
   const denyableOptions = React.useMemo(
     (): MultiSelectOption[] =>
-      denyableRolePermissions.map((p) => ({
-        value: p.id,
-        label: permissionLabel(p),
-        subtitle: p.code,
-      })),
-    [denyableRolePermissions],
+      rolePermissions
+        .filter((p) => overlayMap.get(p.id)?.effect !== 'DENY')
+        .map((p) => ({
+          value: p.id,
+          label: permissionLabel(p),
+          subtitle: p.code,
+        })),
+    [rolePermissions, overlayMap],
   );
 
   return (
@@ -98,7 +116,7 @@ export function UserPermissionsPanel({ model }: Props) {
           <div className="min-w-0 flex-1 text-right">
             <h3 className="text-base font-semibold">صلاحيات المستخدم</h3>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              عيّن دوراً أو أكثر ثم خصّص الصلاحيات — يمكن حجب صلاحيات الأدوار أو منح صلاحيات إضافية.{' '}
+              الأدوار والصلاحيات متقابلان. ابحث بالاسم العربي — مثل «نقاط التحضير» — أو بجزء من الرمز.{' '}
               <Link href={systemPermissionsHref()} className="font-medium text-primary hover:underline">
                 إدارة الأدوار
               </Link>
@@ -128,20 +146,27 @@ export function UserPermissionsPanel({ model }: Props) {
             tone={deniedCount > 0 ? 'warning' : 'default'}
           />
         </div>
+      </div>
 
-        <div className="mt-4">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <div className="flex min-h-[280px] flex-col rounded-2xl border border-border/70 bg-card p-4 shadow-soft">
+          <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+            <Shield className="h-4 w-4 text-primary" />
+            الأدوار المعينة
+            <Badge variant="subtle" className="text-[10px]">
+              {rolesModel.assignedRoles.length}
+            </Badge>
+          </h4>
           <RolesAssignmentEditor
             model={{ ...rolesModel, rolePermissions, extraAllowPermissions, overlayMap }}
             rolesSelectId="user-role-add"
             disabled={!hasCompany}
-            compact
+            variant="list"
             hideSummary
           />
         </div>
-      </div>
 
-      {rolePermissions.length > 0 ? (
-        <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-soft sm:p-5">
+        <div className="flex min-h-[280px] flex-col rounded-2xl border border-border/70 bg-card p-4 shadow-soft">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h4 className="flex items-center gap-2 text-sm font-semibold">
               <Shield className="h-4 w-4 text-primary" />
@@ -159,7 +184,8 @@ export function UserPermissionsPanel({ model }: Props) {
                 onClick={() => setAddingDeny((v) => !v)}
               >
                 <ChevronDown className={`h-3 w-3 transition-transform ${addingDeny ? 'rotate-180' : ''}`} />
-                حجب
+                <Ban className="h-3 w-3" />
+                حجب جماعي
               </Button>
             ) : null}
           </div>
@@ -190,63 +216,20 @@ export function UserPermissionsPanel({ model }: Props) {
               </p>
             </div>
           ) : null}
-
-          <ul className="max-h-[min(40vh,360px)] space-y-2 overflow-y-auto overscroll-contain pr-1">
-            {rolePermissions.map((p) => {
-              const overlay = overlayMap.get(p.id);
-              const isDenied = overlay?.effect === 'DENY';
-              return (
-                <li
-                  key={p.id}
-                  className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 ${
-                    isDenied ? 'border-destructive/30 bg-destructive/5' : 'border-border/60 bg-muted/10'
-                  }`}
-                >
-                  <div className="flex min-w-0 items-center gap-2">
-                    {isDenied ? (
-                      <Ban className="h-3.5 w-3.5 shrink-0 text-destructive" />
-                    ) : (
-                      <Check className="h-3.5 w-3.5 shrink-0 text-success" />
-                    )}
-                    <span
-                      className={`text-sm leading-snug ${
-                        isDenied ? 'line-through text-muted-foreground' : 'text-foreground'
-                      }`}
-                    >
-                      {permissionLabel(p)}
-                    </span>
-                    <code className="hidden font-mono text-[10px] text-muted-foreground sm:block" dir="ltr">
-                      {p.code}
-                    </code>
-                  </div>
-                  <Button
-                    type="button"
-                    variant={isDenied ? 'outline' : 'ghost'}
-                    size="sm"
-                    className={`h-7 shrink-0 gap-1 text-xs ${
-                      isDenied
-                        ? 'border-success/30 text-success hover:bg-success/10'
-                        : 'text-destructive hover:bg-destructive/10'
-                    }`}
-                    disabled={!hasCompany || isMutating}
-                    onClick={() => handleToggleDeny(p.id)}
-                  >
-                    {isDenied ? (
-                      <>
-                        <Check className="h-3 w-3" /> استعادة
-                      </>
-                    ) : (
-                      <>
-                        <Ban className="h-3 w-3" /> حجب
-                      </>
-                    )}
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
+          <RolePermissionsBrowser
+            permissions={rolePermissions}
+            catalog={allPermissions}
+            overlayMap={overlayMap}
+            disabled={!hasCompany || isMutating}
+            onToggleDeny={handleToggleDeny}
+            emptyMessage={
+              rolesPermissionsLoading
+                ? 'جاري تحميل صلاحيات الأدوار…'
+                : 'عيّن دوراً من القائمة المقابلة لعرض صلاحياته هنا.'
+            }
+          />
         </div>
-      ) : null}
+      </div>
 
       <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-soft sm:p-5">
         <div className="mb-3 flex items-center justify-between gap-2">
@@ -268,7 +251,7 @@ export function UserPermissionsPanel({ model }: Props) {
               onClick={() => setAddingExtra((v) => !v)}
             >
               <ChevronDown className={`h-3 w-3 transition-transform ${addingExtra ? 'rotate-180' : ''}`} />
-              إضافة
+              منح جماعي
             </Button>
           ) : null}
         </div>
@@ -300,20 +283,72 @@ export function UserPermissionsPanel({ model }: Props) {
           </div>
         ) : null}
 
+        {hasCompany && grantablePermissions.length > 0 ? (
+          <div className="mb-3 space-y-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute start-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={extraQuery}
+                onChange={(event) => setExtraQuery(event.target.value)}
+                placeholder="ابحث لمنح صلاحية إضافية… مثال: العطل الرسمية"
+                className="h-9 rounded-lg ps-9 text-sm"
+                disabled={isMutating}
+              />
+            </div>
+            {extraQuery.trim() && extraMatches.length === 0 ? (
+              <p className="text-xs text-muted-foreground">لا توجد صلاحيات مطابقة يمكن منحها.</p>
+            ) : null}
+            {extraMatches.length > 0 ? (
+              <ul className="max-h-52 space-y-1.5 overflow-y-auto overscroll-contain pe-1">
+                {extraMatches.map((permission) => (
+                  <li
+                    key={permission.id}
+                    className="flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-muted/10 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm">{permissionLabel(permission)}</p>
+                      <code className="block truncate font-mono text-[10px] text-muted-foreground" dir="ltr">
+                        {permission.code}
+                      </code>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 shrink-0 gap-1 text-xs"
+                      disabled={isMutating}
+                      onClick={() => {
+                        handleGrantExtra(permission.id);
+                        setExtraQuery('');
+                      }}
+                    >
+                      <Check className="h-3.5 w-3.5" /> منح
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+
         {extraAllowPermissions.length === 0 ? (
           <p className="py-1 text-sm text-muted-foreground">لا توجد صلاحيات إضافية.</p>
         ) : (
-          <ul className="max-h-52 space-y-2 overflow-y-auto overscroll-contain pr-1">
-            {extraAllowPermissions.map((p) => {
-              const overlay = overlayMap.get(p.id);
+          <ul className="max-h-52 space-y-2 overflow-y-auto overscroll-contain pe-1">
+            {extraAllowPermissions.map((permission) => {
+              const overlay = overlayMap.get(permission.id);
               return (
                 <li
-                  key={p.id}
+                  key={permission.id}
                   className="flex items-center justify-between gap-3 rounded-xl border border-success/25 bg-success/5 px-3 py-2.5"
                 >
                   <div className="flex min-w-0 items-center gap-2">
                     <Check className="h-3.5 w-3.5 shrink-0 text-success" />
-                    <span className="text-sm leading-snug">{permissionLabel(p)}</span>
+                    <div className="min-w-0">
+                      <p className="text-sm leading-snug">{permissionLabel(permission)}</p>
+                      <code className="block truncate font-mono text-[10px] text-muted-foreground" dir="ltr">
+                        {permission.code}
+                      </code>
+                    </div>
                   </div>
                   <Button
                     type="button"

@@ -372,6 +372,10 @@ export function PunchPolicySettingCard({ values, disabled, hideHeader, onChange 
           <p className="text-[11px] leading-relaxed text-muted-foreground">
             {missingCheckOut.hint} يُطبَّق على تفاصيل اليوم وملخصات الحضور عند إعادة الاحتساب.
           </p>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            الحضور يُحسب بالدقيقة: «حاضر» فقط لمن أكمل دقائق الفترة، وكل دقيقة ناقصة تُخصم، والحضور
+            بلا انصراف أو الانصراف بلا حضور لا يُحسب حتى يُعتمد طلب تصحيح مهما كان هذا الخيار.
+          </p>
         </div>
         </div>
 

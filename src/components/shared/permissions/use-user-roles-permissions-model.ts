@@ -311,6 +311,7 @@ export function useUserRolesPermissionsModel({
     overlays,
     overlayMap,
     extraAllowPermissions,
+    allPermissions,
     allActionPermissions: allPermissions.filter((p) => p.nodeType === 'ACTION'),
     handleToggleDeny,
     handleGrantExtra,
