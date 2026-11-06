@@ -129,9 +129,14 @@ function mapOperation(dto: OperationDto, lines: WarehouseOperationLine[]): Wareh
     linesPartial: dto.linesPartial,
     receiptsClosedAt: dto.receiptsClosedAt ?? null,
     backorderOfId: dto.backorderOfId ?? null,
+    origin: dto.origin ?? null,
+    cancelReason: dto.cancelReason ?? null,
     receiptState: dto.receiptState ?? null,
     orderedQuantity: dto.orderedQuantity != null ? toNumber(dto.orderedQuantity) : null,
     receivedQuantity: dto.receivedQuantity != null ? toNumber(dto.receivedQuantity) : null,
+    orderValue: dto.orderValue != null ? toNumber(dto.orderValue) : null,
+    orderLineValues: dto.orderLineValues ?? null,
+    fillsPurchaseOrder: dto.fillsPurchaseOrder === true,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
     ...(dto.groupKey !== undefined ? { groupKey: dto.groupKey } : {}),
@@ -321,6 +326,7 @@ export function fetchWarehouseOperationGroups(query: WarehouseOperationListQuery
       partnerId: query.partnerId,
       purchaseOrderId: query.purchaseOrderId,
       receiptState: query.receiptState,
+      origin: query.origin,
       occurredAtFrom: query.occurredAtFrom,
       occurredAtTo: query.occurredAtTo,
       search: query.search,
@@ -440,6 +446,7 @@ export const warehouseOperationsApi: AdminWarehouseOperationsPort & {
           partnerId: query.partnerId,
           purchaseOrderId: query.purchaseOrderId,
           receiptState: query.receiptState,
+          origin: query.origin,
           occurredAtFrom: query.occurredAtFrom,
           occurredAtTo: query.occurredAtTo,
           search: query.search,
@@ -523,6 +530,7 @@ export const warehouseOperationsApi: AdminWarehouseOperationsPort & {
         partnerId: input.partnerId ?? null,
         partnerName: input.partnerName ?? null,
         sourceDocument: input.sourceDocument ?? null,
+        ...(input.origin ? { origin: input.origin } : {}),
       },
     });
 
@@ -599,6 +607,9 @@ export const warehouseOperationsApi: AdminWarehouseOperationsPort & {
     }
     if (patch.receiptRemainder !== undefined) {
       headerPatch.receiptRemainder = patch.receiptRemainder;
+    }
+    if (patch.cancelReason !== undefined) {
+      headerPatch.cancelReason = patch.cancelReason ?? '';
     }
 
     // Sync lines BEFORE locking the operation (`done` / `cancelled`). Backend rejects

@@ -103,6 +103,11 @@ function sourceDocumentFor(kind: WarehouseOperationKind): string {
   return 'نقل بين مواقع يدوي';
 }
 
+/** A purchase order drafted from the product page is a replenishment request. */
+function originFor(kind: WarehouseOperationKind): 'replenishment' | null {
+  return kind === 'purchase_order' ? 'replenishment' : null;
+}
+
 function newLineId() {
   return `opl-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -393,6 +398,7 @@ export function ProductStockMoveRequestDialog({
           companyId,
           warehouseId,
           kind,
+          origin: originFor(kind),
           status: 'draft',
           occurredAt: new Date().toISOString(),
           sourceDocument: sourceDocumentFor(kind),
@@ -470,6 +476,7 @@ export function ProductStockMoveRequestDialog({
         companyId,
         warehouseId,
         kind,
+        origin: originFor(kind),
         status: 'draft',
         occurredAt: new Date().toISOString(),
         sourceDocument: sourceDocumentFor(kind),

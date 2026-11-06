@@ -20,7 +20,6 @@ import {
 import { useCan } from '@/features/auth/hooks/use-can';
 import { getInventoryCompanyId } from '@/features/inventory/lib/company-id';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
-import { useWarehouseOperations } from '@/features/inventory/admin/operations/hooks/use-warehouse-operations';
 import { warehouseOperationsQueryKeys } from '@/features/inventory/admin/hooks/query-keys';
 import {
   fetchReplenishmentSuggestions,
@@ -47,7 +46,8 @@ function formatQuantity(value: number): string {
  * Replenishment, Odoo style: the products at or below their low-stock
  * threshold (counting what open purchase orders will bring), and a purchase
  * order drafted from the ones picked. Stock enters only when that order is
- * received. Older replenishment and purchase documents stay listed here.
+ * received. Each drafted order stays listed as a replenishment request, its
+ * decision read from the order: confirmed accepts it, cancelled rejects it.
  */
 export function ReplenishmentPage() {
   const companyId = getInventoryCompanyId();
@@ -97,18 +97,6 @@ export function ReplenishmentPage() {
     setQuantities(Object.fromEntries(suggestions.map((row) => [row.productId, row.suggestedQuantity])));
   }, [suggestions]);
 
-  // Older documents: their tabs show only when some exist.
-  const legacyReplenishment = useWarehouseOperations(
-    { companyId, kind: 'replenishment', limit: 1 },
-    { enabled: Boolean(companyId) },
-  );
-  const legacyPurchases = useWarehouseOperations(
-    { companyId, kind: 'purchase', limit: 1 },
-    { enabled: Boolean(companyId) },
-  );
-  const legacyReplenishmentCount = legacyReplenishment.data?.pagination.total ?? 0;
-  const legacyPurchasesCount = legacyPurchases.data?.pagination.total ?? 0;
-
   const selectable = (row: ReplenishmentSuggestion) => !row.hasVariants;
   const pickedRows = suggestions.filter(
     (row) => selectable(row) && selected[row.productId] && (quantities[row.productId] ?? 0) > 0,
@@ -129,6 +117,7 @@ export function ReplenishmentPage() {
         companyId,
         warehouseId: scopedWarehouseId,
         kind: 'purchase_order',
+        origin: 'replenishment',
         status: 'draft',
         occurredAt: new Date().toISOString(),
         sourceDocument: SUGGESTIONS_REPLENISHMENT_SOURCE_DOCUMENT,
@@ -143,7 +132,7 @@ export function ReplenishmentPage() {
       });
       void queryClient.invalidateQueries({ queryKey: warehouseOperationsQueryKeys.root(companyId) });
       toast.success(
-        `أُنشئ أمر الشراء ${created.reference} كمسودة. اختر المورد وراجع الأسعار، ثم أكّده واستلمه عند وصول البضاعة.`,
+        `أُنشئ طلب التجديد ${created.reference} كأمر شراء مسودة. اختر المورد وراجع الأسعار، ثم أكّده لقبوله أو ألغه لرفضه.`,
       );
       setCreatedOrder((await warehouseOperationsApi.getById(companyId, created.id)) ?? created);
     } catch (error) {
@@ -317,8 +306,6 @@ export function ReplenishmentPage() {
     </div>
   );
 
-  const hasLegacy = legacyReplenishmentCount > 0 || legacyPurchasesCount > 0;
-
   return (
     <div className="flex flex-col gap-5">
       <SetPageTitle
@@ -327,34 +314,22 @@ export function ReplenishmentPage() {
         iconName="Package"
       />
 
-      {hasLegacy ? (
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="suggestions">الاقتراحات</TabsTrigger>
-            {legacyReplenishmentCount > 0 ? (
-              <TabsTrigger value="legacy-replenishment">مستندات التجديد السابقة</TabsTrigger>
-            ) : null}
-            {legacyPurchasesCount > 0 ? (
-              <TabsTrigger value="legacy-purchase">مستندات الشراء السابقة</TabsTrigger>
-            ) : null}
-          </TabsList>
-          <TabsContent value="suggestions" className="mt-4">
-            {suggestionsBody}
-          </TabsContent>
-          {legacyReplenishmentCount > 0 ? (
-            <TabsContent value="legacy-replenishment" className="mt-4">
-              <WarehouseOperationsPanel kind="replenishment" enableInventoryFilters />
-            </TabsContent>
-          ) : null}
-          {legacyPurchasesCount > 0 ? (
-            <TabsContent value="legacy-purchase" className="mt-4">
-              <WarehouseOperationsPanel kind="purchase" enableInventoryFilters />
-            </TabsContent>
-          ) : null}
-        </Tabs>
-      ) : (
-        suggestionsBody
-      )}
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="suggestions">الاقتراحات</TabsTrigger>
+          <TabsTrigger value="requests">طلبات التجديد</TabsTrigger>
+        </TabsList>
+        <TabsContent value="suggestions" className="mt-4">
+          {suggestionsBody}
+        </TabsContent>
+        <TabsContent value="requests" className="mt-4">
+          <p className="mb-4 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            كل طلب تجديد هو أمر شراء: يبقى «بانتظار القرار» وهو مسودة، ويصبح «مقبولاً» بتأكيد أمر الشراء،
+            و«مرفوضاً» بإلغائه مع كتابة السبب.
+          </p>
+          <WarehouseOperationsPanel kind="purchase_order" origin="replenishment" enableInventoryFilters />
+        </TabsContent>
+      </Tabs>
 
       <WarehouseOperationDetailDialog
         open={Boolean(createdOrder)}

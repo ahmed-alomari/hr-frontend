@@ -52,7 +52,9 @@ export function lineCapturesLot(kind: WarehouseOperationKind): boolean {
   );
 }
 
+/** A purchase order sets the price its receipts take, so it asks for it too. */
 export function lineNeedsUnitCost(kind: WarehouseOperationKind): boolean {
+  if (kind === 'purchase_order') return true;
   return WAREHOUSE_OPERATION_KIND_META[kind].stockEffect === 'inbound' && kind !== 'customer_return';
 }
 

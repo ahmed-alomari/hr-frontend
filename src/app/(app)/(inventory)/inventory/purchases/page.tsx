@@ -1,5 +1,5 @@
-import { InventoryOperationKindPage } from '@/features/inventory/admin/operations/components/inventory-operation-kind-page';
+import { redirect } from 'next/navigation';
 
 export default function Page() {
-  return <InventoryOperationKindPage kind="purchase" />;
+  redirect('/inventory/purchase-orders');
 }

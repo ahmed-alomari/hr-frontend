@@ -179,11 +179,21 @@ export type WarehouseOperation = TenantScoped & {
   receiptsClosedAt?: string | null;
   /** Receipt: the receipt of the same purchase order whose shortfall it brings. */
   backorderOfId?: string | null;
+  /** Purchase order drafted as a replenishment request; fixed once created. */
+  origin?: 'replenishment' | null;
+  /** Why a cancelled replenishment request was rejected. */
+  cancelReason?: string | null;
   /** Confirmed purchase order only; null otherwise. */
   receiptState?: PurchaseOrderReceiptState | null;
   /** Purchase order: totals across its lines. */
   orderedQuantity?: number | null;
   receivedQuantity?: number | null;
+  /** Purchase order (single document, cost access): received at each receipt's price + open remainder at the current price. */
+  orderValue?: number | null;
+  /** The same value per order line id. */
+  orderLineValues?: Record<string, number> | null;
+  /** Receipt (single document): it fills purchase orders, also once they cancelled it. */
+  fillsPurchaseOrder?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -218,6 +228,8 @@ export type WarehouseOperationListQuery = {
   purchaseOrderId?: string;
   /** Confirmed purchase orders in this receipt state. */
   receiptState?: PurchaseOrderReceiptState;
+  /** Purchase orders drafted as replenishment requests. */
+  origin?: 'replenishment';
   occurredAtFrom?: string;
   occurredAtTo?: string;
   search?: string;

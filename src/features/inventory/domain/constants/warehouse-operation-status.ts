@@ -30,6 +30,38 @@ export const PURCHASE_ORDER_RECEIPT_STATE_BADGE: Record<
   closed: 'outline',
 };
 
+/** A replenishment request is decided by its purchase order: confirmed accepts it, cancelled rejects it. */
+export type ReplenishmentRequestDecision = 'pending' | 'accepted' | 'rejected';
+
+export function replenishmentRequestDecision(status: WarehouseOperationStatus): ReplenishmentRequestDecision {
+  if (status === 'done') return 'accepted';
+  if (status === 'cancelled') return 'rejected';
+  return 'pending';
+}
+
+export const REPLENISHMENT_REQUEST_DECISION_LABELS_AR: Record<ReplenishmentRequestDecision, string> = {
+  pending: 'بانتظار القرار',
+  accepted: 'مقبول',
+  rejected: 'مرفوض',
+};
+
+export const REPLENISHMENT_REQUEST_DECISION_BADGE: Record<
+  ReplenishmentRequestDecision,
+  'warning' | 'success' | 'destructive'
+> = {
+  pending: 'warning',
+  accepted: 'success',
+  rejected: 'destructive',
+};
+
+/** Status filter of the replenishment requests list (one server status each). */
+export const REPLENISHMENT_REQUEST_STATUS_LABELS_AR: Record<WarehouseOperationStatus, string> = {
+  draft: 'بانتظار القرار (مسودة)',
+  ready: 'بانتظار القرار (جاهز)',
+  done: 'مقبول',
+  cancelled: 'مرفوض',
+};
+
 /** Workflow steps shown in the picking header (excludes cancelled). */
 export const WAREHOUSE_OPERATION_FLOW_STEPS: WarehouseOperationStatus[] = ['draft', 'ready', 'done'];
 

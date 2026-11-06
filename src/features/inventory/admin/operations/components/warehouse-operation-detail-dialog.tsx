@@ -41,7 +41,10 @@ import {
   PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR,
   WAREHOUSE_OPERATION_FLOW_STEPS,
   WAREHOUSE_OPERATION_KIND_LABELS_AR,
+  REPLENISHMENT_REQUEST_DECISION_BADGE,
+  REPLENISHMENT_REQUEST_DECISION_LABELS_AR,
   WAREHOUSE_OPERATION_STATUS_LABELS_AR,
+  replenishmentRequestDecision,
 } from '@/features/inventory/domain/constants/warehouse-operation-status';
 import type {
   UpdateWarehouseOperationInput,
@@ -399,6 +402,8 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
   /** A confirmed order line's new price, being entered. */
   const [priceEdit, setPriceEdit] = React.useState<{ lineId: string; productName: string; value: string } | null>(null);
   const [pricePending, setPricePending] = React.useState(false);
+  /** Rejecting a replenishment request: its reason (null while the prompt is closed). */
+  const [rejectReason, setRejectReason] = React.useState<string | null>(null);
   const [closurePending, setClosurePending] = React.useState(false);
   /** A receipt posting less than its orders' remainder: a backorder for the rest, or close it. */
   const [partialPrompt, setPartialPrompt] = React.useState<{
@@ -736,10 +741,17 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
     0,
   );
   const executedTotal = pricedLines.reduce((sum, line) => sum + line.quantity, 0);
-  const moneyTotal = pricedLines.reduce((sum, line) => {
-    const unitCost = lineUnitCostNumber(line.unitCost);
-    return unitCost == null ? sum : sum + unitCost * line.quantity;
-  }, 0);
+  // A confirmed order's price may have changed mid-way: the server values what
+  // came in at its receipts' price and only the remainder at the current one.
+  const confirmedOrderValue = isPostedPurchaseOrder
+    ? (purchaseOrderFresh?.orderValue ?? documentOperation?.orderValue ?? null)
+    : null;
+  const moneyTotal =
+    confirmedOrderValue ??
+    pricedLines.reduce((sum, line) => {
+      const unitCost = lineUnitCostNumber(line.unitCost);
+      return unitCost == null ? sum : sum + unitCost * line.quantity;
+    }, 0);
   const isSaving = update.isPending || undo.isPending;
   const meta = WAREHOUSE_OPERATION_KIND_META[kind];
   const needsFrom = meta.needsFrom;
@@ -965,7 +977,7 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
 
   function confirmCloseReceipts() {
     toast.warning(
-      `سيُغلق المتبقي (${formatLineQuantity(purchaseOrderRemaining)}) من أمر الشراء ولن يُستلم منه شيء بعد ذلك. يمكن إعادة فتحه لاحقاً.`,
+      `سيُغلق المتبقي (${formatLineQuantity(purchaseOrderRemaining)}) من أمر الشراء ولن يُستلم منه شيء بعد ذلك، ويُلغى سند الاستلام المفتوح له. يمكن إعادة فتح المتبقي لاحقاً فيُنشأ له سند جديد.`,
       {
         duration: 15_000,
         action: { label: 'إغلاق المتبقي', onClick: () => void setPurchaseOrderReceiptsClosed(true) },
@@ -1006,7 +1018,22 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
       toast.error('لا يمكن إلغاء مستند منتهٍ. استخدم التراجع عن التصديق أولاً.');
       return;
     }
+    if (documentOperation?.origin === 'replenishment') {
+      setRejectReason('');
+      return;
+    }
     await savePatch({ status: 'cancelled' }, 'تم إلغاء المستند');
+  }
+
+  async function rejectReplenishmentRequest() {
+    const reason = rejectReason?.trim() ?? '';
+    if (!reason) {
+      toast.error('اكتب سبب رفض طلب التجديد.');
+      return;
+    }
+    if (await savePatch({ status: 'cancelled', cancelReason: reason }, 'رُفض طلب التجديد')) {
+      setRejectReason(null);
+    }
   }
 
   async function fillTheoreticalFromStock() {
@@ -1062,7 +1089,10 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
     const demand = line.demandQuantity ?? line.quantity;
     const gap = demand - line.quantity;
     const unitCost = lineUnitCostNumber(line.unitCost);
-    const lineTotal = unitCost == null ? null : unitCost * line.quantity;
+    const confirmedLineValue = isPostedPurchaseOrder
+      ? (purchaseOrderFresh ?? documentOperation)?.orderLineValues?.[line.id]
+      : undefined;
+    const lineTotal = confirmedLineValue ?? (unitCost == null ? null : unitCost * line.quantity);
     return { available, maxQty, demand, gap, unitCost, lineTotal };
   }
 
@@ -1332,7 +1362,9 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
   /** A receipt of purchase orders: opened, cancelled and closed by the orders only. */
   const isPurchaseOrderReceipt =
     kind === 'receipt' &&
-    (lines.some((line) => line.purchaseOrderLineId) || Boolean(documentOperation.backorderOfId));
+    (documentOperation.fillsPurchaseOrder === true ||
+      lines.some((line) => line.purchaseOrderLineId) ||
+      Boolean(documentOperation.backorderOfId));
 
   /** The receipt a click on «الاستلامات» opens: the one waiting, else the latest. */
   const activeLinkedReceipts = linkedReceipts.filter((row) => row.status !== 'cancelled');
@@ -1456,7 +1488,7 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
           onClick={() => void cancelOperation()}
         >
           <X className="h-4 w-4" />
-          إلغاء
+          {documentOperation.origin === 'replenishment' ? 'رفض الطلب' : 'إلغاء'}
         </Button>
       ) : null}
       {kind === 'adjustment' && editable ? (
@@ -1546,6 +1578,11 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
                     {PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR[poReceiptState]}
                   </Badge>
                 ) : null}
+                {documentOperation.origin === 'replenishment' ? (
+                  <Badge variant={REPLENISHMENT_REQUEST_DECISION_BADGE[replenishmentRequestDecision(status)]}>
+                    من تجديد المخزون · {REPLENISHMENT_REQUEST_DECISION_LABELS_AR[replenishmentRequestDecision(status)]}
+                  </Badge>
+                ) : null}
               </DialogTitle>
               <p className="text-xs text-muted-foreground">
                 {WAREHOUSE_OPERATION_KIND_LABELS_AR[kind]}
@@ -1556,6 +1593,9 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
                   : ''}
                 {' · متابعة ومعالجة المستند'}
               </p>
+              {status === 'cancelled' && documentOperation.cancelReason ? (
+                <p className="text-xs text-destructive">سبب الرفض: {documentOperation.cancelReason}</p>
+              ) : null}
               {audit?.postedAt || audit?.reversedAt ? (
                 <p className="text-xs text-muted-foreground">
                   {audit.postedAt
@@ -2181,6 +2221,38 @@ export function WarehouseOperationDetailDialog({ open, onOpenChange, operation }
               حفظ السعر
             </Button>
             <Button type="button" variant="ghost" disabled={pricePending} onClick={() => setPriceEdit(null)}>
+              إلغاء
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={rejectReason !== null} onOpenChange={(next) => !next && setRejectReason(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>رفض طلب التجديد</DialogTitle>
+            <DialogDescription>
+              يُلغى أمر الشراء ولا تُنتظر بضاعته. السبب يبقى ظاهراً في طلبات التجديد، ويمكن إعادة فتح الطلب لاحقاً.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={rejectReason ?? ''}
+            maxLength={500}
+            rows={3}
+            placeholder="سبب الرفض"
+            aria-label="سبب الرفض"
+            disabled={isSaving}
+            onChange={(event) => setRejectReason(event.target.value)}
+          />
+          <DialogFooter className="gap-2 sm:justify-start">
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isSaving || !rejectReason?.trim()}
+              onClick={() => void rejectReplenishmentRequest()}
+            >
+              رفض الطلب
+            </Button>
+            <Button type="button" variant="ghost" disabled={isSaving} onClick={() => setRejectReason(null)}>
               إلغاء
             </Button>
           </DialogFooter>

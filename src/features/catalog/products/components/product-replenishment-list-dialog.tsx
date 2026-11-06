@@ -9,10 +9,12 @@ import { WarehouseOperationDetailDialog } from '@/features/inventory/admin/opera
 import {
   PURCHASE_ORDER_RECEIPT_STATE_BADGE,
   PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR,
+  REPLENISHMENT_REQUEST_DECISION_BADGE,
+  REPLENISHMENT_REQUEST_DECISION_LABELS_AR,
   WAREHOUSE_OPERATION_KIND_LABELS_AR,
   WAREHOUSE_OPERATION_STATUS_LABELS_AR,
+  replenishmentRequestDecision,
 } from '@/features/inventory/domain/constants/warehouse-operation-status';
-import { REPLENISHMENT_SOURCE_DOCUMENT } from '@/features/catalog/products/constants/replenishment';
 import type { WarehouseOperation } from '@/features/inventory/domain/types/warehouse';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -31,53 +33,21 @@ import {
   WarehouseChip,
 } from '@/features/inventory/admin/operations/components/inventory-chips';
 
-export { REPLENISHMENT_SOURCE_DOCUMENT };
-
-export function isReplenishmentOperation(op: WarehouseOperation): boolean {
-  if (op.kind === 'purchase_order' || op.kind === 'replenishment') return true;
-  if (op.kind !== 'receipt') return false;
-  const source = op.sourceDocument?.trim() ?? '';
-  const notes = op.notes?.trim() ?? '';
-  return source.includes('تجديد') || notes.includes('تجديد مخزون');
-}
-
-function useProductReplenishmentOperations(
+function useProductPurchaseOrders(
   companyId: string,
   productId: string,
   enabled: boolean,
   refreshKey = 0,
 ) {
-  // Replenishing is a purchase order now; older requests were kind=replenishment
-  // or a receipt tagged via sourceDocument, and stay listed.
   const purchaseOrders = useWarehouseOperations(
     { companyId, productId, kind: 'purchase_order', limit: 100 },
     { enabled, refetchOnOpen: true, refreshKey },
   );
-  const replenishment = useWarehouseOperations(
-    { companyId, productId, kind: 'replenishment', limit: 100 },
-    { enabled, refetchOnOpen: true, refreshKey },
-  );
-  const receipts = useWarehouseOperations(
-    { companyId, productId, kind: 'receipt', limit: 100 },
-    { enabled, refetchOnOpen: true, refreshKey },
-  );
-
-  const items = React.useMemo(() => {
-    const byId = new Map<string, WarehouseOperation>();
-    for (const op of [
-      ...(purchaseOrders.data?.items ?? []),
-      ...(replenishment.data?.items ?? []),
-      ...(receipts.data?.items ?? []),
-    ]) {
-      byId.set(op.id, op);
-    }
-    return [...byId.values()].filter(isReplenishmentOperation);
-  }, [purchaseOrders.data?.items, replenishment.data?.items, receipts.data?.items]);
-
+  const items = React.useMemo(() => purchaseOrders.data?.items ?? [], [purchaseOrders.data?.items]);
   return {
     items,
-    isLoading: purchaseOrders.isLoading || replenishment.isLoading || receipts.isLoading,
-    isFetching: purchaseOrders.isFetching || replenishment.isFetching || receipts.isFetching,
+    isLoading: purchaseOrders.isLoading,
+    isFetching: purchaseOrders.isFetching,
   };
 }
 
@@ -111,8 +81,7 @@ export function ProductReplenishmentListDialog({
   const companyId = getStorefrontCompanyId();
   const [selected, setSelected] = React.useState<WarehouseOperation | null>(null);
 
-  // Replenishment + legacy receipt-tagged requests for this product.
-  const { items, isLoading, isFetching } = useProductReplenishmentOperations(
+  const { items, isLoading, isFetching } = useProductPurchaseOrders(
     companyId,
     productId,
     open,
@@ -154,8 +123,8 @@ export function ProductReplenishmentListDialog({
               تجديد المخزون
             </DialogTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              أوامر الشراء الخاصة بـ «{productNameAr}» وحالة استلامها، مع طلبات التجديد السابقة. الكمية لا
-              تدخل المخزون إلا بتصديق سند استلام من أمر الشراء.
+              أوامر الشراء الخاصة بـ «{productNameAr}» وحالة استلامها، وقرار كل طلب تجديد. الكمية لا تدخل
+              المخزون إلا بتصديق سند استلام من أمر الشراء.
             </p>
           </div>
 
@@ -193,12 +162,28 @@ export function ProductReplenishmentListDialog({
                           {op.sourceDocument ? (
                             <p className="text-xs text-muted-foreground">{op.sourceDocument}</p>
                           ) : null}
+                          {op.status === 'cancelled' && op.cancelReason ? (
+                            <p className="text-xs text-muted-foreground">سبب الرفض: {op.cancelReason}</p>
+                          ) : null}
                         </div>
                         <div className="flex flex-wrap items-center gap-1">
-                          <Badge variant="outline">{WAREHOUSE_OPERATION_KIND_LABELS_AR[op.kind]}</Badge>
-                          <Badge variant={statusBadgeVariant(op.status)}>
-                            {WAREHOUSE_OPERATION_STATUS_LABELS_AR[op.status]}
-                          </Badge>
+                          {op.origin === 'replenishment' ? (
+                            <>
+                              <Badge variant="outline">طلب تجديد</Badge>
+                              <Badge
+                                variant={REPLENISHMENT_REQUEST_DECISION_BADGE[replenishmentRequestDecision(op.status)]}
+                              >
+                                {REPLENISHMENT_REQUEST_DECISION_LABELS_AR[replenishmentRequestDecision(op.status)]}
+                              </Badge>
+                            </>
+                          ) : (
+                            <>
+                              <Badge variant="outline">{WAREHOUSE_OPERATION_KIND_LABELS_AR[op.kind]}</Badge>
+                              <Badge variant={statusBadgeVariant(op.status)}>
+                                {WAREHOUSE_OPERATION_STATUS_LABELS_AR[op.status]}
+                              </Badge>
+                            </>
+                          )}
                           {op.receiptState ? (
                             <Badge variant={PURCHASE_ORDER_RECEIPT_STATE_BADGE[op.receiptState]}>
                               {PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR[op.receiptState]}

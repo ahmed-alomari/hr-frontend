@@ -22,7 +22,11 @@ import { WAREHOUSE_OPERATION_KIND_META } from '@/features/inventory/domain/const
 import {
   PURCHASE_ORDER_RECEIPT_STATE_BADGE,
   PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR,
+  REPLENISHMENT_REQUEST_DECISION_BADGE,
+  REPLENISHMENT_REQUEST_DECISION_LABELS_AR,
+  REPLENISHMENT_REQUEST_STATUS_LABELS_AR,
   WAREHOUSE_OPERATION_STATUS_LABELS_AR,
+  replenishmentRequestDecision,
 } from '@/features/inventory/domain/constants/warehouse-operation-status';
 import type {
   PurchaseOrderReceiptState,
@@ -163,6 +167,11 @@ type Props = {
   enableInventoryFilters?: boolean;
   /** Extra page-header actions (e.g. Excel import), app-level pages only. */
   headerExtra?: React.ReactNode;
+  /**
+   * Purchase orders drafted as replenishment requests only, their status read
+   * as the request's decision. They are created from the suggestions, not here.
+   */
+  origin?: 'replenishment';
 };
 
 export function WarehouseOperationsPanel({
@@ -170,8 +179,11 @@ export function WarehouseOperationsPanel({
   kind,
   enableInventoryFilters = false,
   headerExtra,
+  origin,
 }: Props) {
   const meta = WAREHOUSE_OPERATION_KIND_META[kind];
+  const listTitle = origin ? 'طلبات التجديد' : meta.title;
+  const statusLabels = origin ? REPLENISHMENT_REQUEST_STATUS_LABELS_AR : WAREHOUSE_OPERATION_STATUS_LABELS_AR;
   const isCountLike = kind === 'physical_count' || kind === 'adjustment';
   const scopedToWarehouse = Boolean(warehouseId);
   const showFilters = enableInventoryFilters || !scopedToWarehouse;
@@ -183,7 +195,7 @@ export function WarehouseOperationsPanel({
   const [pageSize, setPageSize] = React.useState(DEFAULT_PAGE_SIZE);
   // The standalone pages keep their filters, sort, grouping and columns per
   // user, company and kind (list-screens skill); a warehouse's tab does not.
-  const listPage = `operations-${kind}`;
+  const listPage = origin ? `operations-${kind}-${origin}` : `operations-${kind}`;
   const filterKey = (field: string) =>
     scopedToWarehouse ? null : hrFiltersKey('inventory', listPage, companyId, field);
   const [filterWarehouseId, setFilterWarehouseId] = usePersistedFilterState<string>(filterKey('warehouse'), 'all');
@@ -193,7 +205,7 @@ export function WarehouseOperationsPanel({
   );
   const [period, setPeriod] = usePersistedFilterState(filterKey('period'), { from: '', to: '' });
   const isPurchaseOrder = kind === 'purchase_order';
-  const canCreate = !meta.retired;
+  const canCreate = !meta.retired && !origin;
   const [storedReceiptState, setFilterReceiptState] = usePersistedFilterState<
     PurchaseOrderReceiptState | 'all'
   >(filterKey('receiptState'), 'all');
@@ -254,6 +266,7 @@ export function WarehouseOperationsPanel({
     kind,
     status: filterStatus !== 'all' ? filterStatus : undefined,
     receiptState: filterReceiptState !== 'all' ? filterReceiptState : undefined,
+    origin,
     search: search || undefined,
     // A day is the user's whole day (its local start and end), as the moves report reads it.
     occurredAtFrom: localDayBoundary(period.from),
@@ -528,7 +541,7 @@ export function WarehouseOperationsPanel({
   const filterSummary = [
     search ? `بحث: ${search}` : null,
     filterWarehouseId !== 'all' ? `المستودع: ${warehouseNameById.get(filterWarehouseId) ?? ''}` : null,
-    filterStatus !== 'all' ? `الحالة: ${WAREHOUSE_OPERATION_STATUS_LABELS_AR[filterStatus]}` : null,
+    filterStatus !== 'all' ? `الحالة: ${statusLabels[filterStatus]}` : null,
     filterReceiptState !== 'all'
       ? `الاستلام: ${PURCHASE_ORDER_RECEIPT_STATE_LABELS_AR[filterReceiptState]}`
       : null,
@@ -585,13 +598,13 @@ export function WarehouseOperationsPanel({
             </PageHeaderPrimaryButton>
           ) : null}
           <RegisterExportMenu
-            title={`سجل ${meta.title}`}
-            fileName={`inventory-${kind}`}
+            title={`سجل ${listTitle}`}
+            fileName={`inventory-${listPage.replace('operations-', '')}`}
             columns={exportColumns}
             getRows={getExportRows}
             subtitleLines={filterSummary}
             landscape
-            emptyMessage={`لا توجد ${meta.title} للتصدير ضمن الفلاتر الحالية.`}
+            emptyMessage={`لا توجد ${listTitle} للتصدير ضمن الفلاتر الحالية.`}
           />
         </div>
       ),
@@ -599,7 +612,8 @@ export function WarehouseOperationsPanel({
       scopedToWarehouse,
       canCreate,
       meta.createLabel,
-      meta.title,
+      listTitle,
+      listPage,
       companyId,
       allWarehouses.length,
       headerExtra,
@@ -658,9 +672,9 @@ export function WarehouseOperationsPanel({
               placeholder: 'كل الحالات',
               options: [
                 { value: 'all', label: 'كل الحالات' },
-                ...(Object.keys(WAREHOUSE_OPERATION_STATUS_LABELS_AR) as WarehouseOperationStatus[]).map((status) => ({
+                ...(Object.keys(statusLabels) as WarehouseOperationStatus[]).map((status) => ({
                   value: status,
-                  label: WAREHOUSE_OPERATION_STATUS_LABELS_AR[status],
+                  label: statusLabels[status],
                 })),
               ],
             },
@@ -936,6 +950,23 @@ export function WarehouseOperationsPanel({
     }
   }
 
+  const statusBadge = (row: WarehouseOperation) => {
+    if (!origin) {
+      return <Badge variant={statusBadgeVariant(row.status)}>{WAREHOUSE_OPERATION_STATUS_LABELS_AR[row.status]}</Badge>;
+    }
+    const decision = replenishmentRequestDecision(row.status);
+    return (
+      <Badge variant={REPLENISHMENT_REQUEST_DECISION_BADGE[decision]}>
+        {REPLENISHMENT_REQUEST_DECISION_LABELS_AR[decision]}
+      </Badge>
+    );
+  };
+
+  const rejectReason = (row: WarehouseOperation) =>
+    row.status === 'cancelled' && row.cancelReason ? (
+      <p className="line-clamp-2 text-xs text-muted-foreground">سبب الرفض: {row.cancelReason}</p>
+    ) : null;
+
   const columns: ColumnDef<WarehouseOperation>[] = [
     {
       key: 'reference',
@@ -1028,11 +1059,12 @@ export function WarehouseOperationsPanel({
       title: 'الحالة',
       sortKey: 'status',
       render: (row) => (
-        <div className="flex flex-wrap items-center gap-1">
-          <Badge variant={statusBadgeVariant(row.status)}>
-            {WAREHOUSE_OPERATION_STATUS_LABELS_AR[row.status]}
-          </Badge>
-          <ReceiptStateBadge operation={row} />
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-1">
+            {statusBadge(row)}
+            <ReceiptStateBadge operation={row} />
+          </div>
+          {rejectReason(row)}
         </div>
       ),
     },
@@ -1067,9 +1099,7 @@ export function WarehouseOperationsPanel({
             <p className="text-xs text-muted-foreground">{formatDateTime(row.occurredAt)}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Badge variant={statusBadgeVariant(row.status)}>
-              {WAREHOUSE_OPERATION_STATUS_LABELS_AR[row.status]}
-            </Badge>
+            {statusBadge(row)}
             <ReceiptStateBadge operation={row} />
             {row.status === 'done' ? null : (
               <Button
@@ -1112,6 +1142,7 @@ export function WarehouseOperationsPanel({
           </div>
           <DemandActualChips demand={demand} actual={actual} actualLabel={actualQuantityLabel} />
         </div>
+        {rejectReason(row)}
       </div>
     );
   };
@@ -1753,10 +1784,10 @@ export function WarehouseOperationsPanel({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">كل الحالات</SelectItem>
-                      {(Object.keys(WAREHOUSE_OPERATION_STATUS_LABELS_AR) as WarehouseOperationStatus[]).map(
+                      {(Object.keys(statusLabels) as WarehouseOperationStatus[]).map(
                         (status) => (
                           <SelectItem key={status} value={status}>
-                            {WAREHOUSE_OPERATION_STATUS_LABELS_AR[status]}
+                            {statusLabels[status]}
                           </SelectItem>
                         ),
                       )}
@@ -1776,7 +1807,7 @@ export function WarehouseOperationsPanel({
           />
         </div>
 
-        {isError ? <p className="text-sm text-destructive">تعذر تحميل {meta.title}.</p> : null}
+        {isError ? <p className="text-sm text-destructive">تعذر تحميل {listTitle}.</p> : null}
 
         <DataTable
           className="inv-table-host"
@@ -1784,7 +1815,7 @@ export function WarehouseOperationsPanel({
           data={items}
           keyExtractor={(row) => row.id}
           loading={isLoading}
-          emptyText={meta.empty}
+          emptyText={origin ? 'لا توجد طلبات تجديد بعد. أنشئها من تبويب «الاقتراحات».' : meta.empty}
           onRowClick={(row) => setSelectedId(row.id)}
           mobileCard={operationMobileCard}
         />
@@ -1815,7 +1846,7 @@ export function WarehouseOperationsPanel({
           للشراء: أنشئ «أمر شراء» ثم استلمه بسند استلام. لإدخال بضاعة مباشرة: استخدم «استلام مخزون».
         </p>
       ) : null}
-      {isError ? <p className="text-sm text-destructive">تعذر تحميل {meta.title}.</p> : null}
+      {isError ? <p className="text-sm text-destructive">تعذر تحميل {listTitle}.</p> : null}
 
       {groupBy ? (
         <GroupedDataTable
@@ -1826,7 +1857,7 @@ export function WarehouseOperationsPanel({
           onRowClick={(row) => setSelectedId(row.id)}
           sort={sort.sort}
           onSort={sort.toggle}
-          emptyText={meta.empty}
+          emptyText={origin ? 'لا توجد طلبات تجديد بعد. أنشئها من تبويب «الاقتراحات».' : meta.empty}
         />
       ) : (
         <DirectoryPagedViews
@@ -1852,7 +1883,7 @@ export function WarehouseOperationsPanel({
               data={pageItems}
               keyExtractor={(row) => row.id}
               loading={isLoading}
-              emptyText={meta.empty}
+              emptyText={origin ? 'لا توجد طلبات تجديد بعد. أنشئها من تبويب «الاقتراحات».' : meta.empty}
               onRowClick={(row) => setSelectedId(row.id)}
               mobileCard={operationMobileCard}
               sort={sort.sort}
