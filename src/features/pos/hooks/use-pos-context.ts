@@ -30,7 +30,8 @@ export type PosPermission =
   | 'pos.session.close-others'
   | 'pos.devices.manage'
   | 'pos.settings.manage'
-  | 'pos.reports.read';
+  | 'pos.reports.read'
+  | 'pos.credit.collect';
 
 type RawActions = Omit<ReturnType<typeof posActions>, 'read'>;
 type Actions = {

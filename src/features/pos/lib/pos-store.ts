@@ -7,11 +7,13 @@ import {
   DEFAULT_POS_SETTINGS,
   type PosAuditEvent,
   type PosCashMovement,
+  type PosCollection,
   type PosCustomer,
   type PosDevice,
   type PosDiscount,
   type PosHeldCart,
   type PosMenuCategory,
+  type PosMoneyMethod,
   type PosPayment,
   type PosRegister,
   type PosReturn,
@@ -44,6 +46,8 @@ export type PosCompanyData = {
   sales: PosSale[];
   returns: PosReturn[];
   cashMovements: PosCashMovement[];
+  /** Collections of credit invoices (recent ones, and the open shifts'). */
+  collections: PosCollection[];
   heldCarts: PosHeldCart[];
   menuCategories: PosMenuCategory[];
   audit: PosAuditEvent[];
@@ -58,6 +62,7 @@ export const EMPTY_POS_DATA: PosCompanyData = {
   sales: [],
   returns: [],
   cashMovements: [],
+  collections: [],
   heldCarts: [],
   menuCategories: [],
   audit: [],
@@ -89,6 +94,7 @@ function withDefaults(data: Partial<PosCompanyData> | undefined | null): PosComp
       paymentMethods: { ...DEFAULT_POS_SETTINGS.paymentMethods, ...settings.paymentMethods },
     },
     menuCategories: data.menuCategories ?? [],
+    collections: data.collections ?? [],
   } as PosCompanyData;
 }
 
@@ -248,6 +254,25 @@ export function posActions(companyId: string, queryClient: QueryClient) {
 
     updatePayment(saleId: string, paymentId: string, patch: Partial<PosPayment>) {
       return run({ type: 'updatePayment', saleId, paymentId, patch });
+    },
+
+    /** The customer of an open sale (a contact for a credit sale; the server reads its name). */
+    setSaleCustomer(saleId: string, customer: PosCustomer) {
+      return run({ type: 'setSaleCustomer', saleId, customer });
+    },
+
+    /** A payment on a credit invoice: in the open shift (into its drawer), or outside one (null). */
+    collectCredit(input: {
+      /** One per payment, kept across retries: a resend counts once. */
+      id?: string;
+      saleId: string;
+      method: PosMoneyMethod;
+      amount: number;
+      reference: string | null;
+      sessionId: string | null;
+    }) {
+      const id = input.id ?? newId();
+      return run({ type: 'collectCredit', ...input, id }).then(() => id);
     },
 
     /** Paid in full: the receipt number is given by the server, from the register's sequence. */

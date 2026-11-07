@@ -3,6 +3,8 @@
 import * as React from 'react';
 import { APP, useCompanyApps } from '@/shared/modules/company-apps';
 import { PartnerInventoryOperationsPanel } from '@/features/contacts/admin/partners/components/partner-inventory-operations-panel';
+import { PartnerPosSalesPanel } from '@/features/contacts/admin/partners/components/partner-pos-sales-panel';
+import { useCan } from '@/features/auth/hooks/use-can';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -10,7 +12,6 @@ import {
   Building2,
   CircleUserRound,
   Clock,
-  CreditCard,
   ExternalLink,
   Globe,
   Heart,
@@ -24,6 +25,7 @@ import {
   ShoppingBag,
   Star,
   StickyNote,
+  Store,
   Trash2,
   Wallet,
   Waypoints,
@@ -86,7 +88,6 @@ const DETAIL_TABS = [
   { value: 'addresses', label: 'عناوين', icon: MapPin },
   { value: 'channels', label: 'اتصال', icon: Phone },
   { value: 'relations', label: 'علاقات', icon: Waypoints },
-  { value: 'financial', label: 'مالي', icon: CreditCard },
   { value: 'activities', label: 'أنشطة', icon: Clock },
   { value: 'notes', label: 'ملاحظات', icon: StickyNote },
   { value: 'attachments', label: 'مرفقات', icon: Paperclip },
@@ -96,7 +97,14 @@ const DETAIL_TABS = [
   { value: 'favorites', label: 'المفضلة', icon: Heart, requiresApp: APP.storeAdmin },
   // Inventory's: the contact's receipts, issues and returns.
   { value: 'inventory', label: 'حركات المخزون', icon: Warehouse, requiresApp: APP.inventory },
+  // POS's: the contact's credit invoices and their collections.
+  { value: 'pos', label: 'فواتير نقاط البيع', icon: Store, requiresApp: APP.pos },
 ] as const;
+
+/** Tabs that also need a permission of their app (hidden without it). */
+const TAB_PERMISSIONS: Partial<Record<string, readonly string[]>> = {
+  pos: ['pos.sales.read', 'pos.credit.collect'],
+};
 
 type DetailTab = (typeof DETAIL_TABS)[number]['value'];
 
@@ -111,7 +119,11 @@ export function PartnerDetailPage({ partnerId }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const apps = useCompanyApps();
-  const visibleTabs = React.useMemo(() => apps.filter(DETAIL_TABS), [apps]);
+  const can = useCan();
+  const visibleTabs = React.useMemo(
+    () => apps.filter(DETAIL_TABS).filter((tab) => TAB_PERMISSIONS[tab.value]?.some((code) => can(code)) ?? true),
+    [apps, can],
+  );
   const visibleValues = React.useMemo(
     () => new Set<string>(visibleTabs.map((tab) => tab.value)),
     [visibleTabs],
@@ -735,24 +747,6 @@ export function PartnerDetailPage({ partnerId }: Props) {
           </div>
         </TabsContent>
 
-        <TabsContent value="financial" className="mt-0">
-          <Panel title="البيانات المالية" description="شروط الدفع والائتمان والعملة.">
-            <DetailGrid
-              rows={[
-                ['شروط الدفع', partner.paymentTerms],
-                [
-                  'حد الائتمان',
-                  partner.creditLimitAmount
-                    ? `${partner.creditLimitAmount} ${partner.creditLimitCurrency ?? ''}`.trim()
-                    : null,
-                ],
-                ['طريقة الدفع المفضلة', partner.preferredPaymentMethod],
-                ['العملة', partner.currencyCode],
-              ]}
-            />
-          </Panel>
-        </TabsContent>
-
         <TabsContent value="activities" className="mt-0 space-y-4">
           <Panel title="الأنشطة" description="مهام ومتابعات مرتبطة بهذه الجهة.">
             <div className="space-y-2">
@@ -1008,6 +1002,12 @@ export function PartnerDetailPage({ partnerId }: Props) {
         <TabsContent value="inventory" className="mt-0 space-y-4">
           <PartnerInventoryOperationsPanel companyId={companyId} partnerId={partnerId} />
         </TabsContent>
+
+        {visibleValues.has('pos') ? (
+          <TabsContent value="pos" className="mt-0 space-y-4">
+            <PartnerPosSalesPanel companyId={companyId} partnerId={partnerId} />
+          </TabsContent>
+        ) : null}
       </Tabs>
 
       <PartnerFormDialog open={editOpen} partner={partner} onOpenChange={setEditOpen} />

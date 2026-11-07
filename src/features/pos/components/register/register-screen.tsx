@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Clock,
   FileText,
+  HandCoins,
   LayoutGrid,
   Lock,
   MonitorSmartphone,
@@ -46,6 +47,7 @@ import {
   type CartState,
 } from '@/features/pos/components/register/cart-panel';
 import { PaymentDialog } from '@/features/pos/components/register/payment-dialog';
+import { CollectCreditDialog } from '@/features/pos/components/register/collect-credit-dialog';
 import { ProductPanel, type PickedItem } from '@/features/pos/components/register/product-panel';
 
 const EMPTY_CART: CartState = { lines: [], orderDiscount: null, customer: { kind: 'walk_in' } };
@@ -329,6 +331,7 @@ function Register() {
   const [cashOpen, setCashOpen] = React.useState(false);
   const [closeOpen, setCloseOpen] = React.useState(false);
   const [xOpen, setXOpen] = React.useState(false);
+  const [collectOpen, setCollectOpen] = React.useState(false);
   const [receiptSaleId, setReceiptSaleId] = React.useState<string | null>(null);
   const [approval, setApproval] = React.useState<{ title: string; detail: string; onApprove: (s: string) => void } | null>(null);
   const [zSessionId, setZSessionId] = React.useState<string | null>(null);
@@ -387,6 +390,10 @@ function Register() {
   const sessionSummary = summarizeSession(data, session);
   const waiting = data.sales.filter((s) => s.registerId === register.id && s.status === 'awaiting_payment').length;
   const heldCount = data.heldCarts.filter((c) => c.registerId === register.id).length;
+  // Owed invoices stay collectable after credit is turned off.
+  const canCollect =
+    can('pos.credit.collect') &&
+    (settings.paymentMethods.credit || data.sales.some((s) => s.status === 'completed' && (s.credit?.due ?? 0) > 0));
 
   /* cart operations */
 
@@ -534,6 +541,12 @@ function Register() {
                   حركة نقدية
                 </DropdownMenuItem>
               ) : null}
+              {canCollect ? (
+                <DropdownMenuItem onSelect={() => setCollectOpen(true)}>
+                  <HandCoins className="h-4 w-4" />
+                  تحصيل آجل
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem onSelect={() => setXOpen(true)}>
                 <FileText className="h-4 w-4" />
                 تقرير X
@@ -564,6 +577,12 @@ function Register() {
             <Button size="sm" variant="outline" onClick={() => setCashOpen(true)}>
               <ArrowRightLeft className="h-4 w-4" />
               حركة نقدية
+            </Button>
+          ) : null}
+          {canCollect ? (
+            <Button size="sm" variant="outline" onClick={() => setCollectOpen(true)}>
+              <HandCoins className="h-4 w-4" />
+              تحصيل آجل
             </Button>
           ) : null}
           <Button size="sm" variant="outline" onClick={() => setXOpen(true)}>
@@ -648,7 +667,7 @@ function Register() {
             // The cart is cleared once the server kept it.
             const held = await actions?.holdCart({
               registerId: register.id,
-              label: cart.customer.kind === 'named' ? cart.customer.name : `سلة ${heldCount + 1}`,
+              label: cart.customer.kind !== 'walk_in' ? cart.customer.name : `سلة ${heldCount + 1}`,
               lines: cart.lines,
               customer: cart.customer,
               orderDiscount: cart.orderDiscount,
@@ -748,6 +767,7 @@ function Register() {
         }}
       />
       <CashMoveDialog open={cashOpen} sessionId={session.id} onClose={() => setCashOpen(false)} />
+      <CollectCreditDialog open={collectOpen} sessionId={session.id} onClose={() => setCollectOpen(false)} />
       <CloseSessionDialog
         session={closeOpen ? session : null}
         onOpenChange={setCloseOpen}

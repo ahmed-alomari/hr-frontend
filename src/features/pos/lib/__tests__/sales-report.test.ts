@@ -1,13 +1,22 @@
-import type { PosSale, PosSaleLine } from '@/features/pos/domain/types';
+import type { PosCollection, PosSale, PosSaleLine, PosSession } from '@/features/pos/domain/types';
 import { EMPTY_POS_DATA, type PosCompanyData } from '@/features/pos/lib/pos-store';
 import {
   GROUPINGS,
   NO_FILTERS,
+  closingTotals,
+  closingsByCashier,
+  closingsInPeriod,
+  collectionsByMethod,
+  collectionsInPeriod,
+  creditInvoices,
   groupBy,
   lineFacts,
+  openReceivables,
   paymentRows,
+  paymentSummaryOf,
   totalsOf,
 } from '@/features/pos/lib/sales-report';
+import { summarizeSession } from '@/features/pos/lib/session-summary';
 
 /**
  * Each sale keeps the price it was sold at and the cost fixed at that moment:
@@ -159,5 +168,162 @@ describe('sales report', () => {
   it('payment rows sum what was collected for the kept sales', () => {
     const rows = paymentRows(data([first, second]), NO_FILTERS);
     expect(rows.find((r) => r.method === 'cash')).toMatchObject({ collected: 56, net: 56, count: 2 });
+  });
+});
+
+/**
+ * 500 = cash 300 + credit 200 to a contact; 80 collected in cash in the
+ * shift, 20 by transfer outside any shift: 100 still owed, and the drawer
+ * expects 50 + 300 + 80 = 430.
+ */
+describe('credit sales (آجل) in the reports and the shift', () => {
+  const base = sale('9', '2026-11-07T10:00:00', [line({ id: 'x', quantity: 2, unitPrice: 250, total: 500 })]);
+  const credit: PosSale = {
+    ...base,
+    customer: { kind: 'partner', partnerId: 'pt1', name: 'عميل الآجل' },
+    splitPayment: true,
+    payments: [
+      { ...base.payments[0]!, id: 'p-cash', amount: 300, tendered: 300 },
+      { ...base.payments[0]!, id: 'p-credit', method: 'credit', amount: 200 },
+    ],
+    credit: { partnerId: 'pt1', partnerName: 'عميل الآجل', amount: 200, collected: 100, returned: 0, due: 100 },
+  };
+  const collection = (id: string, method: PosCollection['method'], amount: number, sessionId: string | null): PosCollection => ({
+    id,
+    saleId: '9',
+    saleNumber: 'POS1-9',
+    partnerId: 'pt1',
+    partnerName: 'عميل الآجل',
+    method,
+    amount,
+    reference: method === 'cash' ? null : 'TR-77',
+    sessionId,
+    currency: null,
+    createdAt: '2026-11-07T12:00:00',
+    createdBy: 'سارة',
+  });
+  const session: PosSession = {
+    id: 's1',
+    registerId: 'r1',
+    cashierId: 'u1',
+    cashierName: 'سارة',
+    status: 'open',
+    stockMode: 'none',
+    openedAt: '2026-11-07T08:00:00',
+    openingFloat: 50,
+    closedAt: null,
+    countedCash: null,
+    expectedCash: null,
+    difference: null,
+    differenceReason: null,
+    denominationCounts: null,
+  };
+  const d: PosCompanyData = {
+    ...data([credit]),
+    sessions: [session],
+    collections: [collection('c1', 'cash', 80, 's1'), collection('c2', 'transfer', 20, null)],
+  };
+
+  it('the invoice shows how it was split, and the customer by contact', () => {
+    expect(paymentSummaryOf(credit)).toBe('نقد 300 + آجل 200');
+    const facts = lineFacts(d, NO_FILTERS);
+    expect(groupBy(facts, GROUPINGS.customer).map((r) => [r.key, r.label])).toEqual([['partner:pt1', 'عميل الآجل']]);
+    expect(groupBy(facts, GROUPINGS.invoice)[0]!.detail).toContain('نقد 300 + آجل 200');
+  });
+
+  it('sold on credit is its own row, apart from the money taken', () => {
+    const rows = paymentRows(d, NO_FILTERS);
+    expect(rows.find((r) => r.method === 'cash')).toMatchObject({ collected: 300 });
+    expect(rows.find((r) => r.method === 'credit')).toMatchObject({ collected: 200, label: 'آجل (على العملاء)' });
+  });
+
+  it('collections: 80 cash in the shift, 20 transfer outside; 100 still owed', () => {
+    const rows = collectionsInPeriod(d, NO_FILTERS);
+    expect(rows.map((r) => [r.method, r.amount, r.inShift, r.registerName])).toEqual([
+      ['cash', 80, true, 'الكاشير 1'],
+      ['transfer', 20, false, 'خارج الوردية'],
+    ]);
+    const byMethod = collectionsByMethod(rows);
+    expect(byMethod.find((m) => m.method === 'cash')).toMatchObject({ inShift: 80, outside: 0, total: 80 });
+    expect(byMethod.find((m) => m.method === 'transfer')).toMatchObject({ inShift: 0, outside: 20, total: 20 });
+    expect(collectionsInPeriod(d, { ...NO_FILTERS, from: '2026-11-08' })).toHaveLength(0);
+    expect(openReceivables(d, { ...NO_FILTERS, from: '2026-12-01' }).map((r) => r.due)).toEqual([100]);
+    expect(creditInvoices(d, NO_FILTERS)[0]).toMatchObject({ credit: 200, collected: 100, due: 100 });
+  });
+
+  it('the drawer expects 50 + 300 + 80 = 430: credit and outside collections are not in it', () => {
+    const summary = summarizeSession(d, session);
+    expect(summary.expectedCash).toBe(430);
+    expect(summary.collectionsByMethod).toEqual({ cash: 80 });
+    expect(summary.byMethod).toMatchObject({ cash: 300, credit: 200 });
+  });
+});
+
+/**
+ * Closing differences: سارة 430 expected, 400 counted (short 30, "خطأ في الباقي");
+ * سارة again 200 / 200; علي 150 expected, 160 counted (over 10). Shortage and
+ * overage are summed apart (−30 and +10), never netted into a hidden −20 only.
+ */
+describe('closing differences report', () => {
+  const closed = (
+    id: string,
+    cashierName: string,
+    closedAt: string,
+    expectedCash: number,
+    countedCash: number,
+    differenceReason: string | null = null,
+  ): PosSession => ({
+    id,
+    registerId: 'r1',
+    cashierId: cashierName,
+    cashierName,
+    status: 'closed',
+    stockMode: 'none',
+    openedAt: closedAt.replace('T22', 'T08'),
+    openingFloat: 50,
+    closedAt,
+    countedCash,
+    expectedCash,
+    difference: Math.round((countedCash - expectedCash) * 100) / 100,
+    differenceReason,
+    denominationCounts: null,
+  });
+  const d: PosCompanyData = {
+    ...EMPTY_POS_DATA,
+    registers: [{ id: 'r1', name: 'الكاشير 1', code: 'POS1' } as PosCompanyData['registers'][number]],
+    sessions: [
+      closed('a', 'سارة', '2026-11-07T22:00:00', 430, 400, 'خطأ في الباقي'),
+      closed('b', 'سارة', '2026-11-06T22:00:00', 200, 200),
+      closed('c', 'علي', '2026-11-07T22:30:00', 150, 160, 'زيادة من عميل'),
+      { ...closed('open', 'علي', '2026-11-07T22:00:00', 0, 0), status: 'open', closedAt: null },
+    ],
+  };
+
+  it('lists closed shifts only, newest first, with the reason', () => {
+    const rows = closingsInPeriod(d, NO_FILTERS);
+    expect(rows.map((r) => r.sessionId)).toEqual(['c', 'a', 'b']);
+    expect(rows[1]).toMatchObject({ expectedCash: 430, countedCash: 400, difference: -30, reason: 'خطأ في الباقي', registerName: 'الكاشير 1' });
+  });
+
+  it('shortage −30 and overage +10 are summed apart; net −20', () => {
+    expect(closingTotals(closingsInPeriod(d, NO_FILTERS))).toEqual({
+      shifts: 3,
+      withDifference: 2,
+      shortage: -30,
+      overage: 10,
+      net: -20,
+      expected: 780,
+      counted: 760,
+    });
+  });
+
+  it('filters by closing day and cashier; per cashier the most short comes first', () => {
+    expect(closingsInPeriod(d, { ...NO_FILTERS, from: '2026-11-07', to: '2026-11-07' }).map((r) => r.sessionId)).toEqual(['c', 'a']);
+    expect(closingsInPeriod(d, { ...NO_FILTERS, cashierName: 'علي' }).map((r) => r.sessionId)).toEqual(['c']);
+    const byCashier = closingsByCashier(closingsInPeriod(d, NO_FILTERS));
+    expect(byCashier.map((c) => [c.cashierName, c.shifts, c.shortage, c.overage])).toEqual([
+      ['سارة', 2, -30, 0],
+      ['علي', 1, 0, 10],
+    ]);
   });
 });

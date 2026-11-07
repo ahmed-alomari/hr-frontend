@@ -41,6 +41,11 @@ export type CompanyResponseDto = {
   pdfEmployeeSignatureScale?: number;
   timezone: string;
   currencyCode: string;
+  /** Sales tax of the company, used by every app that sells. */
+  taxEnabled?: boolean;
+  /** Percent, 0–100. */
+  taxRate?: number;
+  pricesIncludeTax?: boolean;
   languageCode: string;
   isActive: boolean;
   notes: string | null;
@@ -84,6 +89,9 @@ export type CreateCompanyDto = {
   pdfEmployeeSignatureScale?: number;
   timezone?: string;
   currencyCode?: string;
+  taxEnabled?: boolean;
+  taxRate?: number;
+  pricesIncludeTax?: boolean;
   languageCode?: string;
   isActive?: boolean;
   notes?: string | null;

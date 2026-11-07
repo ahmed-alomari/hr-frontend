@@ -7,8 +7,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/shared/utils';
-import type { PosCustomer, PosDiscount, PosSaleLine, PosSaleTotals } from '@/features/pos/domain/types';
+import { customerLabel as customerLabelOf, type PosCustomer, type PosDiscount, type PosSaleLine, type PosSaleTotals } from '@/features/pos/domain/types';
 import { formatAmount, formatMoney, parseAmount } from '@/features/pos/lib/format';
+import { ContactCustomerPicker } from '@/features/pos/components/register/customer-picker';
 
 export type CartState = {
   lines: PosSaleLine[];
@@ -157,10 +158,12 @@ export function CustomerDialog({
   onSave: (c: PosCustomer) => void;
 }) {
   const named = value.kind === 'named' ? value : null;
+  const [mode, setMode] = React.useState<'contact' | 'named'>(value.kind === 'named' ? 'named' : 'contact');
   const [name, setName] = React.useState(named?.name ?? '');
   const [phone, setPhone] = React.useState(named?.phone ?? '');
   const [taxNumber, setTaxNumber] = React.useState(named?.taxNumber ?? '');
   React.useEffect(() => {
+    setMode(value.kind === 'named' ? 'named' : 'contact');
     setName(named?.name ?? '');
     setPhone(named?.phone ?? '');
     setTaxNumber(named?.taxNumber ?? '');
@@ -169,28 +172,54 @@ export function CustomerDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>بيانات العميل</DialogTitle>
+          <DialogTitle>العميل</DialogTitle>
         </DialogHeader>
-        <p className="text-xs text-muted-foreground">
-          اختيارية وتُطبع على الإيصال فقط، دون إنشاء جهة اتصال. البيع الافتراضي لعميل عابر.
-        </p>
-        <div className="space-y-2">
-          <Input placeholder="الاسم" value={name} onChange={(e) => setName(e.target.value)} />
-          <Input placeholder="الجوال" dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <Input placeholder="الرقم الضريبي (للمنشآت)" dir="ltr" value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} />
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant={mode === 'contact' ? 'default' : 'outline'} onClick={() => setMode('contact')}>
+            من جهات الاتصال
+          </Button>
+          <Button variant={mode === 'named' ? 'default' : 'outline'} onClick={() => setMode('named')}>
+            اسم على الإيصال فقط
+          </Button>
         </div>
+        {mode === 'contact' ? (
+          <>
+            {value.kind === 'partner' ? (
+              <p className="text-sm">
+                المختار: <b>{value.name}</b>
+              </p>
+            ) : null}
+            <ContactCustomerPicker
+              selectedId={value.kind === 'partner' ? value.partnerId : null}
+              onPick={(c) =>
+                onSave({ kind: 'partner', partnerId: c.id, name: c.name, phone: c.phone ?? undefined, taxNumber: c.taxNumber ?? undefined })
+              }
+            />
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">يُطبع على الإيصال فقط، دون جهة اتصال، ولا يُباع له آجلًا.</p>
+            <div className="space-y-2">
+              <Input placeholder="الاسم" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input placeholder="الجوال" dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Input placeholder="الرقم الضريبي (للمنشآت)" dir="ltr" value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} />
+            </div>
+          </>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onSave({ kind: 'walk_in' })}>عميل عابر</Button>
-          <Button
-            disabled={!name.trim()}
-            onClick={() =>
-              onSave({ kind: 'named', name: name.trim(), phone: phone.trim() || undefined, taxNumber: taxNumber.trim() || undefined })
-            }
-          >
-            حفظ
-          </Button>
+          {mode === 'named' ? (
+            <Button
+              disabled={!name.trim()}
+              onClick={() =>
+                onSave({ kind: 'named', name: name.trim(), phone: phone.trim() || undefined, taxNumber: taxNumber.trim() || undefined })
+              }
+            >
+              حفظ
+            </Button>
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -271,7 +300,7 @@ export function CartPanel({
   className?: string;
 }) {
   const empty = cart.lines.length === 0;
-  const customerLabel = cart.customer.kind === 'named' ? cart.customer.name : 'عميل عابر';
+  const customerLabel = customerLabelOf(cart.customer);
 
   return (
     <div className={cn('flex min-h-0 flex-col rounded-xl border border-border bg-card shadow-soft', className)}>

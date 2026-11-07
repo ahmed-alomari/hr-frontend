@@ -5,7 +5,7 @@ import { round2 } from '@/features/pos/lib/calc';
 /**
  * Money of one shift. Payments count where they were taken (their session),
  * whatever happened to the sale after — a payment on an exception sale is
- * still in this drawer.
+ * still in this drawer. «آجل» is sold, not taken: it never enters the drawer.
  */
 export function summarizeSession(data: PosCompanyData, session: PosSession) {
   const sales = data.sales.filter((s) => s.sessionId === session.id && s.status === 'completed');
@@ -30,7 +30,14 @@ export function summarizeSession(data: PosCompanyData, session: PosSession) {
   const moves = data.cashMovements.filter((m) => m.sessionId === session.id);
   const cashIn = round2(moves.filter((m) => m.type === 'in').reduce((a, m) => a + m.amount, 0));
   const cashOut = round2(moves.filter((m) => m.type === 'out').reduce((a, m) => a + m.amount, 0));
-  const expectedCash = round2(session.openingFloat + (byMethod.cash ?? 0) - refundsCash + cashIn - cashOut);
+  // Payments on credit invoices taken in this shift (any invoice's): cash ones are in the drawer.
+  const collections = (data.collections ?? []).filter((c) => c.sessionId === session.id);
+  const collectionsByMethod: Record<string, number> = {};
+  for (const c of collections) collectionsByMethod[c.method] = round2((collectionsByMethod[c.method] ?? 0) + c.amount);
+  const collectionsTotal = round2(collections.reduce((a, c) => a + c.amount, 0));
+  const expectedCash = round2(
+    session.openingFloat + (byMethod.cash ?? 0) + (collectionsByMethod.cash ?? 0) - refundsCash + cashIn - cashOut,
+  );
 
   const openSales = data.sales.filter((s) => s.sessionId === session.id && s.status === 'awaiting_payment');
   const exceptions = data.sales.filter((s) => s.sessionId === session.id && s.status === 'payment_exception');
@@ -39,6 +46,8 @@ export function summarizeSession(data: PosCompanyData, session: PosSession) {
     salesCount: sales.length,
     salesTotal: round2(sales.reduce((a, s) => a + s.totals.total, 0)),
     byMethod,
+    collectionsByMethod,
+    collectionsTotal,
     refundsCash,
     cashIn,
     cashOut,

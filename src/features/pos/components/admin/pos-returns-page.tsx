@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
+  MONEY_METHODS,
   PAYMENT_METHOD_LABELS,
   resolvePosInvoiceStyle,
   RETURN_CONDITION_LABELS,
@@ -25,14 +26,24 @@ import { newId } from '@/features/pos/lib/pos-store';
 import { lineRefundAmount, round2 } from '@/features/pos/lib/calc';
 import { formatDateTime, formatMoney, parseAmount } from '@/features/pos/lib/format';
 import { returnToPrintable } from '@/features/pos/lib/receipt';
+import { refundMethodLabel } from '@/features/pos/lib/sales-report';
 import { EmptyState, PosGate, PrintPreviewDialog } from '@/features/pos/components/shared/pos-shared';
 
 type LineDraft = { quantity: number; condition: PosReturnCondition };
 
 function originalMethod(sale: PosSale): PosPaymentMethod {
+  // Still owed: the return comes off the customer's account first.
+  if ((sale.credit?.due ?? 0) > 0) return 'credit';
   const paid = sale.payments.filter((p) => p.kind === 'payment' && p.status === 'succeeded');
   const top = [...paid].sort((a, b) => b.amount - a.amount)[0];
   return top?.method ?? 'cash';
+}
+
+/** Owed: only to the account. A settled credit invoice: the account or money back. Otherwise: money back. */
+function refundMethodsOf(sale: PosSale): PosPaymentMethod[] {
+  if (!sale.credit) return [...MONEY_METHODS];
+  if (sale.credit.due > 0) return ['credit'];
+  return ['credit', ...MONEY_METHODS];
 }
 
 function NewReturnDialog({ open, initialSaleId, onClose }: { open: boolean; initialSaleId: string | null; onClose: () => void }) {
@@ -82,14 +93,18 @@ function NewReturnDialog({ open, initialSaleId, onClose }: { open: boolean; init
         .filter((x): x is { line: (typeof sale.lines)[number]; draft: LineDraft } => !!x.draft && x.draft.quantity > 0)
     : [];
   const amount = round2(chosen.reduce((a, x) => a + lineRefundAmount(x.line, x.draft.quantity), 0));
-  const otherMethod = !!sale && method !== originalMethod(sale);
+  const paidWith = new Set<PosPaymentMethod>([
+    ...(sale?.payments ?? []).filter((p) => p.kind === 'payment' && p.status === 'succeeded').map((p) => p.method),
+    ...data.collections.filter((c) => c.saleId === sale?.id).map((c) => c.method),
+  ]);
+  const otherMethod = !!sale && paidWith.size > 0 && !paidWith.has(method);
   const otherMethodBlocked = otherMethod && data.settings.returns.refundToOtherMethodNeedsApproval && !can('pos.refund.other-method');
   const cashWithoutSession = method === 'cash' && !sessionId;
   const valid = !!sale && chosen.length > 0 && reason.trim() && !otherMethodBlocked && !cashWithoutSession && !outOfWindow;
 
   const submit = async () => {
     if (!sale || !actions || !valid || submitting) return;
-    const refundDone = method === 'cash' || !!reference.trim();
+    const refundDone = method === 'cash' || method === 'credit' || !!reference.trim();
     const hasDamaged = chosen.some((x) => x.draft.condition === 'damaged');
     setSubmitting(true);
     const created = await actions.createReturn({
@@ -203,9 +218,9 @@ function NewReturnDialog({ open, initialSaleId, onClose }: { open: boolean; init
                     <Select value={method} onValueChange={(v) => setMethod(v as PosPaymentMethod)}>
                       <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {(Object.keys(PAYMENT_METHOD_LABELS) as PosPaymentMethod[]).map((m) => (
+                        {refundMethodsOf(sale).map((m) => (
                           <SelectItem key={m} value={m}>
-                            {PAYMENT_METHOD_LABELS[m]}{m === originalMethod(sale) ? ' (الأصلية)' : ''}
+                            {refundMethodLabel(m)}{m === originalMethod(sale) ? ' (الأصلية)' : ''}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -225,6 +240,13 @@ function NewReturnDialog({ open, initialSaleId, onClose }: { open: boolean; init
                         </SelectContent>
                       </Select>
                     </div>
+                  ) : method === 'credit' ? (
+                    <div className="space-y-1">
+                      <Label className="text-xs">العميل</Label>
+                      <div className="flex h-9 items-center rounded-md border border-border bg-muted/40 px-3">
+                        {sale.credit?.partnerName}
+                      </div>
+                    </div>
                   ) : (
                     <div className="space-y-1">
                       <Label className="text-xs">مرجع الرد (إن نُفّذ الآن)</Label>
@@ -240,7 +262,12 @@ function NewReturnDialog({ open, initialSaleId, onClose }: { open: boolean; init
                 </div>
                 {otherMethodBlocked ? <p className="text-xs text-destructive">الرد بوسيلة غير الأصلية يحتاج صلاحية الموافقة.</p> : null}
                 {cashWithoutSession ? <p className="text-xs text-destructive">الرد النقدي يحتاج وردية مفتوحة.</p> : null}
-                {method !== 'cash' && !reference.trim() ? (
+                {method === 'credit' ? (
+                  <p className="text-xs text-muted-foreground">
+                    يُخصم من المستحق على العميل ({formatMoney(sale.credit?.due ?? 0, currency)})، ويُسجَّل له في حسابه بجهات الاتصال
+                    {(sale.credit?.due ?? 0) > 0 ? '. لا يُرد مال لفاتورة عليها مستحق.' : '.'}
+                  </p>
+                ) : method !== 'cash' && !reference.trim() ? (
                   <p className="text-xs text-muted-foreground">دون مرجع يُحفظ الرد «بانتظار التنفيذ» حتى يُسجَّل لاحقًا.</p>
                 ) : null}
               </div>
@@ -273,7 +300,13 @@ function ReturnRow({ ret }: { ret: PosReturn }) {
         <div>
           <div className="flex items-center gap-2 font-semibold">
             <span dir="ltr">{ret.number}</span>
-            {ret.refund.status === 'done' ? <Badge variant="success">رُدّ المال</Badge> : <Badge variant="warning">رد المال بانتظار التنفيذ</Badge>}
+            {ret.refund.method === 'credit' ? (
+              <Badge variant="outline">إلى حساب العميل</Badge>
+            ) : ret.refund.status === 'done' ? (
+              <Badge variant="success">رُدّ المال</Badge>
+            ) : (
+              <Badge variant="warning">رد المال بانتظار التنفيذ</Badge>
+            )}
             {ret.damagedDecision === 'pending' ? <Badge variant="destructive">تالف بانتظار قرار</Badge> : null}
             {ret.stockPosting === 'pending' ? <Badge variant="warning">ترحيل مخزون معلّق</Badge> : null}
             {ret.stockPosting === 'reviewed' ? <Badge variant="outline">رُوجع — يُرحَّل عند عودة الربط</Badge> : null}

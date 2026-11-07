@@ -1,5 +1,6 @@
 import type { PrintableDocument } from '@/features/print-templates/domain/types';
 import {
+  customerLabel,
   PAYMENT_METHOD_LABELS,
   type PosRegister,
   type PosReturn,
@@ -15,7 +16,7 @@ export function saleToPrintable(
   register: PosRegister | undefined,
   options: { copy?: boolean; invoiceStyle?: 'thermal' | 'standard' } = {},
 ): PrintableDocument {
-  const customer = sale.customer.kind === 'named' ? sale.customer : null;
+  const customer = sale.customer.kind === 'walk_in' ? null : sale.customer;
   return {
     title: options.invoiceStyle === 'standard' ? 'فاتورة بيع' : 'إيصال بيع',
     number: sale.number ?? sale.id.slice(0, 8),
@@ -23,9 +24,10 @@ export function saleToPrintable(
     meta: [
       { label: 'الكاشير', value: sale.cashierName },
       { label: 'نقطة البيع', value: register?.name ?? '—' },
-      { label: 'العميل', value: customer ? customer.name : 'عميل عابر' },
+      { label: 'العميل', value: customerLabel(sale.customer) },
       ...(sale.splitPayment ? [{ label: 'الدفع', value: 'مقسّم' }] : []),
       ...(customer?.taxNumber ? [{ label: 'الرقم الضريبي للعميل', value: customer.taxNumber }] : []),
+      ...(sale.credit ? [{ label: 'المتبقي على العميل', value: formatAmount(sale.credit.due) }] : []),
     ],
     lines: sale.lines.map((l) => ({
       name: l.name,
@@ -71,7 +73,7 @@ export function returnToPrintable(ret: PosReturn): PrintableDocument {
     totals: [{ label: 'المبلغ المردود', value: formatAmount(ret.refund.amount), emphasize: true }],
     payments: [
       {
-        label: `${PAYMENT_METHOD_LABELS[ret.refund.method]}${ret.refund.status === 'pending' ? ' (بانتظار التنفيذ)' : ''}`,
+        label: `${ret.refund.method === 'credit' ? 'إلى حساب العميل' : PAYMENT_METHOD_LABELS[ret.refund.method]}${ret.refund.status === 'pending' ? ' (بانتظار التنفيذ)' : ''}`,
         value: formatAmount(ret.refund.amount),
       },
     ],
@@ -86,6 +88,7 @@ export function sessionToPrintable(
     salesCount: number;
     salesTotal: number;
     byMethod: Record<string, number>;
+    collectionsByMethod?: Record<string, number>;
     refundsCash: number;
     cashIn: number;
     cashOut: number;
@@ -107,7 +110,14 @@ export function sessionToPrintable(
       { label: 'عدد المبيعات', value: String(summary.salesCount) },
       { label: 'إجمالي المبيعات', value: formatAmount(summary.salesTotal) },
       ...Object.entries(summary.byMethod).map(([method, amount]) => ({
-        label: `محصّل ${PAYMENT_METHOD_LABELS[method as keyof typeof PAYMENT_METHOD_LABELS] ?? method}`,
+        label:
+          method === 'credit'
+            ? 'مبيعات آجلة (على العملاء)'
+            : `محصّل ${PAYMENT_METHOD_LABELS[method as keyof typeof PAYMENT_METHOD_LABELS] ?? method}`,
+        value: formatAmount(amount),
+      })),
+      ...Object.entries(summary.collectionsByMethod ?? {}).map(([method, amount]) => ({
+        label: `تحصيل آجل ${PAYMENT_METHOD_LABELS[method as keyof typeof PAYMENT_METHOD_LABELS] ?? method}`,
         value: formatAmount(amount),
       })),
       { label: 'العهدة', value: formatAmount(session.openingFloat) },

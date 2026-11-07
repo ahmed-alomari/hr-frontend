@@ -17,9 +17,13 @@ import {
   ReportExportMenu,
   ShareBar,
 } from '@/features/expenses/components/report-common';
-import { PAYMENT_METHOD_LABELS, type PosPaymentMethod } from '@/features/pos/domain/types';
+import { FileText } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { PAYMENT_METHOD_LABELS, resolvePosInvoiceStyle, type PosPaymentMethod } from '@/features/pos/domain/types';
 import { usePosContext } from '@/features/pos/hooks/use-pos-context';
 import { formatAmount, formatDateTime, formatMoney } from '@/features/pos/lib/format';
+import { sessionToPrintable } from '@/features/pos/lib/receipt';
+import { summarizeSession } from '@/features/pos/lib/session-summary';
 import {
   GROUPINGS,
   NO_FILTERS,
@@ -27,21 +31,32 @@ import {
   discountedLines,
   groupBy as groupFacts,
   lineFacts,
+  closingTotals,
+  closingsByCashier,
+  closingsInPeriod,
+  collectionsByMethod,
+  collectionsInPeriod,
+  creditInvoices,
+  openReceivables,
   paymentRows,
+  refundMethodLabel,
   returnsInPeriod,
   sortedForTime,
   totalsOf,
+  type ClosingRow,
+  type CollectionRow,
+  type CreditInvoiceRow,
   type GroupRow,
   type Grouping,
   type LineFact,
   type ReportFilters,
 } from '@/features/pos/lib/sales-report';
-import { PosGate } from '@/features/pos/components/shared/pos-shared';
+import { PosGate, PrintPreviewDialog } from '@/features/pos/components/shared/pos-shared';
 
 const ALL = 'all';
 
 /** What the table shows: a grouping of the sales, or one of the lists. */
-type View = Grouping | 'payments' | 'discounts' | 'returns';
+type View = Grouping | 'payments' | 'credit' | 'receivables' | 'collections' | 'closings' | 'discounts' | 'returns';
 
 const VIEWS: Array<{ id: View; label: string; column: string }> = [
   { id: 'product', label: 'حسب الصنف', column: 'الصنف' },
@@ -55,6 +70,10 @@ const VIEWS: Array<{ id: View; label: string; column: string }> = [
   { id: 'customer', label: 'حسب العميل', column: 'العميل' },
   { id: 'invoice', label: 'الفواتير', column: 'الفاتورة' },
   { id: 'payments', label: 'وسائل الدفع', column: 'الوسيلة' },
+  { id: 'credit', label: 'المبيعات الآجلة', column: 'الفاتورة' },
+  { id: 'receivables', label: 'المستحق على العملاء (اليوم)', column: 'الفاتورة' },
+  { id: 'collections', label: 'تحصيلات الآجل', column: 'التحصيل' },
+  { id: 'closings', label: 'إغلاق الورديات والفروقات', column: 'الوردية' },
   { id: 'discounts', label: 'الخصومات وتغيير الأسعار', column: 'الصنف' },
   { id: 'returns', label: 'المرتجعات', column: 'المرتجع' },
 ];
@@ -128,6 +147,14 @@ function Reports() {
   const payments = React.useMemo(() => paymentRows(data, filters), [data, filters]);
   const discounted = React.useMemo(() => discountedLines(facts), [facts]);
   const returns = React.useMemo(() => returnsInPeriod(data, filters), [data, filters]);
+  const credit = React.useMemo(() => creditInvoices(data, filters), [data, filters]);
+  const receivables = React.useMemo(() => openReceivables(data, filters), [data, filters]);
+  const collections = React.useMemo(() => collectionsInPeriod(data, filters), [data, filters]);
+  const collectionMethods = React.useMemo(() => collectionsByMethod(collections), [collections]);
+  const closings = React.useMemo(() => closingsInPeriod(data, filters), [data, filters]);
+  const closingCashiers = React.useMemo(() => closingsByCashier(closings), [closings]);
+  const [zSessionId, setZSessionId] = React.useState<string | null>(null);
+  const zSession = data.sessions.find((s) => s.id === zSessionId) ?? null;
 
   const isDefaultPeriod = period.from === defaultPeriod.from && period.to === defaultPeriod.to;
   const activeFilterCount =
@@ -158,7 +185,60 @@ function Reports() {
         ]),
       ];
     } else if (view === 'payments') {
-      sheet = [['الوسيلة', 'العمليات', 'المحصّل', 'المردود', 'الصافي'], ...payments.map((p) => [p.label, p.count, p.collected, p.refunded, p.net])];
+      sheet = [
+        ['الوسيلة', 'العمليات', 'المحصّل', 'المردود', 'الصافي'],
+        ...payments.map((p) => [p.label, p.count, p.collected, p.refunded, p.net]),
+        ...collectionMethods
+          .filter((c) => c.count > 0)
+          .map((c) => [`تحصيل آجل · ${c.label}`, c.count, c.total, 0, c.total]),
+      ];
+    } else if (view === 'credit' || view === 'receivables') {
+      sheet = [
+        ['التاريخ', 'الفاتورة', 'العميل', 'نقطة البيع', 'الكاشير', 'الدفع', 'الإجمالي', 'آجل', 'المحصّل', 'المرتجع', 'المتبقي'],
+        ...(view === 'credit' ? credit : receivables).map((r) => [
+          formatDateTime(r.date),
+          r.saleNumber,
+          r.customer,
+          r.registerName,
+          r.cashierName,
+          r.payment,
+          r.total,
+          r.credit,
+          r.collected,
+          r.returned,
+          r.due,
+        ]),
+      ];
+    } else if (view === 'collections') {
+      sheet = [
+        ['التاريخ', 'الفاتورة', 'العميل', 'الوسيلة', 'المرجع', 'المكان', 'بواسطة', 'المبلغ'],
+        ...collections.map((c) => [
+          formatDateTime(c.createdAt),
+          c.saleNumber,
+          c.partnerName,
+          PAYMENT_METHOD_LABELS[c.method],
+          c.reference,
+          c.registerName,
+          c.createdBy,
+          c.amount,
+        ]),
+      ];
+    } else if (view === 'closings') {
+      sheet = [
+        ['الإغلاق', 'الفتح', 'نقطة البيع', 'الكاشير', 'العهدة', 'المتوقع', 'المعدود', 'الفرق', 'النوع', 'سبب الفرق'],
+        ...closings.map((c) => [
+          formatDateTime(c.closedAt),
+          formatDateTime(c.openedAt),
+          c.registerName,
+          c.cashierName,
+          c.openingFloat,
+          c.expectedCash,
+          c.countedCash,
+          c.difference,
+          differenceKind(c.difference),
+          c.reason ?? '',
+        ]),
+      ];
     } else if (view === 'discounts') {
       sheet = [
         ['التاريخ', 'الفاتورة', 'الصنف', 'الكاشير', 'السعر الأصلي', 'سعر البيع', 'الخصم', 'التكلفة'],
@@ -173,7 +253,7 @@ function Reports() {
           r.saleNumber,
           r.reason,
           r.lines.map((l) => `${l.name} × ${l.quantity}`).join('، '),
-          PAYMENT_METHOD_LABELS[r.refund.method],
+          refundMethodLabel(r.refund.method),
           r.refund.amount,
           r.refund.status === 'done' ? 'تم' : 'معلّق',
         ]),
@@ -189,7 +269,7 @@ function Reports() {
     } catch {
       toast.error('تعذر تصدير التقرير.');
     }
-  }, [isGrouping, view, viewMeta, groupRows, payments, discounted, returns, stamp]);
+  }, [isGrouping, view, viewMeta, groupRows, payments, collectionMethods, credit, receivables, collections, closings, discounted, returns, stamp]);
 
   usePageHeaderActions(
     () => (
@@ -302,6 +382,9 @@ function Reports() {
   const grouped = usePagination(groupRows, DEFAULT_PAGE_SIZE);
   const discountsPage = usePagination(discounted, DEFAULT_PAGE_SIZE);
   const returnsPage = usePagination(returns, DEFAULT_PAGE_SIZE);
+  const creditPage = usePagination(view === 'receivables' ? receivables : credit, DEFAULT_PAGE_SIZE);
+  const collectionsPage = usePagination(collections, DEFAULT_PAGE_SIZE);
+  const closingsPage = usePagination(closings, DEFAULT_PAGE_SIZE);
   const pagination = (p: { page: number; pageSize: number; total: number; setPage: (n: number) => void; setPageSize: (n: number) => void }) => ({
     page: p.page,
     pageSize: p.pageSize,
@@ -372,6 +455,79 @@ function Reports() {
           keyExtractor={(p) => p.method}
           emptyText="لا مدفوعات ضمن الفلاتر الحالية."
         />
+      ) : view === 'credit' || view === 'receivables' ? (
+        <div className="space-y-3">
+          <CreditSummary rows={view === 'credit' ? credit : receivables} collections={collections} currency={currency} view={view} />
+          <DirectoryPagedViews items={creditPage.slice} loading={false} serverPagination={pagination(creditPage)}>
+            {(rowsPage) => (
+              <DataTable
+                variant="directory"
+                columns={creditColumns(currency)}
+                data={rowsPage}
+                keyExtractor={(r) => r.saleId}
+                emptyText={view === 'credit' ? 'لا مبيعات آجلة ضمن الفلاتر الحالية.' : 'لا مستحقات مفتوحة على العملاء.'}
+              />
+            )}
+          </DirectoryPagedViews>
+        </div>
+      ) : view === 'collections' ? (
+        <div className="space-y-3">
+          <DataTable
+            variant="directory"
+            columns={[
+              { key: 'label', title: 'الوسيلة', render: (c) => <span className="font-medium">{c.label}</span> },
+              { key: 'count', title: 'العمليات', render: (c) => <span className="tabular-nums">{c.count}</span> },
+              { key: 'inShift', title: 'في الوردية (الدرج)', render: (c) => <span className="tabular-nums">{formatAmount(c.inShift)}</span> },
+              { key: 'outside', title: 'خارج الوردية', render: (c) => <span className="tabular-nums">{formatAmount(c.outside)}</span> },
+              { key: 'total', title: 'الإجمالي', render: (c) => <span className="font-semibold tabular-nums">{formatMoney(c.total, currency)}</span> },
+            ]}
+            data={collectionMethods}
+            keyExtractor={(c) => c.method}
+            emptyText="لا تحصيلات."
+          />
+          <DirectoryPagedViews items={collectionsPage.slice} loading={false} serverPagination={pagination(collectionsPage)}>
+            {(rowsPage) => (
+              <DataTable
+                variant="directory"
+                columns={collectionColumns(currency)}
+                data={rowsPage}
+                keyExtractor={(c) => c.id}
+                emptyText="لا تحصيلات آجل ضمن الفلاتر الحالية."
+              />
+            )}
+          </DirectoryPagedViews>
+        </div>
+      ) : view === 'closings' ? (
+        <div className="space-y-3">
+          <ClosingSummary rows={closings} currency={currency} />
+          {closingCashiers.length > 1 ? (
+            <DataTable
+              variant="directory"
+              columns={[
+                { key: 'cashier', title: 'الكاشير', render: (c) => <span className="font-medium">{c.cashierName}</span> },
+                { key: 'shifts', title: 'الورديات', render: (c) => <span className="tabular-nums">{c.shifts}</span> },
+                { key: 'with', title: 'بفرق', render: (c) => <span className="tabular-nums">{c.withDifference}</span> },
+                { key: 'shortage', title: 'العجز', render: (c) => <DifferenceAmount value={c.shortage} /> },
+                { key: 'overage', title: 'الزيادة', hideOnMobile: true, render: (c) => <DifferenceAmount value={c.overage} /> },
+                { key: 'net', title: 'الصافي', hideOnMobile: true, render: (c) => <DifferenceAmount value={c.net} strong /> },
+              ]}
+              data={closingCashiers}
+              keyExtractor={(c) => c.cashierName}
+              emptyText="لا ورديات."
+            />
+          ) : null}
+          <DirectoryPagedViews items={closingsPage.slice} loading={false} serverPagination={pagination(closingsPage)}>
+            {(rowsPage) => (
+              <DataTable
+                variant="directory"
+                columns={closingColumns(setZSessionId)}
+                data={rowsPage}
+                keyExtractor={(c) => c.sessionId}
+                emptyText="لا ورديات أُغلقت ضمن الفلاتر الحالية."
+              />
+            )}
+          </DirectoryPagedViews>
+        </div>
       ) : view === 'discounts' ? (
         <DirectoryPagedViews items={discountsPage.slice} loading={false} serverPagination={pagination(discountsPage)}>
           {(rowsPage) => (
@@ -429,8 +585,223 @@ function Reports() {
           )}
         </DirectoryPagedViews>
       )}
+      <PrintPreviewDialog
+        open={!!zSession}
+        onOpenChange={(o) => !o && setZSessionId(null)}
+        title="تقرير إغلاق الوردية"
+        invoiceStyle={resolvePosInvoiceStyle(
+          data.registers.find((r) => r.id === zSession?.registerId),
+          data.settings,
+        )}
+        document={
+          zSession
+            ? sessionToPrintable(
+                zSession,
+                data.registers.find((r) => r.id === zSession.registerId),
+                summarizeSession(data, zSession),
+              )
+            : null
+        }
+      />
     </div>
   );
+}
+
+const differenceKind = (d: number) => (d < -0.004 ? 'عجز' : d > 0.004 ? 'زيادة' : 'مطابق');
+
+function DifferenceAmount({ value, strong }: { value: number; strong?: boolean }) {
+  return (
+    <span
+      className={cn(
+        'tabular-nums',
+        strong && 'font-semibold',
+        value < -0.004 ? 'text-destructive' : value > 0.004 ? 'text-warning' : 'text-success',
+      )}
+    >
+      {formatAmount(value)}
+    </span>
+  );
+}
+
+function ClosingSummary({ rows, currency }: { rows: ClosingRow[]; currency: string | null }) {
+  const t = closingTotals(rows);
+  const cards = [
+    { label: 'ورديات أُغلقت', value: String(t.shifts) },
+    { label: 'منها بفرق', value: String(t.withDifference) },
+    { label: 'إجمالي العجز', value: formatMoney(t.shortage, currency), tone: t.shortage < 0 ? 'text-destructive' : '' },
+    { label: 'إجمالي الزيادة', value: formatMoney(t.overage, currency), tone: t.overage > 0 ? 'text-warning' : '' },
+  ];
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {cards.map((c) => (
+          <div key={c.label} className="rounded-xl border border-border bg-card p-3">
+            <div className="text-xs text-muted-foreground">{c.label}</div>
+            <div className={cn('text-lg font-semibold tabular-nums', c.tone)}>{c.value}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        الفرق = المعدود − المتوقع. السالب عجز (نقد أقل مما يجب في الدرج) والموجب زيادة. يُجمع العجز والزيادة كلٌّ على
+        حدة حتى لا تُخفي زيادةُ وردية عجزَ أخرى.
+      </p>
+    </div>
+  );
+}
+
+function closingColumns(openZ: (sessionId: string) => void): ColumnDef<ClosingRow>[] {
+  return [
+    {
+      key: 'shift',
+      title: 'الوردية',
+      render: (c) => (
+        <div className="flex flex-col">
+          <span className="font-medium">
+            {c.registerName} · {c.cashierName}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {formatDateTime(c.openedAt)} ← {formatDateTime(c.closedAt)}
+          </span>
+        </div>
+      ),
+    },
+    { key: 'expected', title: 'المتوقع', hideOnMobile: true, render: (c) => <span className="tabular-nums">{formatAmount(c.expectedCash)}</span> },
+    { key: 'counted', title: 'المعدود', hideOnMobile: true, render: (c) => <span className="tabular-nums">{formatAmount(c.countedCash)}</span> },
+    {
+      key: 'difference',
+      title: 'الفرق',
+      render: (c) => (
+        <span className="inline-flex items-center gap-1.5">
+          <DifferenceAmount value={c.difference} strong />
+          {Math.abs(c.difference) > 0.004 ? (
+            <Badge variant={c.difference < 0 ? 'destructive' : 'warning'}>{differenceKind(c.difference)}</Badge>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      key: 'reason',
+      title: 'سبب الفرق',
+      hideOnMobile: true,
+      render: (c) => (c.reason ? <span className="text-xs">{c.reason}</span> : <span className="text-muted-foreground">—</span>),
+    },
+    {
+      key: 'z',
+      title: '',
+      render: (c) => (
+        <Button size="sm" variant="ghost" onClick={() => openZ(c.sessionId)} aria-label={`تقرير Z لوردية ${c.cashierName}`}>
+          <FileText className="h-4 w-4" />Z
+        </Button>
+      ),
+    },
+  ];
+}
+
+function CreditSummary({
+  rows,
+  collections,
+  currency,
+  view,
+}: {
+  rows: CreditInvoiceRow[];
+  collections: CollectionRow[];
+  currency: string | null;
+  view: 'credit' | 'receivables';
+}) {
+  const sum = (pick: (r: CreditInvoiceRow) => number) => rows.reduce((a, r) => a + pick(r), 0);
+  const cards =
+    view === 'credit'
+      ? [
+          { label: 'بيع آجل', value: sum((r) => r.credit) },
+          { label: 'حُصّل منه', value: sum((r) => r.collected) },
+          { label: 'أُرجع منه', value: sum((r) => r.returned) },
+          { label: 'المتبقي منه اليوم', value: sum((r) => r.due) },
+        ]
+      : [
+          { label: 'المستحق على العملاء', value: sum((r) => r.due) },
+          { label: 'عدد الفواتير', value: rows.length, count: true },
+          { label: 'عدد العملاء', value: new Set(rows.map((r) => r.partnerId)).size, count: true },
+          { label: 'تحصيلات الفترة', value: collections.reduce((a, c) => a + c.amount, 0) },
+        ];
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {cards.map((c) => (
+        <div key={c.label} className="rounded-xl border border-border bg-card p-3">
+          <div className="text-xs text-muted-foreground">{c.label}</div>
+          <div className="text-lg font-semibold tabular-nums">
+            {'count' in c && c.count ? c.value : formatMoney(c.value, currency)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function creditColumns(currency: string | null): ColumnDef<CreditInvoiceRow>[] {
+  return [
+    {
+      key: 'invoice',
+      title: 'الفاتورة',
+      render: (r) => (
+        <div className="flex flex-col">
+          <span className="font-medium">{r.customer}</span>
+          <span className="text-xs text-muted-foreground">
+            <span dir="ltr">{r.saleNumber}</span> · {formatDateTime(r.date)}
+          </span>
+        </div>
+      ),
+    },
+    { key: 'payment', title: 'الدفع', hideOnMobile: true, render: (r) => <span className="text-xs">{r.payment}</span> },
+    { key: 'total', title: 'الإجمالي', hideOnMobile: true, render: (r) => <span className="tabular-nums">{formatAmount(r.total)}</span> },
+    { key: 'credit', title: 'آجل', render: (r) => <span className="tabular-nums">{formatAmount(r.credit)}</span> },
+    { key: 'collected', title: 'المحصّل', hideOnMobile: true, render: (r) => <span className="tabular-nums">{formatAmount(r.collected)}</span> },
+    { key: 'returned', title: 'المرتجع', hideOnMobile: true, render: (r) => <span className="tabular-nums">{formatAmount(r.returned)}</span> },
+    {
+      key: 'due',
+      title: 'المتبقي',
+      render: (r) =>
+        r.due > 0.004 ? (
+          <span className="font-semibold tabular-nums text-warning">{formatMoney(r.due, currency)}</span>
+        ) : (
+          <Badge variant="success">مسدّدة</Badge>
+        ),
+    },
+  ];
+}
+
+function collectionColumns(currency: string | null): ColumnDef<CollectionRow>[] {
+  return [
+    {
+      key: 'customer',
+      title: 'العميل',
+      render: (c) => (
+        <div className="flex flex-col">
+          <span className="font-medium">{c.partnerName}</span>
+          <span className="text-xs text-muted-foreground">
+            على <span dir="ltr">{c.saleNumber}</span> · {formatDateTime(c.createdAt)}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: 'method',
+      title: 'الوسيلة',
+      render: (c) => (
+        <span>
+          {PAYMENT_METHOD_LABELS[c.method]}
+          {c.reference ? <span className="text-xs text-muted-foreground" dir="ltr"> · {c.reference}</span> : null}
+        </span>
+      ),
+    },
+    {
+      key: 'where',
+      title: 'المكان',
+      hideOnMobile: true,
+      render: (c) => (c.inShift ? c.registerName : <Badge variant="outline">خارج الوردية</Badge>),
+    },
+    { key: 'by', title: 'بواسطة', hideOnMobile: true, render: (c) => c.createdBy },
+    { key: 'amount', title: 'المبلغ', render: (c) => <span className="font-semibold tabular-nums">{formatMoney(c.amount, currency)}</span> },
+  ];
 }
 
 function discountColumns(currency: string | null): ColumnDef<LineFact>[] {

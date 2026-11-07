@@ -1,23 +1,59 @@
 'use client';
 
 import * as React from 'react';
-import { Banknote, CheckCircle2, CreditCard, Landmark, Loader2, XCircle } from 'lucide-react';
+import { Banknote, CheckCircle2, CreditCard, HandCoins, Landmark, Loader2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/shared/utils';
-import { PAYMENT_METHOD_LABELS, type PosPaymentMethod } from '@/features/pos/domain/types';
+import { PAYMENT_METHOD_LABELS, type PosPaymentMethod, type PosSale } from '@/features/pos/domain/types';
 import { usePosContext } from '@/features/pos/hooks/use-pos-context';
 import { paidAmount, round2 } from '@/features/pos/lib/calc';
 import { formatAmount, formatMoney, parseAmount } from '@/features/pos/lib/format';
+import { ContactCustomerPicker } from '@/features/pos/components/register/customer-picker';
 
-const METHOD_ICONS: Record<PosPaymentMethod, typeof Banknote> = {
+export const METHOD_ICONS: Record<PosPaymentMethod, typeof Banknote> = {
   cash: Banknote,
   card: CreditCard,
   transfer: Landmark,
+  credit: HandCoins,
 };
+
+/** The contact a credit payment is owed by: picked here, saved on the open sale. */
+function CreditCustomer({ sale }: { sale: PosSale }) {
+  const { actions } = usePosContext();
+  const partner = sale.customer.kind === 'partner' ? sale.customer : null;
+  const [changing, setChanging] = React.useState(false);
+  const locked = sale.payments.some((p) => p.method === 'credit' && p.status === 'succeeded');
+  if (partner && !changing) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+        <span>
+          على حساب: <b>{partner.name}</b>
+        </span>
+        {!locked ? (
+          <Button size="sm" variant="ghost" className="h-7" onClick={() => setChanging(true)}>
+            تغيير
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1">
+      <Label>العميل من جهات الاتصال</Label>
+      <ContactCustomerPicker
+        selectedId={partner?.partnerId ?? null}
+        onPick={async (c) => {
+          const saved = await actions?.setSaleCustomer(sale.id, { kind: 'partner', partnerId: c.id, name: c.name });
+          if (saved) setChanging(false);
+        }}
+      />
+    </div>
+  );
+}
 
 /**
  * Payment of a committed sale. Each payment is saved the moment it is
@@ -62,6 +98,19 @@ export function PaymentDialog({
   if (!sale || !actions) return null;
 
   const applied = Math.min(parseAmount(amount) || remaining, remaining);
+  const partner = sale.customer.kind === 'partner' ? sale.customer : null;
+  const creditAmount = round2(
+    sale.payments.filter((p) => p.method === 'credit' && p.status === 'succeeded').reduce((s, p) => s + p.amount, 0),
+  );
+  const blocked = (m: PosPaymentMethod) => (m === 'transfer' && !reference.trim()) || (m === 'credit' && !partner);
+  const payLabel =
+    method === 'card'
+      ? 'بدء الدفع بالبطاقة'
+      : method === 'transfer'
+        ? 'تسجيل التحويل'
+        : method === 'credit'
+          ? 'تسجيل آجل على حساب العميل'
+          : 'تسجيل النقد';
 
   // One action at a time: a second tap while the server answers would pay twice.
   const once = async (fn: () => Promise<unknown>) => {
@@ -79,6 +128,20 @@ export function PaymentDialog({
       const amountDue = round2(Math.min(value, remaining));
       if (amountDue <= 0) return;
       if (nextMethod === 'transfer' && !reference.trim()) return;
+      if (nextMethod === 'credit') {
+        if (!partner) return;
+        await actions.addPayment(sale.id, {
+          kind: 'payment',
+          method: 'credit',
+          amount: amountDue,
+          status: 'succeeded',
+          reference: null,
+          tendered: null,
+          change: null,
+          sessionId,
+        });
+        return;
+      }
       if (nextMethod === 'card') {
         await actions.addPayment(sale.id, {
           kind: 'payment',
@@ -128,6 +191,9 @@ export function PaymentDialog({
           <div className="rounded-lg bg-muted/50 p-2">
             <div className="text-xs text-muted-foreground">المدفوع</div>
             <div className="text-lg font-bold tabular-nums text-success">{formatAmount(paid)}</div>
+            {creditAmount > 0 ? (
+              <div className="text-xs text-muted-foreground">منه آجل {formatAmount(creditAmount)}</div>
+            ) : null}
           </div>
           <div className={cn('rounded-lg p-2', remaining > 0 ? 'bg-warning/10' : 'bg-success/10')}>
             <div className="text-xs text-muted-foreground">المتبقي</div>
@@ -141,14 +207,27 @@ export function PaymentDialog({
               <li key={p.id} className="flex justify-between gap-2">
                 <span>
                   {PAYMENT_METHOD_LABELS[p.method]}
+                  {p.method === 'credit' && partner ? ` · ${partner.name}` : ''}
                   {p.reference ? ` · ${p.reference}` : ''}
                   {p.status === 'pending' ? ' · قيد التنفيذ على الجهاز' : ''}
                   {p.status === 'declined' ? ' · مرفوضة' : ''}
-                  {p.status === 'cancelled' ? ' · لم يُخصم' : ''}
+                  {p.status === 'cancelled' ? (p.method === 'credit' ? ' · أُلغي' : ' · لم يُخصم') : ''}
                   {p.change ? ` · الباقي ${formatAmount(p.change)}` : ''}
                 </span>
-                <span className={cn('tabular-nums', p.status !== 'succeeded' && 'text-muted-foreground line-through')}>
-                  {formatAmount(p.amount)}
+                <span className="flex items-center gap-2">
+                  {p.method === 'credit' && p.status === 'succeeded' ? (
+                    <button
+                      type="button"
+                      className="text-destructive hover:underline"
+                      disabled={busy}
+                      onClick={() => once(() => actions.updatePayment(sale.id, p.id, { status: 'cancelled' }))}
+                    >
+                      إلغاء
+                    </button>
+                  ) : null}
+                  <span className={cn('tabular-nums', p.status !== 'succeeded' && 'text-muted-foreground line-through')}>
+                    {formatAmount(p.amount)}
+                  </span>
                 </span>
               </li>
             ))}
@@ -170,7 +249,7 @@ export function PaymentDialog({
 
             {split ? (
               <div className="space-y-2">
-                <div className="grid grid-cols-3 gap-2">
+                <div className={cn('grid gap-2', enabledMethods.length > 3 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3')}>
                   {enabledMethods.map((m) => {
                     const Icon = METHOD_ICONS[m];
                     return (
@@ -200,10 +279,11 @@ export function PaymentDialog({
                 {method === 'transfer' ? (
                   <Input placeholder="رقم مرجع التحويل" dir="ltr" value={reference} onChange={(e) => setReference(e.target.value)} />
                 ) : null}
+                {method === 'credit' ? <CreditCustomer sale={sale} /> : null}
                 <Button
                   className="w-full"
                   onClick={() => pay(method, applied)}
-                  disabled={busy || applied <= 0 || (method === 'transfer' && !reference.trim())}
+                  disabled={busy || applied <= 0 || blocked(method)}
                 >
                   تسجيل {formatAmount(applied)} · {PAYMENT_METHOD_LABELS[method]}
                 </Button>
@@ -227,12 +307,9 @@ export function PaymentDialog({
                 {method === 'transfer' ? (
                   <Input placeholder="رقم مرجع التحويل" dir="ltr" value={reference} onChange={(e) => setReference(e.target.value)} />
                 ) : null}
-                <Button
-                  className="w-full"
-                  onClick={() => pay(method, remaining)}
-                  disabled={busy || (method === 'transfer' && !reference.trim())}
-                >
-                  {method === 'card' ? 'بدء الدفع بالبطاقة' : method === 'transfer' ? 'تسجيل التحويل' : 'تسجيل النقد'}
+                {method === 'credit' ? <CreditCustomer sale={sale} /> : null}
+                <Button className="w-full" onClick={() => pay(method, remaining)} disabled={busy || blocked(method)}>
+                  {payLabel}
                 </Button>
               </div>
             )}
@@ -250,7 +327,9 @@ export function PaymentDialog({
         </div>
         {remaining > 0 && sale.payments.length > 0 ? (
           <p className="text-xs text-muted-foreground">
-            ترك مبلغ متبقٍ يجعله بيعًا آجلًا، وهو غير متاح في هذا الإصدار. أكمل المبلغ بوسيلة أخرى.
+            {data.settings.paymentMethods.credit
+              ? 'أكمل المتبقي بوسيلة أخرى، أو سجّله «آجل» على حساب عميل من جهات الاتصال.'
+              : 'أكمل المتبقي بوسيلة أخرى. البيع الآجل غير مفعّل في إعدادات نقاط البيع.'}
           </p>
         ) : null}
       </DialogContent>

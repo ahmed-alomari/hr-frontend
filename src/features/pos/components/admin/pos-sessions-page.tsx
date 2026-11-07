@@ -55,6 +55,9 @@ function Sessions() {
                     </span>
                   )}
                 </div>
+                {s.differenceReason ? (
+                  <div className="mt-1 text-xs text-muted-foreground">سبب الفرق: {s.differenceReason}</div>
+                ) : null}
                 <div className="mt-2 flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={() => setReport(s)}>
                     <FileText className="h-4 w-4" />
@@ -81,6 +84,7 @@ function Sessions() {
                 <th className="px-3 py-2 text-start">الإغلاق</th>
                 <th className="px-3 py-2 text-start">المبيعات</th>
                 <th className="px-3 py-2 text-start">الفرق</th>
+                <th className="px-3 py-2 text-start">سبب الفرق</th>
                 <th className="px-3 py-2 text-start">الحالة</th>
                 <th className="px-3 py-2" />
               </tr>
@@ -104,6 +108,9 @@ function Sessions() {
                       {s.difference == null ? '—' : (
                         <span className={s.difference === 0 ? 'text-success' : 'text-destructive'}>{formatMoney(s.difference)}</span>
                       )}
+                    </td>
+                    <td className="max-w-[220px] truncate px-3 py-2 text-xs" title={s.differenceReason ?? undefined}>
+                      {s.differenceReason ?? '—'}
                     </td>
                     <td className="px-3 py-2">
                       {s.status === 'open' ? <Badge variant="success">مفتوحة</Badge> : <Badge variant="subtle">مغلقة</Badge>}

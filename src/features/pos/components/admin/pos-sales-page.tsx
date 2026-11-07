@@ -12,6 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
+  customerLabel,
+  MONEY_METHODS,
   PAYMENT_METHOD_LABELS,
   resolvePosInvoiceStyle,
   SALE_STATUS_LABELS,
@@ -24,6 +26,8 @@ import { usePosContext } from '@/features/pos/hooks/use-pos-context';
 import { paidAmount, priceLines, round2, saleTaxSettings } from '@/features/pos/lib/calc';
 import { formatDateTime, formatMoney, parseAmount } from '@/features/pos/lib/format';
 import { saleToPrintable } from '@/features/pos/lib/receipt';
+import { paymentSummaryOf } from '@/features/pos/lib/sales-report';
+import { Badge } from '@/components/ui/badge';
 import {
   EmptyState,
   PosGate,
@@ -167,7 +171,7 @@ function ResolvePanel({ sale, onDone }: { sale: PosSale; onDone: () => void }) {
             <Select value={refundMethod} onValueChange={(v) => setRefundMethod(v as PosPaymentMethod)}>
               <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(Object.keys(PAYMENT_METHOD_LABELS) as PosPaymentMethod[]).map((m) => (
+                {MONEY_METHODS.map((m) => (
                   <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>
                 ))}
               </SelectContent>
@@ -245,6 +249,7 @@ function SaleDialog({ sale, onClose }: { sale: PosSale | null; onClose: () => vo
   if (!sale) return null;
   const register = data.registers.find((r) => r.id === sale.registerId);
   const returns = data.returns.filter((r) => r.saleId === sale.id);
+  const collections = data.collections.filter((c) => c.saleId === sale.id);
   const needsAction = sale.status === 'payment_exception' || sale.status === 'awaiting_payment';
 
   return (
@@ -259,6 +264,7 @@ function SaleDialog({ sale, onClose }: { sale: PosSale | null; onClose: () => vo
           </DialogHeader>
           <div className="max-h-[70vh] space-y-3 overflow-y-auto text-sm">
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
+              <span>العميل: {customerLabel(sale.customer)}</span>
               <span>نقطة البيع: {register?.name ?? '—'}</span>
               <span>الكاشير: {sale.cashierName}</span>
               <span>التاريخ: {formatDateTime(sale.completedAt ?? sale.createdAt)}</span>
@@ -335,6 +341,38 @@ function SaleDialog({ sale, onClose }: { sale: PosSale | null; onClose: () => vo
               </div>
             ) : null}
 
+            {sale.credit ? (
+              <div className="space-y-1 rounded-md border border-border p-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold">آجل على {sale.credit.partnerName}</span>
+                  {sale.credit.due > 0 ? (
+                    <Badge variant="warning">المتبقي {formatMoney(sale.credit.due, currency)}</Badge>
+                  ) : (
+                    <Badge variant="success">مسدّدة</Badge>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-x-4 text-muted-foreground">
+                  <span>آجل {formatMoney(sale.credit.amount)}</span>
+                  <span>حُصّل {formatMoney(sale.credit.collected)}</span>
+                  <span>مرتجع إلى الحساب {formatMoney(sale.credit.returned)}</span>
+                </div>
+                {collections.length > 0 ? (
+                  <ul className="space-y-0.5 border-t border-border/60 pt-1">
+                    {collections.map((c) => (
+                      <li key={c.id} className="flex justify-between gap-2">
+                        <span>
+                          تحصيل · {PAYMENT_METHOD_LABELS[c.method]}
+                          {c.reference ? ` · ${c.reference}` : ''} · {formatDateTime(c.createdAt)} · {c.createdBy}
+                          {c.sessionId ? '' : ' · خارج الوردية'}
+                        </span>
+                        <span>{formatMoney(c.amount)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
             {returns.length > 0 ? (
               <div className="text-xs">
                 <span className="font-semibold">المرتجعات: </span>
@@ -387,11 +425,12 @@ function Sales() {
   const [search, setSearch] = React.useState('');
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
+  const q = search.trim().toLowerCase();
   const sales = data.sales.filter(
     (s) =>
       (status === 'all' || s.status === status) &&
       (registerId === 'all' || s.registerId === registerId) &&
-      (!search.trim() || (s.number ?? '').toLowerCase().includes(search.trim().toLowerCase())),
+      (!q || (s.number ?? '').toLowerCase().includes(q) || (s.customer.kind !== 'walk_in' && s.customer.name.toLowerCase().includes(q))),
   );
   const selected = data.sales.find((s) => s.id === selectedId) ?? null;
 
@@ -401,7 +440,7 @@ function Sales() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-52 flex-1">
           <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="h-9 ps-9" placeholder="رقم الإيصال" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input className="h-9 ps-9" placeholder="رقم الإيصال أو اسم العميل" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={status} onValueChange={(v) => setStatus(v as PosSaleStatus | 'all')}>
           <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
@@ -446,7 +485,15 @@ function Sales() {
                 </span>
                 <span className="shrink-0">{formatDateTime(s.completedAt ?? s.createdAt)}</span>
               </div>
-              <div className="mt-1 text-base font-bold tabular-nums">{formatMoney(s.totals.total, currency)}</div>
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <span className="text-base font-bold tabular-nums">{formatMoney(s.totals.total, currency)}</span>
+                <span className="text-xs text-muted-foreground">{paymentSummaryOf(s)}</span>
+              </div>
+              {(s.credit?.due ?? 0) > 0 ? (
+                <div className="mt-1 text-xs text-warning">
+                  على {s.credit!.partnerName}: {formatMoney(s.credit!.due, currency)}
+                </div>
+              ) : null}
             </button>
           ))}
         </div>
@@ -459,6 +506,7 @@ function Sales() {
                 <th className="px-3 py-2 text-start">نقطة البيع</th>
                 <th className="px-3 py-2 text-start">الكاشير</th>
                 <th className="px-3 py-2 text-start">الإجمالي</th>
+                <th className="px-3 py-2 text-start">الدفع</th>
                 <th className="px-3 py-2 text-start">الحالة</th>
               </tr>
             </thead>
@@ -474,6 +522,14 @@ function Sales() {
                   <td className="px-3 py-2">{data.registers.find((r) => r.id === s.registerId)?.name ?? '—'}</td>
                   <td className="px-3 py-2">{s.cashierName}</td>
                   <td className="px-3 py-2 tabular-nums">{formatMoney(s.totals.total, currency)}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {paymentSummaryOf(s)}
+                    {(s.credit?.due ?? 0) > 0 ? (
+                      <span className="block text-warning">
+                        على {s.credit!.partnerName}: {formatMoney(s.credit!.due, currency)}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-2"><SaleStatusBadge status={s.status} /></td>
                 </tr>
               ))}
