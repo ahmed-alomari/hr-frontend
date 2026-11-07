@@ -19,6 +19,9 @@ import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-li
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
 import { Button } from '@/components/ui/button';
+import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
+import { registerExportRows, type RegisterExportColumn } from '@/components/pdf/lib/register-export-rows';
+import { formatQty, moneyCell } from '@/features/inventory/admin/reports/lib/report-shared';
 
 const LOCATION_TYPE_LABELS: Record<WarehouseLocationType, string> = {
   supplier: 'المورد',
@@ -157,7 +160,72 @@ export function DetailedStockReportPage() {
     total,
   } = usePagination(filtered, DEFAULT_PAGE_SIZE);
 
-  usePageHeaderActions(() => <FilterToggleButton />, []);
+  const exportColumns: RegisterExportColumn<DetailedStockRow>[] = [
+    { label: 'المستودع', kind: 'text', value: (r) => r.warehouseName },
+    { label: 'الموقع', kind: 'text', value: (r) => `${r.locationName} (${r.locationCode})` },
+    { label: 'نوع الموقع', kind: 'status', value: (r) => LOCATION_TYPE_LABELS[r.locationType] },
+    {
+      label: 'المنتج',
+      kind: 'name',
+      value: (r) => (r.variantLabel !== '—' ? `${r.productName} — ${r.variantLabel}` : r.productName),
+    },
+    { label: 'SKU', kind: 'code', value: (r) => r.sku },
+    { label: 'الكمية', kind: 'number', value: (r) => formatQty(r.quantity), total: (t) => formatQty(t.sums.onHand) },
+    { label: 'المحجوز', kind: 'number', value: (r) => formatQty(r.reservedQuantity) },
+    {
+      label: 'المتاح',
+      kind: 'number',
+      value: (r) => formatQty(Math.max(0, r.quantity - r.reservedQuantity)),
+      total: (t) => formatQty(t.sums.available),
+    },
+    ...(canReadCost
+      ? ([
+          { label: 'متوسط التكلفة', kind: 'number', value: (r) => moneyCell(r.unitCost) },
+          {
+            label: 'قيمة المخزون',
+            kind: 'number',
+            value: (r) => (r.valueUnavailable ? '' : `${moneyCell(r.stockValue)}${r.isEstimatedValue ? ' *' : ''}`),
+            total: (t) => moneyCell(t.sums.value),
+          },
+        ] satisfies RegisterExportColumn<DetailedStockRow>[])
+      : []),
+  ];
+  const warehouseLabel = warehouseId !== 'all' ? warehouseById.get(warehouseId)?.nameAr : null;
+  const filterSummary = [
+    warehouseLabel ? `المستودع: ${warehouseLabel}` : 'كل المستودعات',
+    locationType !== 'all' ? `نوع الموقع: ${LOCATION_TYPE_LABELS[locationType]}` : null,
+    hideZero ? 'بدون الأرصدة الصفرية' : null,
+    search ? `بحث: ${search}` : null,
+    canReadCost && filtered.some((r) => r.isEstimatedValue) ? '* قيمة تقديرية من سعر الشراء في المنتج' : null,
+  ].filter((line): line is string => Boolean(line));
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={(warehouseId !== 'all' ? 1 : 0) + (locationType !== 'all' ? 1 : 0)} />
+        <RegisterExportMenu
+          title="المخزون التفصيلي"
+          fileName="inventory-detailed-stock"
+          columns={exportColumns}
+          getRows={async () =>
+            registerExportRows({
+              columns: exportColumns,
+              rows: filtered,
+              total: {
+                count: summary.rows,
+                sums: { onHand: summary.onHand, available: summary.available, value: summary.value },
+              },
+            })
+          }
+          subtitleLines={filterSummary}
+          landscape
+          pinnedColumnCount={1}
+          emptyMessage="لا توجد صفوف مخزون ضمن الفلاتر الحالية."
+        />
+      </div>
+    ),
+    [warehouseId, locationType, canReadCost, filtered, summary, filterSummary.join('|')],
+  );
 
   useEntityFilterSlot(
     () => (
@@ -331,7 +399,9 @@ export function DetailedStockReportPage() {
         <SummaryCard label="صفوف المخزون" value={summary.rows} />
         <SummaryCard label="الكمية الفعلية" value={summary.onHand} />
         <SummaryCard label="المتاح" value={summary.available} />
-        <SummaryCard label="قيمة المخزون" value={summary.value} suffix={currencySymbolAr(companyCurrencyCode())} />
+        {canReadCost ? (
+          <SummaryCard label="قيمة المخزون" value={summary.value} suffix={currencySymbolAr(companyCurrencyCode())} />
+        ) : null}
       </div>
 
       {isError ? <p className="text-sm text-destructive">تعذر تحميل المخزون التفصيلي.</p> : null}

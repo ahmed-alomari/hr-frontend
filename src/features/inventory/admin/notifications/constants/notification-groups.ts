@@ -20,6 +20,11 @@ export type InventoryNotificationKey = Exclude<
   | 'updatedAt'
   | 'createdBy'
   | 'updatedBy'
+  | 'costingLocked'
+  | 'periodLockDate'
+  | 'periodLockSetAt'
+  | 'periodLockSetBy'
+  | 'periodLockSetByName'
 >;
 
 export const INVENTORY_NOTIFICATION_GROUPS: Array<NotificationToggleGroup & AppRequirement> = [

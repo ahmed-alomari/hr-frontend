@@ -15,11 +15,16 @@ import { useInventoryBatches } from '@/features/inventory/admin/batches/hooks/us
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
 import { useWarehouseLocations } from '@/features/inventory/admin/locations/hooks/use-warehouse-locations';
 import { getInventoryCompanyId } from '@/features/inventory/lib/company-id';
+import { inventoryBatchesApi } from '@/features/inventory/admin/batches/lib/api/inventory-batches';
 import type {
+  InventoryBatch,
   InventoryBatchAvailability,
   InventoryBatchSort,
 } from '@/features/inventory/domain/types/inventory-batch';
-import { formatMoneyDigits } from '@/shared/utils';
+import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
+import { registerExportRows, type RegisterExportColumn } from '@/components/pdf/lib/register-export-rows';
+import { fetchAllPaginatedItems } from '@/shared/api/client';
+import { formatDateTime, formatDisplayDate, formatMoneyDigits } from '@/shared/utils';
 
 const AVAILABILITY_OPTIONS: { value: InventoryBatchAvailability; label: string }[] = [
   { value: 'available', label: 'دفعات متوفرة' },
@@ -73,7 +78,7 @@ export function BatchesReportPage() {
     setLocationId('all');
   }, [warehouseId]);
 
-  const { data, isLoading, isError } = useInventoryBatches({
+  const batchFilters = {
     companyId,
     warehouseId: warehouseId === 'all' ? undefined : warehouseId,
     locationId: locationId === 'all' ? undefined : locationId,
@@ -81,9 +86,8 @@ export function BatchesReportPage() {
     sort,
     expiryBefore: localDateBoundary(expiryBefore, true),
     search: search || undefined,
-    page,
-    limit: pageSize,
-  });
+  };
+  const { data, isLoading, isError } = useInventoryBatches({ ...batchFilters, page, limit: pageSize });
   const { data: warehousesData } = useWarehouses({ companyId, limit: 100 });
   const { data: locationsData } = useWarehouseLocations(
     {
@@ -101,7 +105,68 @@ export function BatchesReportPage() {
   const total = data?.pagination.total ?? 0;
   const summary = data?.summary;
 
-  usePageHeaderActions(() => <FilterToggleButton />, []);
+  const exportColumns: RegisterExportColumn<InventoryBatch>[] = [
+    { label: 'تاريخ الدخول', kind: 'date', value: (b) => formatDateTime(b.occurredAt) },
+    {
+      label: 'المنتج',
+      kind: 'name',
+      value: (b) => (b.variantName ? `${b.productName} — ${b.variantName}` : b.productName),
+    },
+    { label: 'SKU', kind: 'code', value: (b) => b.variantSku || b.sku || '' },
+    { label: 'المستودع / الموقع', kind: 'text', value: (b) => `${b.warehouseName} · ${b.locationName || b.locationCode}` },
+    {
+      label: 'المصدر',
+      kind: 'code',
+      value: (b) => (b.isOpening ? 'رصيد افتتاحي' : (b.sourceOperationReference ?? '')),
+    },
+    { label: 'الصلاحية', kind: 'date', value: (b) => (b.expiryDate ? formatDisplayDate(b.expiryDate) : '') },
+    { label: 'الكمية', kind: 'number', value: (b) => qty(b.quantity), total: (t) => qty(t.sums.quantity ?? 0) },
+    { label: 'المصروف', kind: 'number', value: (b) => qty(b.consumedQuantity), total: (t) => qty(t.sums.consumed ?? 0) },
+    { label: 'المتبقي', kind: 'number', value: (b) => qty(b.remainingQuantity), total: (t) => qty(t.sums.remaining ?? 0) },
+  ];
+  const warehouseLabel = warehouseId !== 'all' ? warehouses.find((w) => w.id === warehouseId)?.nameAr : null;
+  const locationLabel = locationId !== 'all' ? locations.find((l) => l.id === locationId) : null;
+  const filterSummary = [
+    warehouseLabel ? `المستودع: ${warehouseLabel}` : 'كل المستودعات',
+    locationLabel ? `الموقع: ${locationLabel.nameAr || locationLabel.code}` : null,
+    AVAILABILITY_OPTIONS.find((o) => o.value === availability)?.label ?? null,
+    expiryBefore ? `تنتهي قبل: ${expiryBefore}` : null,
+    search ? `بحث: ${search}` : null,
+    `الترتيب: ${SORT_OPTIONS.find((o) => o.value === sort)?.label ?? sort}`,
+  ].filter((line): line is string => Boolean(line));
+
+  const getExportRows = async () => {
+    const { items } = await fetchAllPaginatedItems((p, l) => inventoryBatchesApi.list({ ...batchFilters, page: p, limit: l }));
+    return registerExportRows({
+      columns: exportColumns,
+      rows: items,
+      total: summary
+        ? {
+            count: summary.batches,
+            sums: { quantity: summary.quantity, consumed: summary.consumed, remaining: summary.remaining },
+          }
+        : null,
+    });
+  };
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton />
+        <RegisterExportMenu
+          title="دفعات المخزون"
+          fileName="inventory-batches"
+          columns={exportColumns}
+          getRows={getExportRows}
+          subtitleLines={filterSummary}
+          landscape
+          pinnedColumnCount={1}
+          emptyMessage="لا توجد دفعات ضمن الفلاتر الحالية."
+        />
+      </div>
+    ),
+    [JSON.stringify(batchFilters), JSON.stringify(summary), filterSummary.join('|')],
+  );
 
   useEntityFilterSlot(
     () => (

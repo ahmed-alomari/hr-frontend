@@ -16,6 +16,9 @@ import { DataTable, usePagination, type ColumnDef } from '@/components/ui/data-t
 import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-list';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
+import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
+import { registerExportRows, type RegisterExportColumn } from '@/components/pdf/lib/register-export-rows';
+import { formatQty } from '@/features/inventory/admin/reports/lib/report-shared';
 
 type StockOverviewRow = {
   key: string;
@@ -125,7 +128,54 @@ export function StockOverviewReportPage() {
     total,
   } = usePagination(filtered, DEFAULT_PAGE_SIZE);
 
-  usePageHeaderActions(() => <FilterToggleButton />, []);
+  const exportColumns: RegisterExportColumn<StockOverviewRow>[] = [
+    { label: 'المنتج', kind: 'name', value: (r) => r.productName },
+    { label: 'SKU', kind: 'code', value: (r) => r.sku },
+    { label: 'الكمية', kind: 'number', value: (r) => formatQty(r.onHand), total: (t) => formatQty(t.sums.onHand) },
+    { label: 'المحجوز', kind: 'number', value: (r) => formatQty(r.reserved), total: (t) => formatQty(t.sums.reserved) },
+    { label: 'المتاح', kind: 'number', value: (r) => formatQty(r.available), total: (t) => formatQty(t.sums.available) },
+    { label: 'مستودعات', kind: 'number', value: (r) => String(r.warehouseCount) },
+    { label: 'مواقع', kind: 'number', value: (r) => String(r.locationCount) },
+    { label: 'الحالة', kind: 'status', value: stockStatusLabel },
+  ];
+  const warehouseLabel = warehouseId !== 'all' ? warehouses.find((w) => w.id === warehouseId)?.nameAr : null;
+  const stockFilterLabel = { all: null, in_stock: 'متوفر', low: 'منخفض', out: 'نفد' }[stockFilter];
+  const filterSummary = [
+    warehouseLabel ? `المستودع: ${warehouseLabel}` : 'كل المستودعات',
+    stockFilterLabel ? `الحالة: ${stockFilterLabel}` : null,
+    search ? `بحث: ${search}` : null,
+  ].filter((line): line is string => Boolean(line));
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={(warehouseId !== 'all' ? 1 : 0) + (stockFilter !== 'all' ? 1 : 0)} />
+        <RegisterExportMenu
+          title="المخزون"
+          fileName="inventory-stock"
+          columns={exportColumns}
+          getRows={async () =>
+            registerExportRows({
+              columns: exportColumns,
+              rows: filtered,
+              total: {
+                count: filtered.length,
+                sums: {
+                  onHand: filtered.reduce((s, r) => s + r.onHand, 0),
+                  reserved: filtered.reduce((s, r) => s + r.reserved, 0),
+                  available: filtered.reduce((s, r) => s + r.available, 0),
+                },
+              },
+            })
+          }
+          subtitleLines={filterSummary}
+          pinnedColumnCount={1}
+          emptyMessage="لا توجد منتجات ضمن الفلاتر الحالية."
+        />
+      </div>
+    ),
+    [warehouseId, stockFilter, filtered, filterSummary.join('|')],
+  );
 
   useEntityFilterSlot(
     () => (
@@ -315,6 +365,13 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
       </p>
     </div>
   );
+}
+
+function stockStatusLabel(row: StockOverviewRow): string {
+  if (!row.trackInventory) return 'بدون تتبع';
+  if (row.available <= 0) return 'نفد';
+  if (row.isLow) return 'منخفض';
+  return 'متوفر';
 }
 
 function stockStatusBadge(row: StockOverviewRow) {
