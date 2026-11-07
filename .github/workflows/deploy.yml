@@ -2,7 +2,7 @@ name: Build & Deploy Frontend to VPS
 
 # =====================================================================
 #  متى يشتغل هذا الملف (Trigger):
-#  1) أي Push مباشر إلى برانش "main-prod-amar" (برانش الإنتاج)
+#  1) أي Push مباشر إلى برانش "main-prod-hamada" (إنتاج سيرفر Contabo — nazafa.qutb.tech)
 #  2) عند دمج (merge) أي Pull Request من "main-dev-amar" داخل "main-prod-amar"
 #     (دمج الـ PR في GitHub هو تقنيًا "push" إلى البرانش الهدف،
 #      لذلك سطر "push -> branches: [main-prod-amar]" يغطي الحالتين معًا)
@@ -13,13 +13,13 @@ name: Build & Deploy Frontend to VPS
 on:
   push:
     branches:
-      - main-prod-amar   # <-- غيّر اسم البرانش هنا إذا احتجت
+      - main-prod-hamada   # <-- غيّر اسم البرانش هنا إذا احتجت
   workflow_dispatch:      # تشغيل يدوي من تبويب Actions عند الحاجة
 
 env:
   REGISTRY: ghcr.io
   # اسم الحزمة على GHCR. مستقل عن اسم الريبو عمدًا حتى لا يحمل بادئة hr-.
-  IMAGE_BASENAME: frontend
+  IMAGE_BASENAME: frontend-hamada
   # مجلد ستاك المنصة على السيرفر (نفس مجلد الباك اند — ملف compose واحد).
   APP_DIR: /root/Desktop/qutb-platform
   # اسم الخدمة داخل docker-compose.yml التي يملكها هذا المستودع.
@@ -33,11 +33,11 @@ env:
   # إلى BACKEND_URL عبر شبكة Docker — لا CORS ولا خروج إلى الإنترنت.
   NEXT_PUBLIC_API_URL: /api-backend
   BACKEND_URL: http://app:3000
-  NEXT_PUBLIC_SITE_URL: https://qutb.tech
+  NEXT_PUBLIC_SITE_URL: https://nazafa.qutb.tech
   NEXT_PUBLIC_ENV: production
-  # شركة المتجر على الإنتاج (مؤسسة روز للعبايات) — يحددها system:init
-  # على السيرفر، ويجب تجميدها هنا لأنها NEXT_PUBLIC_ تُخبز وقت البناء.
-  NEXT_PUBLIC_STOREFRONT_COMPANY_ID: fab83485-28ff-4852-a8c1-6bb5835de497
+  # لا متجر على هذا النشر: nazafa.qutb.tech يفتح لوحة الإدارة مباشرة.
+  NEXT_PUBLIC_STOREFRONT_COMPANY_ID: ''
+  NEXT_PUBLIC_CONSOLE_HOSTS: nazafa.qutb.tech
 
 jobs:
   build-and-push:
@@ -94,6 +94,7 @@ jobs:
               --build-arg NEXT_PUBLIC_SITE_URL \
               --build-arg NEXT_PUBLIC_ENV \
               --build-arg NEXT_PUBLIC_STOREFRONT_COMPANY_ID \
+              --build-arg NEXT_PUBLIC_CONSOLE_HOSTS \
               --build-arg NEXT_PUBLIC_APP_NAME \
               --build-arg NEXT_PUBLIC_HERE_API_KEY \
               --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY \
@@ -132,10 +133,10 @@ jobs:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.2.2
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || 22 }}
+          host: ${{ secrets.HAMADA_VPS_HOST }}
+          username: ${{ secrets.HAMADA_VPS_USER }}
+          key: ${{ secrets.HAMADA_VPS_SSH_KEY }}
+          port: ${{ secrets.HAMADA_VPS_PORT || 22 }}
           script: |
             set -euo pipefail
 
