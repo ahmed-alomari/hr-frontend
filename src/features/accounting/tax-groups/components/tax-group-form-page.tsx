@@ -86,7 +86,7 @@ export function TaxGroupFormPage({ taxGroupId }: TaxGroupFormPageProps) {
         iconName="Layers"
       />
 
-      {/* Top Action Bar (Odoo Style) */}
+      {/* Top Action Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/40 bg-background p-2 shadow-xs">
         {/* Breadcrumb Navigation on Right in RTL */}
         <div className="flex items-center gap-2">

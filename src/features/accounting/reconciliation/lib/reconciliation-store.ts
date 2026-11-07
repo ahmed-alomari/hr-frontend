@@ -31,7 +31,7 @@ export const useReconciliationStore = create<ReconciliationState>()(
       },
     }),
     {
-      name: 'odoo-accounting-reconciliation-storage',
+      name: 'accounting-reconciliation-storage',
     },
   ),
 );

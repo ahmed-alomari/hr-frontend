@@ -12,7 +12,7 @@ import {
   resolveApplicationLaunchPath,
   type ApplicationResponseDto,
 } from '@/features/system/applications/lib/api/applications';
-import { OdooAppTile } from '@/features/system/applications/components/odoo-app-tile';
+import { LauncherTile } from '@/features/system/applications/components/launcher-tile';
 import {
   resolveApplicationIcon,
   resolveApplicationTileClass,
@@ -39,7 +39,7 @@ function AppTile({
     });
 
   return (
-    <OdooAppTile
+    <LauncherTile
       icon={Icon}
       label={app.nameAr}
       tileClass={resolveApplicationTileClass(app, index)}
@@ -52,10 +52,10 @@ function AppTile({
 
 function LauncherSkeleton() {
   return (
-    <div className="odoo-app-grid flex w-full max-w-3xl flex-wrap items-start justify-center gap-x-7 gap-y-6">
+    <div className="launcher-grid flex w-full max-w-3xl flex-wrap items-start justify-center gap-x-7 gap-y-6">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="odoo-app-tile flex w-[6.5rem] flex-col items-center gap-2 sm:w-[7.25rem]">
-          <div className="odoo-app-square h-[4.5rem] w-[4.5rem] animate-pulse rounded-[0.85rem] bg-muted sm:h-20 sm:w-20" />
+        <div key={i} className="launcher-tile flex w-[6.5rem] flex-col items-center gap-2 sm:w-[7.25rem]">
+          <div className="launcher-square h-[4.5rem] w-[4.5rem] animate-pulse rounded-[0.85rem] bg-muted sm:h-20 sm:w-20" />
           <div className="h-3 w-16 animate-pulse rounded-full bg-muted" />
         </div>
       ))}
@@ -163,7 +163,7 @@ export function AppsLauncherPage() {
             <p className="text-xs text-muted-foreground">تواصل مع مسؤول النظام لمنح الصلاحيات أو تفعيل التطبيقات.</p>
           </div>
         ) : (
-          <div className="odoo-app-grid flex w-full max-w-3xl flex-wrap items-start justify-center gap-x-7 gap-y-6">
+          <div className="launcher-grid flex w-full max-w-3xl flex-wrap items-start justify-center gap-x-7 gap-y-6">
             {apps.map((app, index) => (
               <AppTile key={app.id} app={app} index={index} />
             ))}

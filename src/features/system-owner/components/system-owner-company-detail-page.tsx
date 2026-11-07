@@ -4,7 +4,17 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Eye, EyeOff, Plus } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  Database,
+  Eye,
+  EyeOff,
+  FlaskConical,
+  Lock,
+  Plus,
+  Sprout,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { Badge } from '@/components/ui/badge';
@@ -39,17 +49,25 @@ import {
 import {
   systemOwnerApi,
   type CatalogDemoProfileCode,
+  type CompanyDataCatalog,
   type CompanyDataCatalogApp,
   type CompanyDataCatalogSet,
   type CompanyDataKind,
   type CompanyDataRun,
   type DemoResetRun,
+  type SystemOwnerCompany,
   type SystemOwnerCompanyApplication,
 } from '@/features/system-owner/lib/api/system-owner';
+import { CompanyModeCard } from '@/features/system-owner/components/company-mode-card';
+import { CompanyProfileHeader } from '@/features/system-owner/components/company-profile-header';
+import {
+  resolveApplicationIcon,
+  resolveApplicationTileClass,
+} from '@/features/system/applications/lib/application-tile-config';
 import { ApiError } from '@/shared/api/client';
 import { cn } from '@/shared/utils';
 
-type TabId = 'apps' | 'data' | 'users' | 'superusers';
+type TabId = 'apps' | 'users' | 'superusers';
 
 export function SystemOwnerCompanyDetailPage() {
   const params = useParams<{ companyId: string }>();
@@ -62,22 +80,18 @@ export function SystemOwnerCompanyDetailPage() {
     <div className="flex flex-col gap-4">
       <SetPageTitle
         titleAr={company?.nameAr ?? 'تفاصيل الشركة'}
-        descriptionAr="تفعيل التطبيقات وتعيين صاحب الشركة المخوّل"
+        descriptionAr="بيانات الشركة وحالتها وتطبيقاتها وصاحبها المخوّل"
         iconName="Building2"
       />
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button variant="outline" size="sm" asChild>
-          <Link href={systemOwnerRoutes.overview}>العودة للشركات</Link>
-        </Button>
-        {company?.code ? (
-          <Badge variant="secondary" className="gap-1 text-xs">
-            رمز الشركة:
-            <span dir="ltr" className="font-mono">
-              {company.code}
-            </span>
-          </Badge>
-        ) : null}
-      </div>
+      {company ? (
+        <CompanyProfileHeader company={company} />
+      ) : (
+        <div className="flex">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={systemOwnerRoutes.overview}>العودة للشركات</Link>
+          </Button>
+        </div>
+      )}
 
       {companyQuery.isError ? (
         <p className="text-sm text-destructive">تعذر تحميل الشركة.</p>
@@ -87,7 +101,6 @@ export function SystemOwnerCompanyDetailPage() {
             {(
               [
                 ['apps', 'التطبيقات'],
-                ['data', 'البيانات الافتراضية'],
                 ['users', 'المستخدمون'],
                 ['superusers', 'Superusers'],
               ] as const
@@ -106,8 +119,7 @@ export function SystemOwnerCompanyDetailPage() {
             ))}
           </div>
 
-          {tab === 'apps' ? <CompanyAppsTab companyId={companyId} /> : null}
-          {tab === 'data' ? <CompanyDataTab companyId={companyId} /> : null}
+          {tab === 'apps' ? <CompanyAppsTab companyId={companyId} company={company} /> : null}
           {tab === 'users' ? <CompanyUsersTab companyId={companyId} /> : null}
           {tab === 'superusers' ? <CompanySuperusersTab companyId={companyId} /> : null}
         </>
@@ -116,8 +128,27 @@ export function SystemOwnerCompanyDetailPage() {
   );
 }
 
-function CompanyAppsTab({ companyId }: { companyId: string }) {
+function CompanyAppsTab({
+  companyId,
+  company,
+}: {
+  companyId: string;
+  company: SystemOwnerCompany | undefined;
+}) {
   const { data, isLoading, isError } = useSystemOwnerCompanyApplications(companyId);
+  const catalog = useQuery({
+    queryKey: ['system-owner', 'data-catalog', companyId],
+    queryFn: () => systemOwnerApi.companyDataCatalog(companyId),
+  });
+  const setsByApp = new Map((catalog.data?.apps ?? []).map((app) => [app.code, app]));
+  const [selectedProfile, setSelectedProfile] =
+    React.useState<CatalogDemoProfileCode>('beauty');
+  React.useEffect(() => {
+    if (catalog.data?.catalogProfile) setSelectedProfile(catalog.data.catalogProfile);
+  }, [catalog.data?.catalogProfile]);
+  const production = company?.operatingMode === 'production';
+  /** One app's data panel open at a time; closed again on leaving the tab. */
+  const [openData, setOpenData] = React.useState<string | null>(null);
   const { patchCompanyApplication } = useSystemOwnerMutations();
   const queryClient = useQueryClient();
   /** The app whose switch was turned on while some of what it needs is off. */
@@ -160,13 +191,30 @@ function CompanyAppsTab({ companyId }: { companyId: string }) {
 
   return (
     <div className="space-y-2">
+      {company ? <CompanyModeCard company={company} /> : null}
+      {catalog.data && company ? (
+        <CompanyDemoSection
+          company={company}
+          profile={selectedProfile}
+          onProfileChange={setSelectedProfile}
+          catalogProfile={catalog.data.catalogProfile}
+          profileOptions={catalog.data.catalogProfileOptions}
+          production={production}
+          open={openData === DEMO_SECTION}
+          onOpenChange={(open) => setOpenData(open ? DEMO_SECTION : null)}
+        />
+      ) : null}
       <p className="text-xs text-muted-foreground">
         «تفعيل» يتحكم بالترخيص والصلاحيات. «إظهار» يتحكم بظهور التطبيق في مشغّل الموظفين. تطبيق
         النظام وتطبيقات الشركة لا يمكن تعطيلهما، لكن يمكن إخفاؤهما من المشغّل. التطبيق لا يُفعَّل قبل
         ما يعتمد عليه، ولا يُعطَّل وتطبيق مفعّل يعتمد عليه.
       </p>
-      {apps.map((app) => {
+      {apps.map((app, index) => {
         const enableLocked = app.isAlwaysEnabled;
+        const Icon = resolveApplicationIcon(app);
+        const dataApp = setsByApp.get(app.code);
+        const dataSets = dataApp?.sets ?? [];
+        const dataOpen = openData === app.code;
         const applicationId = app.applicationId || app.id;
         const pending = patchCompanyApplication.isPending || enablingChain;
         const missing = app.isEnabled ? [] : app.missingDependencies;
@@ -176,10 +224,18 @@ function CompanyAppsTab({ companyId }: { companyId: string }) {
         const bridges = app.isEnabled ? app.followingBridges : [];
 
         return (
-          <div
-            key={app.id}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
-          >
+          <div key={app.id} className="rounded-xl border border-border bg-card">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <span
+              className={cn(
+                'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl',
+                resolveApplicationTileClass(app, index),
+                !(app.isEnabled || enableLocked) && 'opacity-45 grayscale',
+              )}
+              aria-hidden
+            >
+              <Icon className="h-5 w-5" strokeWidth={2} />
+            </span>
             <div className="min-w-0 flex-1 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-medium">{app.nameAr}</p>
@@ -277,6 +333,19 @@ function CompanyAppsTab({ companyId }: { companyId: string }) {
               </label>
             </div>
           </div>
+          {dataApp ? (
+            <AppDataPanel
+              companyId={companyId}
+              app={dataApp}
+              appName={nameOf}
+              profile={selectedProfile}
+              production={production}
+              open={dataOpen}
+              onOpenChange={(open) => setOpenData(open ? app.code : null)}
+              hasSets={dataSets.length > 0}
+            />
+          ) : null}
+          </div>
         );
       })}
       {apps.length === 0 ? (
@@ -333,90 +402,120 @@ const APP_DATA_NOTE: Record<string, string> = {
   'store-stock-sync': 'يربط طلبات المتجر بالمخزون، بلا عينة خاصة.',
 };
 
-function CompanyDataTab({ companyId }: { companyId: string }) {
-  const { data: apps } = useSystemOwnerCompanyApplications(companyId);
-  const catalog = useQuery({
-    queryKey: ['system-owner', 'data-catalog', companyId],
-    queryFn: () => systemOwnerApi.companyDataCatalog(companyId),
-  });
-  const names = new Map((apps ?? []).map((a) => [a.code, a.nameAr]));
-  const appName = (code: string) => names.get(code) || code;
-  const [selectedProfile, setSelectedProfile] =
-    React.useState<CatalogDemoProfileCode>('beauty');
-  React.useEffect(() => {
-    if (catalog.data?.catalogProfile) {
-      setSelectedProfile(catalog.data.catalogProfile);
-    }
-  }, [catalog.data?.catalogProfile]);
-  const cards = (catalog.data?.apps ?? []).filter(
-    (app) => app.sets.length > 0 || app.enabled,
-  );
+const DEMO_SECTION = '__demo__';
 
+/** Collapsible trigger shared by the company and app data panels. */
+function DataToggle({
+  open,
+  onOpenChange,
+  label,
+  locked,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  label: string;
+  locked?: boolean;
+  children?: React.ReactNode;
+}) {
+  const Chevron = open ? ChevronUp : ChevronDown;
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
-        كل تطبيق له بياناته. التحديث يُكمل الناقص ويعيد السجلات التي ما زالت بيانات تهيئة إلى التعريف الرسمي.
-        ما عدّلته الشركة يبقى. سندات المخزون وقيود الحسابات والمصاريف الموجودة لا تُعاد كتابتها حتى يبقى الرصيد
-        مترابطاً. عاين أولاً.
-      </p>
-      {catalog.data ? (
-        <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-          <div className="space-y-1">
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={() => onOpenChange(!open)}
+      className="flex w-full flex-wrap items-center gap-2 px-4 py-2 text-start text-xs text-muted-foreground hover:bg-muted/30"
+    >
+      <Database className="h-3.5 w-3.5" />
+      <span className="font-medium text-foreground">{label}</span>
+      {children}
+      {locked ? (
+        <span className="inline-flex items-center gap-1 text-[11px]">
+          <Lock className="h-3 w-3" />
+          التجريبية مقفلة في الإنتاج
+        </span>
+      ) : null}
+      <Chevron className="ms-auto h-4 w-4" />
+    </button>
+  );
+}
+
+function CompanyDemoSection({
+  company,
+  profile,
+  onProfileChange,
+  catalogProfile,
+  profileOptions,
+  production,
+  open,
+  onOpenChange,
+}: {
+  company: SystemOwnerCompany;
+  profile: CatalogDemoProfileCode;
+  onProfileChange: (profile: CatalogDemoProfileCode) => void;
+  catalogProfile: CatalogDemoProfileCode | null;
+  profileOptions: CompanyDataCatalog['catalogProfileOptions'];
+  production: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <section className="rounded-xl border border-border bg-card">
+      <DataToggle
+        open={open}
+        onOpenChange={onOpenChange}
+        label="البيانات التجريبية للشركة"
+        locked={production}
+      >
+        <Badge variant={catalogProfile ? 'success' : 'secondary'} className="text-[10px]">
+          {catalogProfile
+            ? `الباقة: ${profileOptions.find((option) => option.code === catalogProfile)?.labelAr ?? catalogProfile}`
+            : 'لم تُنشأ باقة'}
+        </Badge>
+      </DataToggle>
+      {open ? (
+        <div className="space-y-3 border-t border-border px-4 py-3">
+          <p className="text-xs text-muted-foreground">
+            بيانات كل تطبيق تحت التطبيق نفسه. التحديث يُكمل الناقص ويعيد ما زال بيانات تهيئة إلى التعريف
+            الرسمي، وما عدّلته الشركة يبقى. سندات المخزون وقيود الحسابات والمصاريف لا تُعاد كتابتها. عاين أولاً.
+          </p>
+          <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
             <Label htmlFor="catalog-demo-profile">نوع بيانات النشاط التجريبية</Label>
             <p className="text-xs text-muted-foreground">
-              يحدد فئات ومنتجات الكتالوج التي ستستخدمها المخازن والمتجر ومبيعات المحل.
-              بعد أول إنشاء يثبت الاختيار لحماية السندات والكميات التاريخية.
+              يحدد فئات ومنتجات الكتالوج التي ستستخدمها المخازن والمتجر ومبيعات المحل. بعد أول إنشاء يثبت
+              الاختيار لحماية السندات والكميات التاريخية.
+            </p>
+            <Select
+              value={profile}
+              onValueChange={(value) => onProfileChange(value as CatalogDemoProfileCode)}
+              disabled={!!catalogProfile || production}
+            >
+              <SelectTrigger id="catalog-demo-profile" className="max-w-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {profileOptions.map((option) => (
+                  <SelectItem key={option.code} value={option.code}>
+                    {option.labelAr}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {profileOptions.find((option) => option.code === profile)?.descriptionAr}
             </p>
           </div>
-          <Select
-            value={selectedProfile}
-            onValueChange={(value) =>
-              setSelectedProfile(value as CatalogDemoProfileCode)
-            }
-            disabled={!!catalog.data.catalogProfile}
-          >
-            <SelectTrigger id="catalog-demo-profile" className="max-w-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {catalog.data.catalogProfileOptions.map((profile) => (
-                <SelectItem key={profile.code} value={profile.code}>
-                  {profile.labelAr}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            {
-              catalog.data.catalogProfileOptions.find(
-                (profile) => profile.code === selectedProfile,
-              )?.descriptionAr
-            }
-          </p>
-          {catalog.data.catalogProfile ? (
-            <Badge variant="success">الباقة مثبتة لهذه الشركة</Badge>
+          {production ? (
+            <p className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
+              <Lock className="h-3.5 w-3.5" />
+              الشركة في وضع الإنتاج: لا تُحمَّل البيانات التجريبية ولا تُحذف. غيّر الوضع إلى «تجربة» أو «فحص» أولاً.
+            </p>
           ) : (
-            <Badge variant="warning">لم تُنشأ باقة بعد</Badge>
+            <DemoResetCard companyId={company.id} />
           )}
         </div>
       ) : null}
-      {catalog.data ? <DemoResetCard companyId={companyId} /> : null}
-      {catalog.isLoading ? (
-        <p className="text-xs text-muted-foreground">جارٍ التحميل…</p>
-      ) : null}
-      {catalog.isError ? (
-        <p className="text-sm text-destructive">تعذر تحميل بيانات التطبيقات.</p>
-      ) : null}
-      {cards.map((app) => (
-        <AppDataCard
-          key={app.code}
-          companyId={companyId}
-          app={app}
-          appName={appName}
-          profile={selectedProfile}
-        />
-      ))}
-    </div>
+    </section>
   );
 }
 
@@ -579,57 +678,103 @@ function DemoResetResult({ run }: { run: DemoResetRun }) {
   );
 }
 
-function AppDataCard({
+function AppDataPanel({
   companyId,
   app,
   appName,
   profile,
+  production,
+  open,
+  onOpenChange,
+  hasSets,
 }: {
   companyId: string;
   app: CompanyDataCatalogApp;
   appName: (code: string) => string;
   profile: CatalogDemoProfileCode;
+  production: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  hasSets: boolean;
 }) {
   const starter = app.sets.filter((set) => set.kind === 'starter');
   const demo = app.sets.filter((set) => set.kind === 'demo');
   const note = APP_DATA_NOTE[app.code];
   return (
-    <section className="space-y-3 rounded-xl border border-border bg-card px-4 py-3">
-      <div className="space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-semibold">{app.nameAr}</h3>
-          {app.enabled ? null : <Badge variant="secondary">غير مفعّل</Badge>}
+    <div className="border-t border-border/70">
+      <DataToggle
+        open={open}
+        onOpenChange={onOpenChange}
+        label="البيانات الافتراضية"
+        locked={production && demo.length > 0}
+      >
+        <span className="flex flex-wrap items-center gap-1">
+          {app.sets.map((set) => (
+            <DataSetChip key={set.code} set={set} dimmed={!app.enabled || (production && set.kind === 'demo')} />
+          ))}
+          {!hasSets ? <span className="text-[11px]">لا توجد</span> : null}
+        </span>
+      </DataToggle>
+      {open ? (
+        <div className="space-y-2 px-4 pb-3">
+          {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
+          {!app.enabled && hasSets ? (
+            <p className="text-xs text-warning">فعّل التطبيق أولاً ليمكن تحميل بياناته.</p>
+          ) : null}
+          {starter.length > 0 ? (
+            <AppDataKind
+              companyId={companyId}
+              appCode={app.code}
+              appLabel={app.nameAr}
+              enabled={app.enabled}
+              kind="starter"
+              sets={starter}
+              appName={appName}
+              profile={profile}
+            />
+          ) : null}
+          {demo.length > 0 ? (
+            production ? (
+              <p className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
+                <Lock className="h-3.5 w-3.5" />
+                البيانات التجريبية مقفلة: الشركة في وضع الإنتاج.
+              </p>
+            ) : (
+              <AppDataKind
+                companyId={companyId}
+                appCode={app.code}
+                appLabel={app.nameAr}
+                enabled={app.enabled}
+                kind="demo"
+                sets={demo}
+                appName={appName}
+                profile={profile}
+              />
+            )
+          ) : null}
         </div>
-        {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
-      </div>
-      {starter.length > 0 ? (
-        <AppDataKind
-          companyId={companyId}
-          appCode={app.code}
-          appLabel={app.nameAr}
-          enabled={app.enabled}
-          kind="starter"
-          sets={starter}
-          appName={appName}
-          profile={profile}
-        />
       ) : null}
-      {demo.length > 0 ? (
-        <AppDataKind
-          companyId={companyId}
-          appCode={app.code}
-          appLabel={app.nameAr}
-          enabled={app.enabled}
-          kind="demo"
-          sets={demo}
-          appName={appName}
-          profile={profile}
-        />
-      ) : null}
-      {app.sets.length === 0 ? (
-        <p className="text-xs text-muted-foreground">لا توجد بيانات افتراضية لهذا التطبيق.</p>
-      ) : null}
-    </section>
+    </div>
+  );
+}
+
+/** One data set as a small icon: a sprout for starter data, a flask for demo data. */
+function DataSetChip({ set, dimmed }: { set: CompanyDataCatalogSet; dimmed: boolean }) {
+  const Icon = set.kind === 'starter' ? Sprout : FlaskConical;
+  return (
+    <span
+      title={`${set.kind === 'starter' ? 'تأسيسية' : 'تجريبية'}: ${set.labelAr}`}
+      className={cn(
+        'inline-flex h-6 items-center gap-1 rounded-md border px-1.5 text-[11px]',
+        set.kind === 'starter'
+          ? 'border-success/40 bg-success/10 text-foreground'
+          : 'border-warning/40 bg-warning/10 text-foreground',
+        dimmed && 'opacity-50',
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      <span className="max-w-[9rem] truncate">{set.labelAr}</span>
+    </span>
   );
 }
 

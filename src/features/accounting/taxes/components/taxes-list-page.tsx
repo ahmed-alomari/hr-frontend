@@ -104,7 +104,7 @@ export function TaxesListPage() {
         iconName="Percent"
       />
 
-      {/* Top Controls Bar (Odoo Style) */}
+      {/* Top Controls Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-background p-1.5 border border-border/40">
         <div className="flex items-center gap-2">
           <Button
@@ -131,7 +131,7 @@ export function TaxesListPage() {
                 className="ps-8 pe-14 h-9 rounded-lg text-sm bg-muted/20"
               />
               <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              {/* Filter badge tag inside input like Odoo */}
+              {/* Filter badge tag inside input */}
               <div className="absolute end-2 top-1/2 -translate-y-1/2 flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary border border-primary/20">
                 <Filter className="h-3 w-3" />
                 <span>بيع / الشراء</span>
@@ -147,7 +147,7 @@ export function TaxesListPage() {
         </div>
       </div>
 
-      {/* Main Table (Odoo Style) */}
+      {/* Main Table */}
       <div className="overflow-x-auto rounded-lg border border-border/60 bg-card shadow-xs">
         <table className="w-full text-sm">
           <thead className="border-b border-border/60 bg-muted/30 text-muted-foreground">

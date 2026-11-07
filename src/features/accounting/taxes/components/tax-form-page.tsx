@@ -111,7 +111,7 @@ export function TaxFormPage({ taxId }: { taxId?: string }) {
         </Button>
       </div>
 
-      {/* Main Odoo Form Container */}
+      {/* Main Form Container */}
       <div className="rounded-xl border border-border/60 bg-card p-6 shadow-xs flex flex-col gap-6">
         {/* Form Fields Header Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-12">

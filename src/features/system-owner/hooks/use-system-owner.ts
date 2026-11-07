@@ -5,16 +5,22 @@ import { toast } from 'sonner';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import { systemOwnerQueryKeys } from '@/features/system-owner/hooks/query-keys';
 import {
+  COMPANY_MODE_LABEL,
+  COMPANY_STATUS_ACTION_DONE,
+} from '@/features/system-owner/constants/company-status';
+import {
   systemOwnerApi,
+  type CompanyOperatingMode,
+  type CompanyStatusAction,
   type CreateSystemOwnerCompanyDto,
   type CreateSystemOwnerCompanyUserDto,
   type PatchCompanyApplicationDto,
 } from '@/features/system-owner/lib/api/system-owner';
 
-export function useSystemOwnerCompanies(search?: string) {
+export function useSystemOwnerCompanies() {
   return useQuery({
-    queryKey: systemOwnerQueryKeys.companies(search),
-    queryFn: () => systemOwnerApi.listCompanies({ page: 1, limit: 200, search: search || undefined }),
+    queryKey: systemOwnerQueryKeys.companies(),
+    queryFn: () => systemOwnerApi.listCompanies({ page: 1, limit: 200 }),
   });
 }
 
@@ -96,6 +102,30 @@ export function useSystemOwnerMutations() {
     },
     onError: (err) => {
       toast.error(handleApiError(err, 'system-owner.companies.update').displayMessage);
+    },
+  });
+
+  const changeCompanyStatus = useMutation({
+    mutationFn: (vars: { companyId: string; action: CompanyStatusAction }) =>
+      systemOwnerApi.changeCompanyStatus(vars.companyId, vars.action),
+    onSuccess: (_data, vars) => {
+      invalidateCompany(vars.companyId);
+      toast.success(COMPANY_STATUS_ACTION_DONE[vars.action]);
+    },
+    onError: (err) => {
+      toast.error(handleApiError(err, 'system-owner.companies.status').displayMessage);
+    },
+  });
+
+  const setCompanyOperatingMode = useMutation({
+    mutationFn: (vars: { companyId: string; mode: CompanyOperatingMode; confirmCode?: string }) =>
+      systemOwnerApi.setCompanyOperatingMode(vars.companyId, vars.mode, vars.confirmCode),
+    onSuccess: (_data, vars) => {
+      invalidateCompany(vars.companyId);
+      toast.success(`وضع الشركة الآن: ${COMPANY_MODE_LABEL[vars.mode]}`);
+    },
+    onError: (err) => {
+      toast.error(handleApiError(err, 'system-owner.companies.mode').displayMessage);
     },
   });
 
@@ -188,6 +218,8 @@ export function useSystemOwnerMutations() {
   return {
     createCompany,
     updateCompany,
+    changeCompanyStatus,
+    setCompanyOperatingMode,
     createCompanyUser,
     patchCompanyApplication,
     assignSuperuser,

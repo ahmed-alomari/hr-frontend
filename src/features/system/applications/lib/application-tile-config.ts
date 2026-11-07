@@ -73,7 +73,9 @@ export const TILE_SURFACE_ACCENT = [
   'from-accent via-card to-card group-hover:border-primary/20',
 ] as const;
 
-export function resolveApplicationIcon(app: ApplicationResponseDto): LucideIcon {
+export function resolveApplicationIcon(
+  app: Pick<ApplicationResponseDto, 'code'> & { icon?: string | null },
+): LucideIcon {
   const key = app.icon?.trim().toLowerCase();
   if (key && ICON_BY_KEY[key]) return ICON_BY_KEY[key]!;
   if (app.code === 'store-admin' || app.code === 'ecommerce') return Store;
@@ -91,7 +93,7 @@ export function resolveApplicationIcon(app: ApplicationResponseDto): LucideIcon 
 }
 
 export function resolveApplicationTileClass(
-  app: ApplicationResponseDto,
+  app: Pick<ApplicationResponseDto, 'code'>,
   index: number,
 ): string {
   const preset = TILE_BY_CODE[app.code];

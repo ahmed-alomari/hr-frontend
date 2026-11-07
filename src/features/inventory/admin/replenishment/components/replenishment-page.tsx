@@ -43,7 +43,7 @@ function formatQuantity(value: number): string {
 }
 
 /**
- * Replenishment, Odoo style: the products at or below their low-stock
+ * Replenishment: the products at or below their low-stock
  * threshold (counting what open purchase orders will bring), and a purchase
  * order drafted from the ones picked. Stock enters only when that order is
  * received. Each drafted order stays listed as a replenishment request, its

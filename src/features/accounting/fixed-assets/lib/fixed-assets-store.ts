@@ -61,7 +61,7 @@ export const useFixedAssetsStore = create<FixedAssetsState>()(
       },
     }),
     {
-      name: 'odoo-accounting-fixed-assets-storage',
+      name: 'accounting-fixed-assets-storage',
     },
   ),
 );

@@ -215,7 +215,7 @@ export function CurrencyFormPage({ currencyId }: CurrencyFormPageProps) {
         iconName="Coins"
       />
 
-      {/* Top Header / Action Bar (Matching Odoo UI Screenshot) */}
+      {/* Top Header / Action Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/40 bg-background p-2 shadow-xs">
         {/* Breadcrumb Navigation on Right */}
         <div className="flex items-center gap-2">
@@ -269,7 +269,7 @@ export function CurrencyFormPage({ currencyId }: CurrencyFormPageProps) {
         </div>
       )}
 
-      {/* Main Odoo Form Card */}
+      {/* Main Form Card */}
       <div className="rounded-xl border border-border/60 bg-card p-6 md:p-8 shadow-xs flex flex-col gap-8">
         {/* Two-Column Form Layout (RTL) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-y-5 gap-x-12">

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/shared/utils';
 
-export function OdooAppTile({
+export function LauncherTile({
   icon: Icon,
   label,
   caption,
@@ -16,8 +16,11 @@ export function OdooAppTile({
   onClick,
   muted,
   overlay,
+  imageSrc,
 }: {
   icon: LucideIcon;
+  /** Shown instead of the icon (a company logo), on a plain surface. */
+  imageSrc?: string | null;
   label: string;
   caption?: string;
   tileClass: string;
@@ -34,16 +37,20 @@ export function OdooAppTile({
       <span className="relative">
         <span
           className={cn(
-            'odoo-app-square flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center overflow-hidden rounded-[0.85rem] sm:h-20 sm:w-20',
-            tileClass,
-            muted && 'odoo-app-square-muted grayscale opacity-55',
+            'launcher-square flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center overflow-hidden rounded-[0.85rem] sm:h-20 sm:w-20',
+            imageSrc ? 'border border-border bg-card p-2' : tileClass,
+            muted && 'launcher-square-muted grayscale opacity-55',
           )}
         >
-          <Icon className="odoo-app-icon h-[1.85rem] w-[1.85rem]" strokeWidth={2} />
+          {imageSrc ? (
+            <img src={imageSrc} alt="" className="h-full w-full object-contain" />
+          ) : (
+            <Icon className="launcher-icon h-[1.85rem] w-[1.85rem]" strokeWidth={2} />
+          )}
         </span>
         {overlay}
       </span>
-      <span className="odoo-app-label line-clamp-2 min-h-10 text-[0.8125rem] font-semibold leading-snug text-foreground">
+      <span className="launcher-label line-clamp-2 min-h-10 text-[0.8125rem] font-semibold leading-snug text-foreground">
         {label}
       </span>
       {caption ? <span className="text-xs text-muted-foreground">{caption}</span> : null}
@@ -51,7 +58,7 @@ export function OdooAppTile({
   );
 
   const className =
-    'group odoo-app-tile flex w-[6.5rem] flex-col items-center gap-2 text-center outline-none focus-visible:rounded-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-[7.25rem]';
+    'group launcher-tile flex w-[6.5rem] flex-col items-center gap-2 text-center outline-none focus-visible:rounded-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-[7.25rem]';
 
   if (href && (external || hardNavigation)) {
     return (

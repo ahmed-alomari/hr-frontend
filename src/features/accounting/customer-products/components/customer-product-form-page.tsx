@@ -163,7 +163,7 @@ export function CustomerProductFormPage({ productId }: CustomerProductFormPagePr
         </div>
       </div>
 
-      {/* Main Odoo Sheet */}
+      {/* Main Sheet */}
       <div className="rounded-xl border border-border/60 bg-card p-6 md:p-8 shadow-xs flex flex-col gap-6 relative">
         {/* Smart Stat Buttons Header */}
         <div className="flex items-center justify-start gap-2 border-b border-border/40 pb-4">

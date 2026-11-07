@@ -15,7 +15,7 @@ const warehouse: Warehouse = {
 };
 
 describe('buildDefaultWarehouseLocations', () => {
-  it('seeds the fixed Odoo-style locations per warehouse', () => {
+  it('seeds the fixed locations per warehouse', () => {
     const drafts = buildDefaultWarehouseLocations(warehouse);
 
     expect(drafts.map((item) => item.code)).toEqual([

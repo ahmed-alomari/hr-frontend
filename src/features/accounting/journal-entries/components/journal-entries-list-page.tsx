@@ -107,7 +107,7 @@ export function JournalEntriesListPage() {
         iconName="ListOrdered"
       />
 
-      {/* Top Control Bar Matching Exact Odoo Header */}
+      {/* Top Control Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-background p-2 border border-border/40 shadow-xs">
         {/* Right side (Action & Title) */}
         <div className="flex items-center gap-2 order-1 md:order-1">
@@ -138,7 +138,7 @@ export function JournalEntriesListPage() {
               />
               <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
 
-              {/* Tag 'مُرحّل' matching Odoo badge */}
+              {/* Tag 'مُرحّل' */}
               {postedFilter && (
                 <div className="absolute end-2 top-1/2 -translate-y-1/2 flex items-center gap-1 bg-[#714B67]/15 text-[#714B67] dark:bg-[#714B67]/30 dark:text-purple-300 text-xs px-2 py-0.5 rounded border border-[#714B67]/30">
                   <Filter className="h-3 w-3 text-[#714B67] dark:text-purple-300" />

@@ -58,7 +58,7 @@ export function JournalFormPage({ journalId }: { journalId?: string }) {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Odoo Smart Button: قيود اليومية */}
+          {/* Smart Button: قيود اليومية */}
           <Button
             type="button"
             variant="outline"
@@ -79,7 +79,7 @@ export function JournalFormPage({ journalId }: { journalId?: string }) {
         </div>
       </div>
 
-      {/* Main Form Container (Odoo Sheet Style) */}
+      {/* Main Form Container (Sheet Style) */}
       <div className="rounded-xl border border-border/60 bg-card p-6 shadow-xs flex flex-col gap-6">
         {/* Header Fields Section */}
         <div className="flex flex-col gap-4 max-w-xl">

@@ -195,7 +195,7 @@ export function CustomerCreditNoteFormPage({ creditNoteId }: CustomerCreditNoteF
           </div>
         </div>
 
-        {/* State Pipeline Badges (Odoo status bar) */}
+        {/* State Pipeline Badges (status bar) */}
         <div className="flex items-center gap-2">
           <div className="flex items-center rounded-lg border border-border/60 bg-muted/20 p-1 text-xs">
             <span
@@ -238,7 +238,7 @@ export function CustomerCreditNoteFormPage({ creditNoteId }: CustomerCreditNoteF
         </div>
       </div>
 
-      {/* Main Odoo Sheet */}
+      {/* Main Sheet */}
       <div className="rounded-xl border border-border/60 bg-card p-6 md:p-8 shadow-xs flex flex-col gap-6 relative">
         {/* Buttons Bar inside Sheet */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-4">

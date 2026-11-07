@@ -94,7 +94,7 @@ export const useJournalEntriesStore = create<JournalEntriesState>()(
       },
     }),
     {
-      name: 'odoo-accounting-journal-entries-storage',
+      name: 'accounting-journal-entries-storage',
     },
   ),
 );

@@ -9,7 +9,7 @@ type AppsLauncherButtonProps = {
 };
 
 /**
- * App switcher — Odoo-style: soft gold accent + label, separated from in-app nav.
+ * App switcher: soft gold accent + label, separated from in-app nav.
  * Solid gold block competed visually with the active nav pill beside it.
  */
 export function AppsLauncherButton({ className, label = 'التطبيقات' }: AppsLauncherButtonProps) {
