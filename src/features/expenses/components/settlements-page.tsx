@@ -14,6 +14,7 @@ import { minorToInput, type Minor } from '../domain/money';
 import type { PartyId, Settlement } from '../domain/types';
 import { AmountInput, EmptyState, Field, FormDialog, LoadingBlock, Money, PartyName, PartySelect, ResponsiveTable, Section, StatusBadge, useRunCommand } from './common';
 import { todayIso, useCurrency, useExpensesData, useExpensesPermissions, useLedger } from './expenses-provider';
+import { GroupField } from './group-policy';
 import { TxnActions } from './txn-actions';
 
 const METHOD_LABELS: Record<Settlement['method'], string> = { cash: 'نقداً', transfer: 'تحويل', payroll: 'خصم من الراتب', other: 'أخرى' };
@@ -36,8 +37,10 @@ export function SettlementDialog({
   const [method, setMethod] = React.useState<Settlement['method']>('cash');
   const [date, setDate] = React.useState(todayIso());
   const [note, setNote] = React.useState('');
+  const [groupId, setGroupId] = React.useState<string | null>(null);
   React.useEffect(() => {
     if (!open) return;
+    setGroupId(null);
     setFromId(preset?.fromId ?? null);
     setToId(preset?.toId ?? null);
     setAmount(preset ? { t: minorToInput(preset.amount, currency.decimals), m: preset.amount } : { t: '', m: 0 });
@@ -50,7 +53,7 @@ export function SettlementDialog({
   const save = () => {
     if (!fromId || !toId) return;
     if (amount.m > owed && !window.confirm('المبلغ أكبر مما على الدافع لهذا الطرف؛ الزيادة تصبح مستحقة للدافع. متابعة؟')) return;
-    void run({ type: 'addSettlement', fromId, toId, amount: amount.m, method, date, note: note.trim() || null }, 'سُجّل السداد').then((ok) => ok && onOpenChange(false));
+    void run({ type: 'addSettlement', fromId, toId, amount: amount.m, method, date, note: note.trim() || null, groupId }, 'سُجّل السداد').then((ok) => ok && onOpenChange(false));
   };
   return (
     <FormDialog
@@ -75,6 +78,7 @@ export function SettlementDialog({
         </p>
       ) : null}
       <Field label="المبلغ"><AmountInput value={amount.t} onChange={(t, m) => setAmount({ t, m })} /></Field>
+      <GroupField value={groupId} onChange={setGroupId} amount={amount.m} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="الطريقة">
           <Select value={method} onValueChange={(v) => setMethod(v as Settlement['method'])}>

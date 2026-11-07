@@ -15,6 +15,7 @@ import { expensesRoutes } from '../constants/routes';
 import { EmptyState, KeyValue, LoadingBlock, Money, PartyName, Section, StatusBadge } from './common';
 import { ExpenseFormDialog } from './expense-form-dialog';
 import { useDirectory, useExpensesData, useExpensesPermissions } from './expenses-provider';
+import { ApprovalTimeline } from './group-policy';
 import { TxnActions } from './txn-actions';
 
 function AttachmentLink({ meta }: { meta: AttachmentMeta }) {
@@ -75,6 +76,7 @@ export function ExpenseDetailPage({ id }: { id: string }) {
           {expense.note ? <KeyValue label="ملاحظة">{expense.note}</KeyValue> : null}
           {expense.decidedBy ? <KeyValue label={expense.status === 'rejected' ? 'رفضه' : 'اعتمده'}><PartyName id={expense.decidedBy} link={false} />{expense.decisionNote ? ` — ${expense.decisionNote}` : ''}</KeyValue> : null}
           {expense.status === 'void' ? <KeyValue label="أُلغي">{directory.nameOf(expense.voidedBy)} — {expense.voidReason}</KeyValue> : null}
+          {expense.approval ? <div className="mt-3 border-t border-border pt-3"><ApprovalTimeline txn={expense} /></div> : null}
         </Section>
 
         <Section title="المرفقات">

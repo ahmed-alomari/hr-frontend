@@ -14,11 +14,12 @@ import type { ExpenseDraft } from '../domain/commands';
 import { buildBearing, custodyPayments, validateExpense } from '../domain/expense-builder';
 import { expenseEffects } from '../domain/ledger';
 import { minorToInput, sumMinor, toMinor, type Minor } from '../domain/money';
-import { blocksSubmit, checkPolicies } from '../domain/policy';
+import { approvalRequired, blocksSubmit, checkPolicies, policyOf } from '../domain/policy';
 import { ORG } from '../domain/types';
 import type { AllocationLine, AttachmentMeta, Expense, PartyId, SplitMethod } from '../domain/types';
 import { AmountInput, Field, FormDialog, Money, PartyChecklist, PartyName, PartySelect } from './common';
 import { todayIso, useCurrency, useDirectory, useExpensesData, useLedger } from './expenses-provider';
+import { GroupPolicyHint, GroupSelect, openGroups } from './group-policy';
 
 type PayMode = 'org' | 'custody' | 'personal';
 
@@ -172,16 +173,14 @@ export function ExpenseFormDialog({
   };
   const issues = amount > 0 ? validateExpense(draft) : [];
   const violations = amount > 0 && actorId
-    ? checkPolicies({ id: editing?.id ?? '', amount, categoryId, attachments, createdBy: editing?.createdBy ?? actorId, date, currency: currency.code }, data, currency.format)
+    ? checkPolicies({ id: editing?.id ?? '', amount, categoryId, attachments, createdBy: editing?.createdBy ?? actorId, date, currency: currency.code, groupId }, data, currency.format)
     : [];
-  const blocked = blocksSubmit(violations, data.settings);
+  const policy = policyOf(data, groupId);
+  const blocked = blocksSubmit(violations, policy);
   const effects = amount > 0 && issues.length === 0 ? expenseEffects({ ...draft, id: 'preview', kind: 'expense', currency: currency.code, status: 'approved', createdBy: actorId ?? '', createdAt: '', attachments } as Expense) : [];
   const group = groupId ? data.groups.find((g) => g.id === groupId) : undefined;
-  const submitLabel = !data.settings.requireApproval
-    ? 'حفظ'
-    : data.settings.autoApproveBelow != null && amount < data.settings.autoApproveBelow
-      ? 'حفظ (اعتماد تلقائي)'
-      : 'إرسال للاعتماد';
+  const submitLabel = policy.approval === 'none' ? 'حفظ' : !approvalRequired(policy, amount) ? 'حفظ (اعتماد تلقائي)' : 'إرسال للاعتماد';
+  const pickable = openGroups(data).length > 1 || (group?.closed ?? false);
 
   const pickGroup = (id: string | null) => {
     setGroupId(id);
@@ -268,6 +267,12 @@ export function ExpenseFormDialog({
         <Field label="التاريخ" htmlFor="exp-date">
           <Input id="exp-date" type="date" className="h-11" value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)} />
         </Field>
+        {pickable ? (
+          <div className="space-y-1 sm:col-span-2">
+            <GroupSelect value={groupId} keep={editing?.groupId} onChange={pickGroup} />
+            {amount > 0 ? <GroupPolicyHint groupId={groupId} amount={amount} expense /> : null}
+          </div>
+        ) : null}
         <Field label="الوصف" htmlFor="exp-desc" className="sm:col-span-2">
           <Input id="exp-desc" className="h-10" placeholder="مثال: وقود سيارة التوزيع" value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
@@ -376,19 +381,10 @@ export function ExpenseFormDialog({
       <div>
         <button type="button" className="flex items-center gap-1 text-xs font-medium text-primary" onClick={() => setMore((v) => !v)}>
           <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', more && 'rotate-180')} />
-          خيارات إضافية: المجموعة{advanced ? '، مركز التكلفة، توزيع التكلفة' : ''}، الملاحظة
+          خيارات إضافية: {advanced ? 'مركز التكلفة، توزيع التكلفة، ' : ''}الملاحظة
         </button>
         {more ? (
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Field label="المجموعة">
-              <Select value={groupId ?? 'none'} onValueChange={(v) => pickGroup(v === 'none' ? null : v)}>
-                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">بلا مجموعة</SelectItem>
-                  {data.groups.filter((g) => !g.closed).map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </Field>
             {advanced ? (
               <Field label="مركز التكلفة">
                 <Select value={costCenterId ?? 'none'} onValueChange={(v) => setCostCenterId(v === 'none' ? null : v)} disabled={multiAlloc}>

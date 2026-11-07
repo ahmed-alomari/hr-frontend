@@ -3,12 +3,12 @@
  * custody lifecycle and shortfall, shared expenses, settlements, advances,
  * approval, reports without double counting, policies and participants.
  */
-import { buildDemoData, DEMO, emptyData } from './fixtures/demo-seed';
+import { buildDemoData, DEMO, emptyData, homeGroup } from './fixtures/demo-seed';
 import { buildBearing, custodyPayments, singleAllocation, validateExpense } from '../domain/expense-builder';
 import { computeLedger, partyBalance, settlementSuggestions, statement } from '../domain/ledger';
 import { splitByWeights, splitEqual, sumMinor, toMinor } from '../domain/money';
 import { mergeParticipants } from '../domain/participants';
-import { canDecide, checkPolicies, statusOnSubmit } from '../domain/policy';
+import { applyDecision, approvalPlan, canDecide, checkPolicies, currentDeciders } from '../domain/policy';
 import { bucketOf, cashReport, expenseReport, weekStart } from '../domain/reports';
 import { ORG } from '../domain/types';
 import type { Advance, CustodyMove, Expense, ExpensesData, PaymentPart, Settlement, TxnStatus } from '../domain/types';
@@ -201,15 +201,38 @@ describe('approval', () => {
     expect(partyBalance(computeLedger(data({ expenses: [{ ...e, status: 'rejected' }] }), CUR), 'A').entitlements).toBe(0);
   });
 
-  it('submit status follows the settings, and nobody approves their own record', () => {
-    const s = { ...emptyData(CUR).settings, requireApproval: true, autoApproveBelow: 5000, approverIds: ['A'] };
-    expect(statusOnSubmit(4999, s)).toBe('approved');
-    expect(statusOnSubmit(5000, s)).toBe('submitted');
-    expect(statusOnSubmit(5000, { ...s, requireApproval: false })).toBe('approved');
-    const mine = exp('e1', 9000, [{ source: 'org', amount: 9000 }], undefined, { status: 'submitted', createdBy: 'A' });
-    expect(canDecide('A', mine, s)).toBe(false);
-    expect(canDecide('A', { ...mine, createdBy: 'K' }, s)).toBe(true);
-    expect(canDecide('K', { ...mine, createdBy: 'S' }, s)).toBe(false);
+  it('the group policy decides the status on submit, and nobody approves their own record', () => {
+    const policy = { ...homeGroup().policy, approval: 'above' as const, approvalAbove: 5000, approverIds: ['A'] };
+    expect(approvalPlan(policy, 4999, 'K').status).toBe('approved');
+    expect(approvalPlan(policy, 5000, 'K').status).toBe('submitted');
+    expect(approvalPlan({ ...policy, approval: 'none' }, 5000, 'K').status).toBe('approved');
+    const sent = (createdBy: string) => ({
+      ...exp('e1', 9000, [{ source: 'org', amount: 9000 }], undefined, { status: 'submitted', createdBy }),
+      approval: approvalPlan(policy, 9000, createdBy).approval,
+    });
+    expect(canDecide('A', sent('A'))).toBe(false);
+    expect(sent('A').approval?.steps[0]?.status).toBe('skipped');
+    expect(canDecide('B', sent('A'))).toBe(true); // no one left on the path: the approve permission decides
+    expect(canDecide('A', sent('K'))).toBe(true);
+    expect(canDecide('K', sent('S'))).toBe(false);
+  });
+
+  it('sequential path: manager, then approvers in order; any_one ends at the first', () => {
+    const policy = { ...homeGroup().policy, approval: 'always' as const, managerId: 'M', approverIds: ['A', 'B'], approvalMode: 'sequential' as const };
+    let txn = { ...exp('e1', 100, [{ source: 'org', amount: 100 }], undefined, { status: 'submitted', createdBy: 'K' }), approval: approvalPlan(policy, 100, 'K').approval };
+    expect(currentDeciders(txn)).toEqual(['M']);
+    txn = applyDecision(txn, 'M', 'approved', null, 'now');
+    expect(currentDeciders(txn)).toEqual(['A']);
+    txn = applyDecision(txn, 'A', 'approved', null, 'now');
+    expect(txn.status).toBe('submitted');
+    txn = applyDecision(txn, 'B', 'approved', null, 'now');
+    expect(txn.status).toBe('approved');
+
+    let any = { ...txn, status: 'submitted' as const, approval: approvalPlan({ ...policy, managerId: null, approvalMode: 'any_one' }, 100, 'K').approval };
+    expect(currentDeciders(any)).toEqual(['A', 'B']);
+    any = applyDecision(any, 'B', 'approved', null, 'now');
+    expect(any.status).toBe('approved');
+    expect(any.approval?.steps.map((s) => s.status)).toEqual(['skipped', 'approved']);
   });
 
   it('switching the mode changes no balance', () => {
@@ -223,18 +246,28 @@ describe('approval', () => {
 });
 
 describe('policies', () => {
-  it('category limit, attachment and monthly limit', () => {
+  it('category limit, attachment and the group monthly limits', () => {
     const d = data({
       categories: [{ id: 'cat:fuel', name: 'وقود', color: '#000', maxAmount: 20000 }],
-      settings: { ...emptyData(CUR).settings, requireAttachmentAbove: 15000, monthlyLimitPerPerson: 50000 },
-      expenses: [exp('old', 40000, [{ source: 'org', amount: 40000 }], undefined, { date: '2026-10-02', createdBy: 'K' })],
+      groups: [homeGroup({ attachment: 'above', attachmentAbove: 15000, monthlyLimit: 60000, monthlyLimitPerPerson: 50000 })],
+      expenses: [
+        exp('old', 40000, [{ source: 'org', amount: 40000 }], undefined, { date: '2026-10-02', createdBy: 'K' }),
+        exp('other', 10000, [{ source: 'org', amount: 10000 }], undefined, { date: '2026-10-03', createdBy: 'S' }),
+      ],
     });
     const codes = checkPolicies(
-      { id: 'new', amount: 25000, categoryId: 'cat:fuel', attachments: [], createdBy: 'K', date: '2026-10-20', currency: CUR },
+      { id: 'new', amount: 25000, categoryId: 'cat:fuel', attachments: [], createdBy: 'K', date: '2026-10-20', currency: CUR, groupId: null },
       d,
       String,
     ).map((v) => v.code);
-    expect(codes).toEqual(['category_limit', 'attachment_required', 'monthly_limit']);
+    // K: 40,000 + 25,000 > 50,000; the group: 50,000 + 25,000 > 60,000.
+    expect(codes).toEqual(['category_limit', 'attachment_required', 'group_monthly_limit', 'monthly_limit']);
+    const elsewhere = checkPolicies(
+      { id: 'new', amount: 15000, categoryId: 'cat:fuel', attachments: [], createdBy: 'K', date: '2026-10-20', currency: CUR, groupId: 'grp:x' },
+      { ...d, groups: [...d.groups, { id: 'grp:x', name: 'x', memberIds: [], policy: homeGroup().policy }] },
+      String,
+    );
+    expect(elsewhere).toEqual([]);
   });
 });
 

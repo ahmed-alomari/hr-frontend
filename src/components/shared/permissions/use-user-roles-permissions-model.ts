@@ -46,7 +46,20 @@ export function useUserRolesPermissionsModel({
   const qc = useQueryClient();
   const isActive = enabled && !!userId;
 
-  const { data: rolesResult } = useRoles(isActive);
+  // The edited user's company: a role of another company cannot be given to them.
+  const [companyId, setCompanyId] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!isActive) return;
+    let cancelled = false;
+    resolveCompanyId()
+      .then((id) => !cancelled && setCompanyId(id))
+      .catch(() => !cancelled && setCompanyId(null));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resolved once per edited user
+  }, [isActive, userId]);
+  const { data: rolesResult } = useRoles(isActive && !!companyId, companyId);
   const { data: permissionsResult } = usePermissions(undefined, isActive);
   const allRoles = rolesResult?.items ?? [];
   const allPermissions: PermissionResponseDto[] = permissionsResult?.items ?? [];

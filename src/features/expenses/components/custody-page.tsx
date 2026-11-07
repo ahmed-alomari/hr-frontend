@@ -17,6 +17,7 @@ import { expensesRoutes } from '../constants/routes';
 import { AmountInput, EmptyState, Field, FormDialog, KeyValue, LoadingBlock, Money, PartyName, PartySelect, ResponsiveTable, Section, StatusBadge, useRunCommand } from './common';
 import { txnTitle } from './dashboard-page';
 import { todayIso, useCurrency, useDirectory, useExpensesData, useExpensesPermissions, useLedger } from './expenses-provider';
+import { GroupField, GroupPolicyHint } from './group-policy';
 import { TxnActions } from './txn-actions';
 
 function OpenCustodyDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
@@ -26,8 +27,9 @@ function OpenCustodyDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [amount, setAmount] = React.useState<{ t: string; m: Minor }>({ t: '', m: 0 });
   const [limit, setLimit] = React.useState<{ t: string; m: Minor }>({ t: '', m: 0 });
   const [date, setDate] = React.useState(todayIso());
+  const [groupId, setGroupId] = React.useState<string | null>(null);
   React.useEffect(() => {
-    if (open) { setHolderId(null); setPurpose(''); setAmount({ t: '', m: 0 }); setLimit({ t: '', m: 0 }); setDate(todayIso()); }
+    if (open) { setHolderId(null); setPurpose(''); setAmount({ t: '', m: 0 }); setLimit({ t: '', m: 0 }); setDate(todayIso()); setGroupId(null); }
   }, [open]);
   return (
     <FormDialog
@@ -37,7 +39,7 @@ function OpenCustodyDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       description="مال المنشأة لدى شخص يصرف منه نيابة عنها — ليست سلفة عليه."
       footer={<>
         <Button variant="outline" onClick={() => onOpenChange(false)}>إلغاء</Button>
-        <Button disabled={!holderId || amount.m <= 0} onClick={() => { if (holderId) void exec({ type: 'openCustody', holderId, purpose, limit: limit.m > 0 ? limit.m : null, amount: amount.m, date }, 'فُتحت العهدة').then((ok) => ok && onOpenChange(false)); }}>فتح وتسليم</Button>
+        <Button disabled={!holderId || amount.m <= 0} onClick={() => { if (holderId) void exec({ type: 'openCustody', holderId, purpose, limit: limit.m > 0 ? limit.m : null, amount: amount.m, date, groupId }, 'فُتحت العهدة').then((ok) => ok && onOpenChange(false)); }}>فتح وتسليم</Button>
       </>}
     >
       <Field label="حامل العهدة"><PartySelect value={holderId} onChange={setHolderId} /></Field>
@@ -46,6 +48,7 @@ function OpenCustodyDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         <Field label="مبلغ التسليم"><AmountInput value={amount.t} onChange={(t, m) => setAmount({ t, m })} /></Field>
         <Field label="سقف العهدة (اختياري)"><AmountInput value={limit.t} onChange={(t, m) => setLimit({ t, m })} /></Field>
       </div>
+      <GroupField value={groupId} onChange={setGroupId} amount={amount.m} />
       <Field label="التاريخ"><Input type="date" className="h-10" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
     </FormDialog>
   );
@@ -75,6 +78,7 @@ function MoveDialog({ balance, type, onClose }: { balance: CustodyBalance | null
         <div className="rounded-xl bg-muted p-2">المتاح بعد المعلق<br /><Money value={balance.expected} className="font-semibold" /></div>
       </div>
       <Field label="المبلغ" hint={type === 'return' ? 'لا يتجاوز المتاح بعد المعلق.' : balance.custody.limit != null ? 'ضمن سقف العهدة.' : undefined}><AmountInput value={amount.t} onChange={(t, m) => setAmount({ t, m })} /></Field>
+      {amount.m > 0 ? <GroupPolicyHint groupId={balance.custody.groupId ?? null} amount={amount.m} /> : null}
       <Field label="التاريخ"><Input type="date" className="h-10" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
       <Field label="ملاحظة"><Input className="h-10" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
     </FormDialog>
@@ -87,7 +91,8 @@ function AdvanceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
   const [purpose, setPurpose] = React.useState('');
   const [amount, setAmount] = React.useState<{ t: string; m: Minor }>({ t: '', m: 0 });
   const [date, setDate] = React.useState(todayIso());
-  React.useEffect(() => { if (open) { setPersonId(null); setPurpose(''); setAmount({ t: '', m: 0 }); setDate(todayIso()); } }, [open]);
+  const [groupId, setGroupId] = React.useState<string | null>(null);
+  React.useEffect(() => { if (open) { setPersonId(null); setPurpose(''); setAmount({ t: '', m: 0 }); setDate(todayIso()); setGroupId(null); } }, [open]);
   return (
     <FormDialog
       open={open}
@@ -96,12 +101,13 @@ function AdvanceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
       description="مبلغ يصبح على الشخص للمنشأة، ويُسدَّد بالتسويات — منفصل عن العهد."
       footer={<>
         <Button variant="outline" onClick={() => onOpenChange(false)}>إلغاء</Button>
-        <Button disabled={!personId || amount.m <= 0} onClick={() => { if (personId) void exec({ type: 'addAdvance', personId, amount: amount.m, purpose, date }, 'سُجّلت السلفة').then((ok) => ok && onOpenChange(false)); }}>تسجيل</Button>
+        <Button disabled={!personId || amount.m <= 0} onClick={() => { if (personId) void exec({ type: 'addAdvance', personId, amount: amount.m, purpose, date, groupId }, 'سُجّلت السلفة').then((ok) => ok && onOpenChange(false)); }}>تسجيل</Button>
       </>}
     >
       <Field label="الشخص"><PartySelect value={personId} onChange={setPersonId} /></Field>
       <Field label="المبلغ"><AmountInput value={amount.t} onChange={(t, m) => setAmount({ t, m })} /></Field>
       <Field label="الغرض"><Input className="h-10" value={purpose} onChange={(e) => setPurpose(e.target.value)} /></Field>
+      <GroupField value={groupId} onChange={setGroupId} amount={amount.m} />
       <Field label="التاريخ"><Input type="date" className="h-10" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
     </FormDialog>
   );

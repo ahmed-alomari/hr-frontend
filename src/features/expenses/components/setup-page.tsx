@@ -8,8 +8,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { minorToInput, type Minor } from '../domain/money';
-import type { Category, CostCenter, ExpenseGroup } from '../domain/types';
+import { useSearchParams } from 'next/navigation';
+import { allTxns } from '../domain/ledger';
+import { formatMoney, minorToInput, type Minor } from '../domain/money';
+import { txnGroupId } from '../domain/policy';
+import type { Category, CostCenter, ExpenseGroup, GroupPolicy } from '../domain/types';
+import { GroupPolicyFields, newGroupPolicy, openGroups, policySummary } from './group-policy';
 import { AmountInput, EmptyState, Field, FormDialog, LoadingBlock, Money, PartyChecklist, PartyName, Section, useRunCommand } from './common';
 import { useCurrency, useExpensesData, useExpensesPermissions } from './expenses-provider';
 
@@ -79,6 +83,7 @@ function GroupDialog({ value, onClose }: { value: ExpenseGroup | 'new' | null; o
   const [description, setDescription] = React.useState('');
   const [members, setMembers] = React.useState<string[]>([]);
   const [costCenterId, setCostCenterId] = React.useState<string | null>(null);
+  const [policy, setPolicy] = React.useState<GroupPolicy>(newGroupPolicy);
   React.useEffect(() => {
     if (!value) return;
     const g = value === 'new' ? null : value;
@@ -86,19 +91,23 @@ function GroupDialog({ value, onClose }: { value: ExpenseGroup | 'new' | null; o
     setDescription(g?.description ?? '');
     setMembers(g?.memberIds ?? []);
     setCostCenterId(g?.costCenterId ?? null);
+    setPolicy(g?.policy ?? newGroupPolicy());
   }, [value]);
   if (!value || !data) return null;
+  const isDefault = value !== 'new' && value.isDefault;
+  const missingAmount = (policy.approval === 'above' && policy.approvalAbove == null) || (policy.attachment === 'above' && policy.attachmentAbove == null);
   return (
-    <FormDialog open onOpenChange={(o) => !o && onClose()} title={value === 'new' ? 'مجموعة جديدة' : 'تعديل المجموعة'} description="رحلة أو مشروع أو مصاريف مشتركة: أعضاؤها يُقترحون عند تقسيم مصروفاتها." footer={<>
+    <FormDialog open onOpenChange={(o) => !o && onClose()} title={value === 'new' ? 'مجموعة جديدة' : isDefault ? 'المجموعة الافتراضية' : 'تعديل المجموعة'} description={isDefault ? 'كل عملية لا تُحدَّد لها مجموعة تُسجَّل هنا وتتبع سياستها.' : 'قسم أو مشروع أو رحلة: لها سياستها في الاعتماد والإيصالات والحدود، وأعضاؤها يُقترحون عند التقسيم.'} footer={<>
       <Button variant="outline" onClick={onClose}>إلغاء</Button>
-      <Button disabled={!name.trim()} onClick={() => {
-        const base: ExpenseGroup = value === 'new' ? { id: NEW_ID, name: '', memberIds: [] } : value;
-        void run({ type: 'upsertGroup', group: { ...base, name: name.trim(), description: description.trim() || null, memberIds: members, costCenterId } }, 'حُفظت المجموعة').then((ok) => ok && onClose());
+      <Button disabled={!name.trim() || missingAmount} onClick={() => {
+        const base: ExpenseGroup = value === 'new' ? { id: NEW_ID, name: '', memberIds: [], policy } : value;
+        void run({ type: 'upsertGroup', group: { ...base, name: name.trim(), description: description.trim() || null, memberIds: members, costCenterId, policy } }, 'حُفظت المجموعة').then((ok) => ok && onClose());
       }}>حفظ</Button>
     </>}>
       <Field label="الاسم"><Input className="h-10" value={name} onChange={(e) => setName(e.target.value)} /></Field>
       <Field label="الوصف"><Input className="h-10" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
-      <Field label="الأعضاء"><PartyChecklist value={members} onChange={setMembers} /></Field>
+      <GroupPolicyFields value={policy} onChange={setPolicy} />
+      <Field label="الأعضاء" hint="يُقترحون عند تقسيم المصروف. الشخص يمكن أن يكون في أكثر من مجموعة."><PartyChecklist value={members} onChange={setMembers} /></Field>
       {data.settings.mode === 'advanced' ? (
         <Field label="مركز التكلفة الافتراضي">
           <Select value={costCenterId ?? 'none'} onValueChange={(v) => setCostCenterId(v === 'none' ? null : v)}>
@@ -121,17 +130,22 @@ export function SetupPage() {
   const [cat, setCat] = React.useState<Category | 'new' | null>(null);
   const [cc, setCc] = React.useState<CostCenter | 'new' | null>(null);
   const [grp, setGrp] = React.useState<ExpenseGroup | 'new' | null>(null);
+  const currency = useCurrency();
+  const tabParam = useSearchParams()?.get('tab');
   if (!data) return <LoadingBlock />;
   const advanced = data.settings.mode === 'advanced';
   const expenses = data.expenses;
   const used = (pred: (e: (typeof expenses)[number]) => boolean) => expenses.filter(pred).length;
+  const home = data.groups.find((g) => g.isDefault)?.id;
+  const filedIn = (g: ExpenseGroup) => allTxns(data).filter((x) => (txnGroupId(data, x) ?? home) === g.id).length;
+  const tab = tabParam === 'groups' || (tabParam === 'centers' && advanced) ? tabParam : 'categories';
   const editBtn = (onClick: () => void) => perms.setup ? <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="تعديل" onClick={onClick}><Pencil className="h-4 w-4" /></Button> : null;
   const archiveBtn = (archived: boolean | undefined, onClick: () => void) => perms.setup ? <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={archived ? 'استعادة' : 'أرشفة'} onClick={onClick}>{archived ? <RotateCcw className="h-4 w-4" /> : <Archive className="h-4 w-4" />}</Button> : null;
 
   return (
     <div className="space-y-3">
       <SetPageTitle titleAr="الفئات والمجموعات ومراكز التكلفة" descriptionAr="تصنيف المصروفات وتوزيعها" iconName="LayoutGrid" />
-      <Tabs defaultValue="categories">
+      <Tabs key={tab} defaultValue={tab}>
         <TabsList className={advanced ? 'grid w-full grid-cols-3 sm:inline-flex sm:w-auto' : 'grid w-full grid-cols-2 sm:inline-flex sm:w-auto'}>
           <TabsTrigger value="categories">الفئات</TabsTrigger>
           <TabsTrigger value="groups">المجموعات</TabsTrigger>
@@ -159,14 +173,15 @@ export function SetupPage() {
           <Section title="المجموعات" actions={perms.setup ? <Button size="sm" onClick={() => setGrp('new')}><Plus className="me-1 h-4 w-4" />مجموعة</Button> : undefined}>
             {data.groups.length === 0 ? <EmptyState text="لا مجموعات" /> : (
               <ul className="grid gap-2 sm:grid-cols-2">
-                {data.groups.map((g) => (
+                {openGroups(data).concat(data.groups.filter((g) => g.closed)).map((g) => (
                   <li key={g.id} className="space-y-1.5 rounded-xl border border-border p-3">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0"><div className="truncate text-sm font-medium">{g.name}{g.closed ? <Badge variant="subtle" className="ms-1.5 text-[10px]">مغلقة</Badge> : null}</div>{g.description ? <p className="text-xs text-muted-foreground">{g.description}</p> : null}</div>
-                      <div className="flex">{editBtn(() => setGrp(g))}{archiveBtn(g.closed, () => void run({ type: 'upsertGroup', group: { ...g, closed: !g.closed } }))}</div>
+                      <div className="min-w-0"><div className="truncate text-sm font-medium">{g.name}{g.isDefault ? <Badge variant="subtle" className="ms-1.5 text-[10px]">افتراضية</Badge> : null}{g.closed ? <Badge variant="subtle" className="ms-1.5 text-[10px]">مغلقة</Badge> : null}</div>{g.description ? <p className="text-xs text-muted-foreground">{g.description}</p> : null}</div>
+                      <div className="flex">{editBtn(() => setGrp(g))}{g.isDefault ? null : archiveBtn(g.closed, () => void run({ type: 'upsertGroup', group: { ...g, closed: !g.closed } }))}</div>
                     </div>
+                    <p className="text-xs text-foreground/80">{policySummary(g.policy, (m) => formatMoney(m, currency))}</p>
                     <p className="text-xs">{g.memberIds.length === 0 ? 'بلا أعضاء' : g.memberIds.map((m, i) => <React.Fragment key={m}>{i > 0 ? '، ' : ''}<PartyName id={m} /></React.Fragment>)}</p>
-                    <p className="text-[11px] text-muted-foreground">{used((e) => e.groupId === g.id)} مصروف</p>
+                    <p className="text-[11px] text-muted-foreground">{filedIn(g)} عملية</p>
                   </li>
                 ))}
               </ul>

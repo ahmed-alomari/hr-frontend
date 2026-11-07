@@ -7,8 +7,10 @@
  */
 import { buildBearing, custodyPayments, singleAllocation } from '../../domain/expense-builder';
 import { currencySpec, toMinor, type Minor } from '../../domain/money';
+import { approvalPlan, OPEN_POLICY } from '../../domain/policy';
 import { ORG } from '../../domain/types';
 import type {
+  GroupPolicy,
   Advance,
   Category,
   CostCenter,
@@ -64,6 +66,7 @@ const groups: ExpenseGroup[] = [
     description: 'زيارة عملاء عدن (3 أيام)',
     memberIds: [DEMO.ahmed, DEMO.khaled, DEMO.sara],
     costCenterId: 'cc:sales',
+    policy: OPEN_POLICY,
   },
   {
     id: 'grp:branch',
@@ -71,23 +74,24 @@ const groups: ExpenseGroup[] = [
     description: 'أعمال صيانة وتجهيز',
     memberIds: [DEMO.khaled, DEMO.fahd],
     costCenterId: 'cc:ops',
+    policy: OPEN_POLICY,
   },
   {
     id: 'grp:housing',
     name: 'سكن المندوبين المشترك',
     description: 'مصاريف مشتركة يتقاسمها الساكنون',
     memberIds: [DEMO.khaled, DEMO.fahd, DEMO.mona],
+    policy: OPEN_POLICY,
   },
 ];
 
+/** The company's default group «عام» with this policy. */
+export function homeGroup(policy: Partial<GroupPolicy> = {}): ExpenseGroup {
+  return { id: 'grp:home', name: 'عام', memberIds: [], isDefault: true, policy: { ...OPEN_POLICY, ...policy } };
+}
+
 export const DEFAULT_SETTINGS: ExpensesSettings = {
   mode: 'simple',
-  requireApproval: false,
-  autoApproveBelow: null,
-  requireAttachmentAbove: null,
-  monthlyLimitPerPerson: null,
-  blockOnPolicyViolation: false,
-  approverIds: [],
   fallbackCurrency: 'YER',
 };
 
@@ -111,7 +115,7 @@ export function emptyData(currency: string): ExpensesData {
     demoParticipants: [],
     categories: categories.map((c) => ({ ...c })),
     costCenters: [],
-    groups: [],
+    groups: [homeGroup()],
     custodies: [],
     expenses: [],
     custodyMoves: [],
@@ -140,6 +144,7 @@ export function buildDemoData(currencyCode: string, today: string): ExpensesData
       submittedAt: status === 'draft' ? null : stamp(offset, 10),
       decidedBy: status === 'approved' || status === 'rejected' ? DEMO.ahmed : null,
       decidedAt: status === 'approved' || status === 'rejected' ? stamp(offset, 12) : null,
+      approval: status === 'submitted' ? approvalPlan({ ...OPEN_POLICY, approval: 'always', approverIds: [DEMO.ahmed], approvalMode: 'any_one' }, 1, createdBy).approval : null,
     };
   };
 
@@ -288,21 +293,23 @@ export function buildDemoData(currencyCode: string, today: string): ExpensesData
     demoParticipants: demoParticipants.map((p) => ({ ...p })),
     categories: categories.map((c) => (c.id === 'cat:hospitality' ? { ...c, maxAmount: m(40_000) } : { ...c })),
     costCenters: costCenters.map((c) => ({ ...c })),
-    groups: groups.map((g) => ({ ...g, memberIds: [...g.memberIds] })),
+    groups: [
+      homeGroup({
+        approval: 'above',
+        approvalAbove: m(5_000),
+        attachment: 'above',
+        attachmentAbove: m(50_000),
+        monthlyLimitPerPerson: m(300_000),
+        approverIds: [DEMO.ahmed],
+        approvalMode: 'any_one',
+      }),
+      ...groups.map((g) => ({ ...g, memberIds: [...g.memberIds] })),
+    ],
     custodies,
     expenses,
     custodyMoves,
     advances,
     settlements,
-    settings: {
-      mode: 'advanced',
-      requireApproval: true,
-      autoApproveBelow: m(5_000),
-      requireAttachmentAbove: m(50_000),
-      monthlyLimitPerPerson: m(300_000),
-      blockOnPolicyViolation: false,
-      approverIds: [DEMO.ahmed],
-      fallbackCurrency: currency.code,
-    },
+    settings: { mode: 'advanced', fallbackCurrency: currency.code },
   };
 }
