@@ -47,6 +47,9 @@ jobs:
       contents: read
       packages: write   # مطلوب للسماح بالرفع إلى GHCR
 
+    outputs:
+      image: ${{ steps.vars.outputs.image }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -147,6 +150,15 @@ jobs:
 
             cd "${{ env.APP_DIR }}" || {
               echo "::error::مجلد النشر ${{ env.APP_DIR }} غير موجود على السيرفر"
+              exit 1
+            }
+
+            # الصورة تُرفع باسم مالك المستودع الحالي. ملف التشغيل على السيرفر
+            # يبقى على الاسم القديم بعد نقل الحساب، فيُحدَّث سطر هذه الخدمة قبل السحب.
+            NEW_IMAGE="${{ needs.build-and-push.outputs.image }}:latest"
+            sed -i "s|image: ghcr.io/[^[:space:]]*/${{ env.IMAGE_BASENAME }}:latest|image: ${NEW_IMAGE}|" docker-compose.yml
+            grep -q "image: ${NEW_IMAGE}" docker-compose.yml || {
+              echo "::error::تعذر تحديث اسم الصورة في docker-compose.yml"
               exit 1
             }
 
