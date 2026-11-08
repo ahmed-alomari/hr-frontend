@@ -8,12 +8,14 @@ import { PageHeaderPrimaryButton } from '@/components/layouts/page-header-primar
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { LocalListTable, LocalListToolbar, useLocalList, type LocalListField } from '@/components/ui/local-list';
 import { owedBetween } from '../domain/commands';
+import { STATUS_LABELS_AR } from '../domain/policy';
 import { settlementSuggestions } from '../domain/ledger';
 import { minorToInput, type Minor } from '../domain/money';
-import type { PartyId, Settlement } from '../domain/types';
-import { AmountInput, EmptyState, Field, FormDialog, LoadingBlock, Money, PartyName, PartySelect, ResponsiveTable, Section, StatusBadge, useRunCommand } from './common';
-import { todayIso, useCurrency, useExpensesData, useExpensesPermissions, useLedger } from './expenses-provider';
+import type { PartyId, Settlement, TxnStatus } from '../domain/types';
+import { AmountInput, EmptyState, Field, FormDialog, LoadingBlock, Money, PartyName, PartySelect, Section, StatusBadge, useRunCommand } from './common';
+import { todayIso, useCurrency, useDirectory, useExpensesData, useExpensesPermissions, useLedger } from './expenses-provider';
 import { GroupField } from './group-policy';
 import { TxnActions } from './txn-actions';
 
@@ -98,20 +100,44 @@ export function SettlementsPage() {
   const ledger = useLedger();
   const currency = useCurrency();
   const perms = useExpensesPermissions();
+  const directory = useDirectory();
   const [dialog, setDialog] = React.useState<{ fromId: PartyId; toId: PartyId; amount: Minor } | null | 'new'>(null);
+  const history = React.useMemo(
+    () => (data ? data.settlements.filter((s) => s.currency === currency.code).sort((a, b) => b.date.localeCompare(a.date)) : []),
+    [data, currency.code],
+  );
+  const fields = React.useMemo<LocalListField<Settlement>[]>(() => [
+    { key: 'date', label: 'التاريخ', kind: 'date', text: (s) => s.date, groupKey: (s) => s.date.slice(0, 7) },
+    { key: 'from', label: 'الدافع', kind: 'name', text: (s) => directory.nameOf(s.fromId), cell: (s) => <PartyName id={s.fromId} />, groupKey: (s) => s.fromId, groupLabel: (id) => directory.nameOf(id) },
+    { key: 'to', label: 'المستلم', text: (s) => directory.nameOf(s.toId), cell: (s) => <PartyName id={s.toId} />, groupKey: (s) => s.toId, groupLabel: (id) => directory.nameOf(id) },
+    { key: 'method', label: 'الطريقة', text: (s) => METHOD_LABELS[s.method], groupKey: (s) => s.method, groupLabel: (m) => METHOD_LABELS[m as Settlement['method']] ?? m },
+    { key: 'note', label: 'ملاحظة', optional: true, hiddenByDefault: true, sortable: false, text: (s) => s.note ?? '' },
+    { key: 'createdBy', label: 'سجّله', optional: true, hiddenByDefault: true, text: (s) => directory.nameOf(s.createdBy), groupKey: (s) => s.createdBy, groupLabel: (id) => directory.nameOf(id) },
+    { key: 'amount', label: 'المبلغ', kind: 'number', text: (s) => currency.format(s.amount), sortValue: (s) => s.amount, sum: (s) => (s.status === 'approved' ? s.amount : 0), formatSum: currency.format, cell: (s) => <Money value={s.amount} className="font-semibold" /> },
+    { key: 'status', label: 'الحالة', kind: 'status', text: (s) => STATUS_LABELS_AR[s.status], cell: (s) => <StatusBadge status={s.status} />, groupKey: (s) => s.status, groupLabel: (k) => STATUS_LABELS_AR[k as TxnStatus] ?? k },
+    { key: 'actions', label: '', sortable: false, screenOnly: true, text: () => '', cell: (s) => <TxnActions txn={s} compact /> },
+  ], [directory, currency]);
+  const list = useLocalList({ section: 'expenses', page: 'settlements', fields, rows: history });
 
   usePageHeaderActions(
     () => (
-      <PageHeaderPrimaryButton icon={Plus} label="تسجيل سداد" disabled={!perms.settle} onClick={() => setDialog('new')}>
-        تسجيل سداد
-      </PageHeaderPrimaryButton>
+      <LocalListToolbar
+        list={list}
+        title="سجل السداد"
+        fileName="settlements"
+        subtitleLines={['المبالغ المجمّعة للمعتمد فقط']}
+        primary={
+          <PageHeaderPrimaryButton icon={Plus} label="تسجيل سداد" disabled={!perms.settle} onClick={() => setDialog('new')}>
+            تسجيل سداد
+          </PageHeaderPrimaryButton>
+        }
+      />
     ),
-    [perms.settle],
+    [perms.settle, list.rows, list.visibleFields, list.groups, list.sort.sortKey],
   );
 
   if (!data || !ledger) return <LoadingBlock />;
   const suggestions = settlementSuggestions(ledger);
-  const history = data.settlements.filter((s) => s.currency === currency.code).sort((a, b) => b.date.localeCompare(a.date));
 
   return (
     <div className="space-y-4">
@@ -133,8 +159,8 @@ export function SettlementsPage() {
       </Section>
       <Section title="سجل السداد">
         {history.length === 0 ? <EmptyState text="لا عمليات سداد" /> : (
-          <ResponsiveTable
-            rows={history}
+          <LocalListTable
+            list={list}
             rowKey={(s) => s.id}
             card={(s) => (
               <div className="space-y-1.5">
@@ -143,15 +169,6 @@ export function SettlementsPage() {
                 <TxnActions txn={s} compact />
               </div>
             )}
-            columns={[
-              { header: 'التاريخ', cell: (s) => s.date },
-              { header: 'الدافع', cell: (s) => <PartyName id={s.fromId} /> },
-              { header: 'المستلم', cell: (s) => <PartyName id={s.toId} /> },
-              { header: 'الطريقة', cell: (s) => METHOD_LABELS[s.method] },
-              { header: 'المبلغ', cell: (s) => <Money value={s.amount} className="font-semibold" /> },
-              { header: 'الحالة', cell: (s) => <StatusBadge status={s.status} /> },
-              { header: '', cell: (s) => <TxnActions txn={s} compact /> },
-            ]}
           />
         )}
       </Section>

@@ -205,7 +205,7 @@ export function newGroupPolicy(): GroupPolicy {
 
 /** Open groups a new record can be filed under (the default first). */
 export function openGroups(data: ExpensesData): ExpenseGroup[] {
-  return [...data.groups.filter((g) => groupStatusOf(g) === 'active')].sort((a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)));
+  return [...data.groups.filter((g) => groupStatusOf(g) === 'active' && !g.archived)].sort((a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)));
 }
 
 /** The group picker of the forms; empty value = the default group. */
@@ -214,7 +214,7 @@ export function GroupSelect({ value, onChange, keep }: { value: string | null; o
   if (!data) return null;
   const home = defaultGroup(data);
   const list = openGroups(data);
-  const kept = keep ? data.groups.find((g) => g.id === keep && groupStatusOf(g) !== 'active') : undefined;
+  const kept = keep ? data.groups.find((g) => g.id === keep && (groupStatusOf(g) !== 'active' || g.archived)) : undefined;
   const current = value ?? home?.id ?? '';
   return (
     <Field label="المجموعة" hint="تحدد سياسة العملية: من يعتمدها وما يلزمها.">

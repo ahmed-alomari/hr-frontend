@@ -37,4 +37,8 @@ type ExpensesCommandBody =
   | { type: 'upsertCategory'; category: Category }
   | { type: 'upsertCostCenter'; center: CostCenter }
   | { type: 'upsertGroup'; group: ExpenseGroup }
+  | { type: 'archiveCustody'; custodyId: string; archived: boolean }
+  /** The first closing names `from`; later ones start after the last closed period. */
+  | { type: 'closePeriod'; from?: string | null; to: string; label?: string | null; note?: string | null }
+  | { type: 'reopenPeriod'; closingId: string; reason: string }
   | { type: 'updateSettings'; patch: Partial<ExpensesSettings> };

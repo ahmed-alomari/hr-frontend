@@ -144,6 +144,7 @@ export function SetupPage() {
   const [cat, setCat] = React.useState<Category | 'new' | null>(null);
   const [cc, setCc] = React.useState<CostCenter | 'new' | null>(null);
   const [grp, setGrp] = React.useState<ExpenseGroup | 'new' | null>(null);
+  const [showArchived, setShowArchived] = React.useState(false);
   const currency = useCurrency();
   const tabParam = useSearchParams()?.get('tab');
   if (!data) return <LoadingBlock />;
@@ -154,21 +155,32 @@ export function SetupPage() {
   const filedIn = (g: ExpenseGroup) => allTxns(data).filter((x) => (txnGroupId(data, x) ?? home) === g.id).length;
   const tab = tabParam === 'groups' || (tabParam === 'centers' && advanced) ? tabParam : 'categories';
   const editBtn = (onClick: () => void) => perms.setup ? <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="تعديل" onClick={onClick}><Pencil className="h-4 w-4" /></Button> : null;
-  const archiveBtn = (archived: boolean | undefined, onClick: () => void) => perms.setup ? <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={archived ? 'استعادة' : 'أرشفة'} onClick={onClick}>{archived ? <RotateCcw className="h-4 w-4" /> : <Archive className="h-4 w-4" />}</Button> : null;
+  const archiveBtn = (archived: boolean | undefined, onClick: () => void) => perms.setup ? <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={archived ? 'استعادة' : 'أرشفة'} title={archived ? 'استعادة' : 'أرشفة'} onClick={onClick}>{archived ? <RotateCcw className="h-4 w-4" /> : <Archive className="h-4 w-4" />}</Button> : null;
+  const visible = <T extends { archived?: boolean }>(rows: T[]) => rows.filter((r) => showArchived || !r.archived);
+  const archivedCount = data.categories.filter((c) => c.archived).length + data.groups.filter((g) => g.archived).length + (advanced ? data.costCenters.filter((c) => c.archived).length : 0);
+  const groupRows = visible([...openGroups(data), ...data.groups.filter((g) => groupStatusOf(g) !== 'active' || g.archived)].filter((g, i, all) => all.findIndex((x) => x.id === g.id) === i));
 
   return (
     <div className="space-y-3">
       <SetPageTitle titleAr="الفئات والمجموعات ومراكز التكلفة" descriptionAr="تصنيف المصروفات وتوزيعها" iconName="LayoutGrid" />
       <Tabs key={tab} defaultValue={tab}>
-        <TabsList className={advanced ? 'grid w-full grid-cols-3 sm:inline-flex sm:w-auto' : 'grid w-full grid-cols-2 sm:inline-flex sm:w-auto'}>
-          <TabsTrigger value="categories">الفئات</TabsTrigger>
-          <TabsTrigger value="groups">المجموعات</TabsTrigger>
-          {advanced ? <TabsTrigger value="centers">مراكز التكلفة</TabsTrigger> : null}
-        </TabsList>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <TabsList className={advanced ? 'grid w-full grid-cols-3 sm:inline-flex sm:w-auto' : 'grid w-full grid-cols-2 sm:inline-flex sm:w-auto'}>
+            <TabsTrigger value="categories">الفئات</TabsTrigger>
+            <TabsTrigger value="groups">المجموعات</TabsTrigger>
+            {advanced ? <TabsTrigger value="centers">مراكز التكلفة</TabsTrigger> : null}
+          </TabsList>
+          {archivedCount > 0 ? (
+            <Button size="sm" variant={showArchived ? 'secondary' : 'outline'} onClick={() => setShowArchived((v) => !v)}>
+              <Archive className="me-1 h-4 w-4" />
+              {showArchived ? 'إخفاء المؤرشف' : `المؤرشف (${archivedCount})`}
+            </Button>
+          ) : null}
+        </div>
         <TabsContent value="categories" className="mt-3">
           <Section title="الفئات" actions={perms.setup ? <Button size="sm" onClick={() => setCat('new')}><Plus className="me-1 h-4 w-4" />فئة</Button> : undefined}>
             <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {data.categories.map((c) => (
+              {visible(data.categories).map((c) => (
                 <li key={c.id} className="flex items-center justify-between gap-2 rounded-xl border border-border p-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
@@ -185,13 +197,13 @@ export function SetupPage() {
         </TabsContent>
         <TabsContent value="groups" className="mt-3">
           <Section title="المجموعات" actions={perms.setup ? <Button size="sm" onClick={() => setGrp('new')}><Plus className="me-1 h-4 w-4" />مجموعة</Button> : undefined}>
-            {data.groups.length === 0 ? <EmptyState text="لا مجموعات" /> : (
+            {groupRows.length === 0 ? <EmptyState text="لا مجموعات" /> : (
               <ul className="grid gap-2 sm:grid-cols-2">
-                {openGroups(data).concat(data.groups.filter((g) => groupStatusOf(g) !== 'active')).map((g) => (
+                {groupRows.map((g) => (
                   <li key={g.id} className="space-y-1.5 rounded-xl border border-border p-3">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0"><div className="truncate text-sm font-medium">{g.name}{g.isDefault ? <Badge variant="subtle" className="ms-1.5 text-[10px]">افتراضية</Badge> : null}{groupStatusOf(g) === 'active' ? null : <Badge variant="subtle" className="ms-1.5 text-[10px]">{GROUP_STATUS_LABELS_AR[groupStatusOf(g)]}</Badge>}</div>{g.description ? <p className="text-xs text-muted-foreground">{g.description}</p> : null}</div>
-                      <div className="flex">{editBtn(() => setGrp(g))}</div>
+                      <div className="min-w-0"><div className={g.archived ? 'truncate text-sm text-muted-foreground line-through' : 'truncate text-sm font-medium'}>{g.name}{g.isDefault ? <Badge variant="subtle" className="ms-1.5 text-[10px]">افتراضية</Badge> : null}{groupStatusOf(g) === 'active' ? null : <Badge variant="subtle" className="ms-1.5 text-[10px]">{GROUP_STATUS_LABELS_AR[groupStatusOf(g)]}</Badge>}{g.archived ? <Badge variant="subtle" className="ms-1.5 text-[10px]">مؤرشفة</Badge> : null}</div>{g.description ? <p className="text-xs text-muted-foreground">{g.description}</p> : null}</div>
+                      <div className="flex">{editBtn(() => setGrp(g))}{g.isDefault ? null : archiveBtn(g.archived, () => void run({ type: 'upsertGroup', group: { ...g, archived: !g.archived } }, g.archived ? 'استُعيدت المجموعة' : 'أُرشفت المجموعة'))}</div>
                     </div>
                     <p className="text-xs text-foreground/80">{policySummary(g.policy, (m) => formatMoney(m, currency))}</p>
                     <p className="text-xs">{g.isDefault && g.memberIds.length === 0 ? 'لكل من يملك صلاحية التطبيق' : g.memberIds.length === 0 ? 'بلا أعضاء' : g.memberIds.map((m, i) => <React.Fragment key={m}>{i > 0 ? '، ' : ''}<PartyName id={m} /></React.Fragment>)}</p>
@@ -207,7 +219,7 @@ export function SetupPage() {
             <Section title="مراكز التكلفة" description="للتوزيع التحليلي والتقارير — لا تنشئ ديوناً" actions={perms.setup ? <Button size="sm" onClick={() => setCc('new')}><Plus className="me-1 h-4 w-4" />مركز</Button> : undefined}>
               {data.costCenters.length === 0 ? <EmptyState text="لا مراكز تكلفة" /> : (
                 <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {data.costCenters.map((c) => (
+                  {visible(data.costCenters).map((c) => (
                     <li key={c.id} className="flex items-center justify-between gap-2 rounded-xl border border-border p-3">
                       <div className="min-w-0"><p className={c.archived ? 'text-sm text-muted-foreground line-through' : 'text-sm font-medium'}><span dir="ltr" className="text-muted-foreground">{c.code}</span> {c.name}</p><p className="text-[11px] text-muted-foreground">{used((e) => e.allocation.some((a) => a.costCenterId === c.id))} مصروف</p></div>
                       <div className="flex">{editBtn(() => setCc(c))}{archiveBtn(c.archived, () => void run({ type: 'upsertCostCenter', center: { ...c, archived: !c.archived } }))}</div>

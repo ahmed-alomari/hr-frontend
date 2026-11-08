@@ -2,23 +2,20 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { toast } from 'sonner';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { Badge } from '@/components/ui/badge';
-import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
 import { ListFilterBar, type PeriodRange } from '@/components/ui/list-filter-bar';
-import { ListColumnsPicker, useColumnVisibility, type ListColumnOption } from '@/components/ui/list-columns-picker';
+import { LocalListTable, LocalListToolbar, useLocalList, type LocalListField } from '@/components/ui/local-list';
 import { hrFiltersKey, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
-import { downloadXlsxFromAoA, type XlsxCell } from '@/shared/export/download-xlsx';
 import { useExpensesStore } from '../data/store';
 import { peopleReport, type PersonReportRow } from '../domain/reports';
 import { expensesRoutes } from '../constants/routes';
-import { Money } from './common';
-import { last30Days, ReportExportMenu, ReportSummaryCard } from './report-common';
+import { EmptyState, LoadingBlock, Money } from './common';
+import { last30Days, ReportSummaryCard } from './report-common';
 import { todayIso, useCurrency, useDirectory, useExpensesData } from './expenses-provider';
 
 type Slice = 'all' | 'spent' | 'custody' | 'owed' | 'owes';
@@ -30,20 +27,6 @@ const SLICE_LABELS: Record<Slice, string> = {
   owed: 'لهم رصيد',
   owes: 'عليهم رصيد',
 };
-
-/** Chosen columns. Name, spend, custody, days, and the two balances stay visible. */
-const COLUMN_OPTIONS: readonly ListColumnOption[] = [
-  { key: 'spentPersonal', label: 'من ماله' },
-  { key: 'spentCustody', label: 'من عهدته' },
-  { key: 'borne', label: 'تحمّل تكلفة' },
-  { key: 'custodyIn', label: 'عهدة استلمها' },
-  { key: 'custodyOut', label: 'عهدة أرجعها' },
-  { key: 'advances', label: 'سلف استلمها' },
-  { key: 'paidOut', label: 'سداد دفعه' },
-  { key: 'paidIn', label: 'سداد استلمه' },
-];
-
-const HIDDEN_BY_DEFAULT = COLUMN_OPTIONS.map((o) => o.key);
 
 function matchesSlice(row: PersonReportRow, slice: Slice): boolean {
   if (slice === 'spent') return row.spent > 0;
@@ -105,7 +88,6 @@ export function PeopleReportPage() {
   const [slice, setSlice] = usePersistedFilterState<Slice>(filterKey('slice'), 'all');
   const [query, setQuery] = React.useState('');
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
-  const columnsModel = useColumnVisibility(filterKey('hiddenColumns'), COLUMN_OPTIONS, HIDDEN_BY_DEFAULT);
 
   const rows = React.useMemo(() => {
     if (!data) return [];
@@ -113,6 +95,37 @@ export function PeopleReportPage() {
     const q = query.trim();
     return report.filter((row) => matchesSlice(row, slice) && (!q || directory.nameOf(row.partyId).includes(q)));
   }, [data, currency.code, period, slice, query, directory]);
+
+  const fields = React.useMemo<LocalListField<PersonReportRow>[]>(() => {
+    const money = (key: keyof PersonReportRow & string, label: string, opts: Partial<LocalListField<PersonReportRow>> = {}): LocalListField<PersonReportRow> => ({
+      key,
+      label,
+      kind: 'number',
+      text: (r) => currency.format(r[key] as number),
+      sortValue: (r) => r[key] as number,
+      sum: (r) => r[key] as number,
+      formatSum: currency.format,
+      cell: (r) => <Money value={r[key] as number} />,
+      ...opts,
+    });
+    return [
+      { key: 'name', label: 'الشخص', kind: 'name', text: (r) => directory.nameOf(r.partyId), cell: (r) => <span className="font-medium">{directory.nameOf(r.partyId)}</span> },
+      money('spent', 'صرف في الفترة', { cell: (r) => <Money value={r.spent} className="font-semibold" /> }),
+      { key: 'custody', label: 'العهدة الآن', text: (r) => (r.hasCustody ? `معه عهدة ${currency.format(r.custodyNow)}` : 'بلا عهدة'), sortValue: (r) => r.custodyNow, cell: (r) => <span className="inline-flex items-center gap-1.5">{custodyLabel(r)}{r.hasCustody ? <Money value={r.custodyNow} /> : null}</span>, groupKey: (r) => (r.hasCustody ? 'yes' : 'no'), groupLabel: (k) => (k === 'yes' ? 'معه عهدة' : 'بلا عهدة') },
+      { key: 'days', label: 'أيام الفترة', kind: 'number', text: (r) => String(r.days), sortValue: (r) => r.days, groupKey: (r) => (r.days === 0 ? '0' : r.days <= 5 ? '1-5' : r.days <= 15 ? '6-15' : '16+'), groupLabel: (k) => (k === '0' ? 'لم يصرف' : `${k} يوم`) },
+      money('owedToThem', 'له الآن', { cell: (r) => <Money value={r.owedToThem} className="text-success" /> }),
+      money('theyOwe', 'عليه الآن', { cell: (r) => <Money value={r.theyOwe} className="text-destructive" /> }),
+      money('spentPersonal', 'من ماله', { optional: true, hiddenByDefault: true }),
+      money('spentCustody', 'من عهدته', { optional: true, hiddenByDefault: true }),
+      money('borne', 'تحمّل تكلفة', { optional: true, hiddenByDefault: true }),
+      money('custodyIn', 'عهدة استلمها', { optional: true, hiddenByDefault: true }),
+      money('custodyOut', 'عهدة أرجعها', { optional: true, hiddenByDefault: true }),
+      money('advances', 'سلف استلمها', { optional: true, hiddenByDefault: true }),
+      money('paidOut', 'سداد دفعه', { optional: true, hiddenByDefault: true }),
+      money('paidIn', 'سداد استلمه', { optional: true, hiddenByDefault: true }),
+    ];
+  }, [currency, directory]);
+  const list = useLocalList({ section: 'expenses', page: 'people-report', fields, rows });
 
   const selected = rows.find((row) => row.partyId === selectedId) ?? null;
   const spentTotal = rows.reduce((t, row) => t + row.spent, 0);
@@ -122,71 +135,19 @@ export function PeopleReportPage() {
 
   const isDefaultPeriod = period.from === defaultPeriod.from && period.to === defaultPeriod.to;
   const activeFilterCount = (slice !== 'all' ? 1 : 0) + (isDefaultPeriod ? 0 : 1) + (query.trim() ? 1 : 0);
-
-  const cellText = React.useCallback((row: PersonReportRow, key: string): string => {
-    switch (key) {
-      case 'name': return directory.nameOf(row.partyId);
-      case 'spent': return currency.format(row.spent);
-      case 'custody': return row.hasCustody ? `معه عهدة ${currency.format(row.custodyNow)}` : 'بلا عهدة';
-      case 'days': return String(row.days);
-      case 'owed': return currency.format(row.owedToThem);
-      case 'owes': return currency.format(row.theyOwe);
-      case 'spentPersonal': return currency.format(row.spentPersonal);
-      case 'spentCustody': return currency.format(row.spentCustody);
-      case 'borne': return currency.format(row.borne);
-      case 'custodyIn': return currency.format(row.custodyIn);
-      case 'custodyOut': return currency.format(row.custodyOut);
-      case 'advances': return currency.format(row.advances);
-      case 'paidOut': return currency.format(row.paidOut);
-      case 'paidIn': return currency.format(row.paidIn);
-      default: return '';
-    }
-  }, [currency, directory]);
-
-  const columns = React.useMemo<ColumnDef<PersonReportRow>[]>(() => {
-    const all: ColumnDef<PersonReportRow>[] = [
-      { key: 'name', title: 'الشخص', sticky: 'start', render: (row) => <span className="font-medium">{directory.nameOf(row.partyId)}</span> },
-      { key: 'spent', title: 'صرف في الفترة', render: (row) => <Money value={row.spent} className="font-semibold" /> },
-      { key: 'custody', title: 'العهدة الآن', render: (row) => <span className="inline-flex items-center gap-1.5">{custodyLabel(row)}{row.hasCustody ? <Money value={row.custodyNow} /> : null}</span> },
-      { key: 'days', title: 'أيام الفترة', render: (row) => <span className="tabular-nums">{row.days}</span> },
-      { key: 'owed', title: 'له الآن', render: (row) => <Money value={row.owedToThem} className="text-success" /> },
-      { key: 'owes', title: 'عليه الآن', render: (row) => <Money value={row.theyOwe} className="text-destructive" /> },
-      { key: 'spentPersonal', title: 'من ماله', render: (row) => <Money value={row.spentPersonal} /> },
-      { key: 'spentCustody', title: 'من عهدته', render: (row) => <Money value={row.spentCustody} /> },
-      { key: 'borne', title: 'تحمّل تكلفة', render: (row) => <Money value={row.borne} /> },
-      { key: 'custodyIn', title: 'عهدة استلمها', render: (row) => <Money value={row.custodyIn} /> },
-      { key: 'custodyOut', title: 'عهدة أرجعها', render: (row) => <Money value={row.custodyOut} /> },
-      { key: 'advances', title: 'سلف استلمها', render: (row) => <Money value={row.advances} /> },
-      { key: 'paidOut', title: 'سداد دفعه', render: (row) => <Money value={row.paidOut} /> },
-      { key: 'paidIn', title: 'سداد استلمه', render: (row) => <Money value={row.paidIn} /> },
-    ];
-    return all.filter((column) => columnsModel.isVisible(column.key));
-  }, [columnsModel, directory]);
-
-  const exportExcel = React.useCallback(async () => {
-    if (rows.length === 0) {
-      toast.error('لا توجد بيانات للتصدير ضمن الفلاتر الحالية.');
-      return;
-    }
-    const sheet: XlsxCell[][] = [columns.map((column) => column.title)];
-    for (const row of rows) sheet.push(columns.map((column) => cellText(row, column.key)));
-    try {
-      await downloadXlsxFromAoA(`تقرير-الأشخاص-${period.from || 'الكل'}-${period.to || 'الكل'}.xlsx`, 'تقرير الأشخاص', sheet);
-      toast.success('تم تنزيل ملف Excel.');
-    } catch {
-      toast.error('تعذر تصدير التقرير.');
-    }
-  }, [rows, columns, cellText, period]);
+  const periodLine = `الفترة: ${period.from || '…'} إلى ${period.to || '…'}`;
 
   usePageHeaderActions(
     () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <ListColumnsPicker model={columnsModel} />
-        <ReportExportMenu onExcel={() => void exportExcel()} />
-      </div>
+      <LocalListToolbar
+        list={list}
+        title="تقرير الأشخاص"
+        fileName={`people-report-${period.from || 'all'}-${period.to || 'all'}`}
+        subtitleLines={[periodLine, slice !== 'all' ? SLICE_LABELS[slice] : ''].filter(Boolean)}
+        before={<FilterToggleButton activeFilterCount={activeFilterCount} />}
+      />
     ),
-    [activeFilterCount, columnsModel, exportExcel],
+    [activeFilterCount, list.rows, list.visibleFields, list.groups, list.sort.sortKey, periodLine, slice],
   );
 
   useEntityFilterSlot(
@@ -211,7 +172,7 @@ export function PeopleReportPage() {
     [period, defaultPeriod, slice],
   );
 
-  const loading = !data;
+  if (!data) return <LoadingBlock />;
 
   return (
     <div className="flex flex-col gap-4">
@@ -226,13 +187,12 @@ export function PeopleReportPage() {
 
       <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ابحث باسم الشخص" className="h-10" />
 
-      <DataTable
-        variant="directory"
-        columns={columns}
-        data={rows}
-        keyExtractor={(row) => row.partyId}
+      <LocalListTable
+        list={list}
+        rowKey={(row) => row.partyId}
         onRowClick={(row) => setSelectedId((current) => (current === row.partyId ? null : row.partyId))}
-        mobileCard={(row) => (
+        empty={<EmptyState text="لا أشخاص ضمن الفلاتر الحالية." />}
+        card={(row) => (
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-2">
               <p className="min-w-0 truncate font-medium">{directory.nameOf(row.partyId)}</p>
@@ -253,8 +213,6 @@ export function PeopleReportPage() {
             ) : <p className="text-[11px] text-muted-foreground">اضغط لعرض المصروف والعهدة والسلف</p>}
           </div>
         )}
-        loading={loading}
-        emptyText="لا أشخاص ضمن الفلاتر الحالية."
       />
 
       {selected ? (

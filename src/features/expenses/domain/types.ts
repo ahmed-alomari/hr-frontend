@@ -111,6 +111,8 @@ export interface ExpenseGroup {
   status?: GroupStatus;
   /** The company's own group: always there, always active. */
   isDefault?: boolean;
+  /** Hidden from lists and pickers; its records stay as they are. */
+  archived?: boolean;
   policy: GroupPolicy;
 }
 
@@ -239,6 +241,8 @@ export interface Custody {
   openedAt: string;
   closedAt?: string | null;
   createdBy: string;
+  /** Closed custodies only; hidden from the list, never deleted. */
+  archived?: boolean;
 }
 
 /** issue: first handover; topup: refill; return: money back to the organization. */
@@ -289,5 +293,35 @@ export interface ExpensesData {
   custodyMoves: CustodyMove[];
   advances: Advance[];
   settlements: Settlement[];
+  /** Closed (and reopened) periods, oldest first. */
+  closings?: PeriodClosing[];
   settings: ExpensesSettings;
+}
+
+/** Totals of a period when it was closed (approved records, one currency). */
+export interface PeriodSummary {
+  currency: string;
+  expensesCount: number;
+  expensesTotal: Minor;
+  cashOut: Minor;
+  cashIn: Minor;
+}
+
+/**
+ * A closed period: nothing dated from `from` to `to` (inclusive) can be
+ * recorded, edited, sent, decided or voided. Periods follow each other.
+ */
+export interface PeriodClosing {
+  id: string;
+  from: string;
+  to: string;
+  label: string;
+  status: 'closed' | 'reopened';
+  note?: string | null;
+  summary?: PeriodSummary | null;
+  closedBy: string;
+  closedAt: string;
+  reopenedBy?: string | null;
+  reopenedAt?: string | null;
+  reopenReason?: string | null;
 }

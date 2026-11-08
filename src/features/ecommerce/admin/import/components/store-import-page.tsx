@@ -22,7 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCan } from '@/features/auth/hooks/use-can';
-import { ecommerceAdminRoutes } from '@/features/ecommerce/admin/constants/routes';
+import { useProductsBasePath } from '@/features/catalog/products/lib/products-navigation';
 import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import { cn } from '@/shared/utils';
 import {
@@ -855,6 +855,7 @@ function IssuesList({
 
 function ImportDone({ result }: { result: StoreImportPreview }) {
   const c = result.counts;
+  const productsBasePath = useProductsBasePath();
   return (
     <Card className="border-success/30">
       <CardContent className="flex flex-col gap-2 pt-6">
@@ -872,7 +873,7 @@ function ImportDone({ result }: { result: StoreImportPreview }) {
           {c.categoriesCreated.length ? `، ${c.categoriesCreated.length} تصنيف جديد` : ''}
           {c.brandsCreated?.length ? `، ${c.brandsCreated.length} علامة تجارية جديدة` : ''}.
         </p>
-        <Link href={ecommerceAdminRoutes.products} className="text-sm text-primary underline-offset-4 hover:underline">
+        <Link href={productsBasePath} className="text-sm text-primary underline-offset-4 hover:underline">
           الذهاب إلى المنتجات
         </Link>
       </CardContent>

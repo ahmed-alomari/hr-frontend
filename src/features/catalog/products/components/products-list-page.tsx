@@ -44,7 +44,6 @@ import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-li
 import { resolveUploadUrl } from '@/shared/resolve-upload-url';
 import { productAppSectionsFrom } from '@/features/catalog/products/hooks/use-product-app-sections';
 import { APP, useCompanyApps, type AppRequirement } from '@/shared/modules/company-apps';
-import { ecommerceAdminRoutes } from '@/features/ecommerce/admin/constants/routes';
 import { useCan } from '@/features/auth/hooks/use-can';
 import {
   PRODUCTS_COLUMN_OPTIONS,
@@ -316,9 +315,9 @@ export function ProductsListPage() {
 
   const [scanOpen, setScanOpen] = React.useState(false);
   const can = useCan();
-  // The import is the store's (store admin); the other apps' product lists do not offer it.
+  // Every products list offers the import (AGENTS.md §7); its server belongs to the store, so it needs store-admin.
   const canImport =
-    productsBasePath === ecommerceAdminRoutes.products &&
+    apps.isEnabled(APP.storeAdmin) &&
     can('catalog.products.create') &&
     can('catalog.products.update');
 
@@ -394,7 +393,7 @@ export function ProductsListPage() {
         </button>
         {canImport ? (
           <Link
-            href={ecommerceAdminRoutes.productsImport}
+            href={`${productsBasePath}/import`}
             aria-label="استيراد المنتجات"
             className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground sm:px-3"
           >

@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ArrowDownToLine, ArrowRight, ArrowUpFromLine, Lock, Plus } from 'lucide-react';
+import { Archive, ArrowDownToLine, ArrowRight, ArrowUpFromLine, Lock, Plus, RotateCcw } from 'lucide-react';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { PageHeaderPrimaryButton } from '@/components/layouts/page-header-primary-button';
@@ -10,9 +10,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { LocalListTable, LocalListToolbar, useLocalList, type LocalListField } from '@/components/ui/local-list';
 import { allTxns, partyBalance, type CustodyBalance } from '../domain/ledger';
 import type { Minor } from '../domain/money';
-import type { AnyTxn } from '../domain/types';
+import { STATUS_LABELS_AR } from '../domain/policy';
+import type { Advance, AnyTxn, TxnStatus } from '../domain/types';
+import { ImportLinkButton } from './import-page';
 import { expensesRoutes } from '../constants/routes';
 import { AmountInput, EmptyState, Field, FormDialog, KeyValue, LoadingBlock, Money, PartyName, PartySelect, ResponsiveTable, Section, StatusBadge, useRunCommand } from './common';
 import { txnTitle } from './dashboard-page';
@@ -113,7 +116,7 @@ function AdvanceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
   );
 }
 
-function CustodyCard({ b, onMove, onClose }: { b: CustodyBalance; onMove: (t: 'topup' | 'return') => void; onClose: () => void }) {
+function CustodyCard({ b, onMove, onClose, onArchive }: { b: CustodyBalance; onMove: (t: 'topup' | 'return') => void; onClose: () => void; onArchive: () => void }) {
   const perms = useExpensesPermissions();
   const used = b.custody.limit ? Math.min(100, Math.round((b.actual / b.custody.limit) * 100)) : null;
   return (
@@ -121,7 +124,7 @@ function CustodyCard({ b, onMove, onClose }: { b: CustodyBalance; onMove: (t: 't
       <Link href={expensesRoutes.custodyDetail(b.custody.id)} className="block">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0"><p className="truncate text-sm font-semibold"><PartyName id={b.custody.holderId} link={false} /></p><p className="truncate text-xs text-muted-foreground">{b.custody.purpose}</p></div>
-          <Badge variant={b.custody.status === 'open' ? 'success' : 'subtle'}>{b.custody.status === 'open' ? 'مفتوحة' : 'مقفلة'}</Badge>
+          <Badge variant={b.custody.status === 'open' ? 'success' : 'subtle'}>{b.custody.archived ? 'مؤرشفة' : b.custody.status === 'open' ? 'مفتوحة' : 'مقفلة'}</Badge>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
           <div><p className="text-muted-foreground">الرصيد الفعلي</p><Money value={b.actual} className="text-base font-bold" /></div>
@@ -142,6 +145,11 @@ function CustodyCard({ b, onMove, onClose }: { b: CustodyBalance; onMove: (t: 't
           <Button size="sm" variant="outline" onClick={onClose}><Lock className="me-1 h-3.5 w-3.5" />تسوية وإقفال</Button>
         </div>
       ) : null}
+      {b.custody.status === 'closed' && perms.custody ? (
+        <Button size="sm" variant="ghost" className="w-full" onClick={onArchive}>
+          {b.custody.archived ? <><RotateCcw className="me-1 h-3.5 w-3.5" />استعادة</> : <><Archive className="me-1 h-3.5 w-3.5" />أرشفة</>}
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -156,20 +164,43 @@ export function CustodyPage() {
   const [advancing, setAdvancing] = React.useState(false);
   const [move, setMove] = React.useState<{ b: CustodyBalance; type: 'topup' | 'return' } | null>(null);
   const [tab, setTab] = React.useState('custody');
+  const [showArchived, setShowArchived] = React.useState(false);
+  const directory = useDirectory();
+
+  const advanceRows = React.useMemo(
+    () => (data ? data.advances.filter((a) => a.currency === currency.code).sort((a, b) => b.date.localeCompare(a.date)) : []),
+    [data, currency.code],
+  );
+  const owedNow = React.useCallback((personId: string) => (ledger ? partyBalance(ledger, personId).pairs.find((p) => p.counterparty === 'org')?.net ?? 0 : 0), [ledger]);
+  const advanceFields = React.useMemo<LocalListField<Advance>[]>(() => [
+    { key: 'date', label: 'التاريخ', kind: 'date', text: (a) => a.date, groupKey: (a) => a.date.slice(0, 7) },
+    { key: 'person', label: 'الشخص', kind: 'name', text: (a) => directory.nameOf(a.personId), cell: (a) => <PartyName id={a.personId} />, groupKey: (a) => a.personId, groupLabel: (id) => directory.nameOf(id) },
+    { key: 'purpose', label: 'الغرض', text: (a) => a.purpose },
+    { key: 'group', label: 'المجموعة', optional: true, hiddenByDefault: true, text: (a) => data?.groups.find((g) => g.id === a.groupId)?.name ?? '—', groupKey: (a) => a.groupId ?? null, groupLabel: (id) => data?.groups.find((g) => g.id === id)?.name ?? id },
+    { key: 'owed', label: 'المتبقي عليه الآن', optional: true, kind: 'number', sortable: false, text: (a) => currency.format(owedNow(a.personId)) },
+    { key: 'amount', label: 'المبلغ', kind: 'number', text: (a) => currency.format(a.amount), sortValue: (a) => a.amount, sum: (a) => (a.status === 'approved' ? a.amount : 0), formatSum: currency.format, cell: (a) => <Money value={a.amount} className="font-semibold" /> },
+    { key: 'status', label: 'الحالة', kind: 'status', text: (a) => STATUS_LABELS_AR[a.status], cell: (a) => <StatusBadge status={a.status} />, groupKey: (a) => a.status, groupLabel: (k) => STATUS_LABELS_AR[k as TxnStatus] ?? k },
+    { key: 'actions', label: '', sortable: false, screenOnly: true, text: () => '', cell: (a) => <TxnActions txn={a} compact /> },
+  ], [data, directory, currency, owedNow]);
+  const advances = useLocalList({ section: 'expenses', page: 'advances', fields: advanceFields, rows: advanceRows });
 
   usePageHeaderActions(
-    () => (
-      <PageHeaderPrimaryButton icon={Plus} label={tab === 'custody' ? 'فتح عهدة' : 'سلفة جديدة'} disabled={!perms.custody} onClick={() => (tab === 'custody' ? setOpening(true) : setAdvancing(true))}>
-        {tab === 'custody' ? 'فتح عهدة' : 'سلفة جديدة'}
-      </PageHeaderPrimaryButton>
-    ),
-    [tab, perms.custody],
+    () => {
+      const primary = (
+        <PageHeaderPrimaryButton icon={Plus} label={tab === 'custody' ? 'فتح عهدة' : 'سلفة جديدة'} disabled={!perms.custody} onClick={() => (tab === 'custody' ? setOpening(true) : setAdvancing(true))}>
+          {tab === 'custody' ? 'فتح عهدة' : 'سلفة جديدة'}
+        </PageHeaderPrimaryButton>
+      );
+      return tab === 'advances'
+        ? <LocalListToolbar list={advances} title="سجل السلف الشخصية" fileName="advances" subtitleLines={['المبالغ المجمّعة للمعتمد فقط']} before={<ImportLinkButton />} primary={primary} />
+        : <div className="flex items-center gap-1.5"><ImportLinkButton />{primary}</div>;
+    },
+    [tab, perms.custody, advances.rows, advances.visibleFields, advances.groups, advances.sort.sortKey],
   );
 
   if (!data || !ledger) return <LoadingBlock />;
-  const balances = [...ledger.custodies.values()].sort((a, b) => (a.custody.status === b.custody.status ? b.actual - a.actual : a.custody.status === 'open' ? -1 : 1));
-  const advances = data.advances.filter((a) => a.currency === currency.code).sort((a, b) => b.date.localeCompare(a.date));
-
+  const archivedCount = data.custodies.filter((c) => c.archived).length;
+  const balances = [...ledger.custodies.values()].filter((b) => showArchived || !b.custody.archived).sort((a, b) => (a.custody.status === b.custody.status ? b.actual - a.actual : a.custody.status === 'open' ? -1 : 1));
   return (
     <div className="space-y-3">
       <SetPageTitle titleAr="العهد والسلف" descriptionAr="العهد التشغيلية منفصلة عن السلف الشخصية" iconName="Wallet" />
@@ -178,11 +209,19 @@ export function CustodyPage() {
           <TabsTrigger value="custody">العهد التشغيلية</TabsTrigger>
           <TabsTrigger value="advances">السلف الشخصية</TabsTrigger>
         </TabsList>
-        <TabsContent value="custody" className="mt-3">
+        <TabsContent value="custody" className="mt-3 space-y-3">
+          {archivedCount > 0 ? (
+            <div className="flex justify-end">
+              <Button size="sm" variant={showArchived ? 'secondary' : 'outline'} onClick={() => setShowArchived((v) => !v)}>
+                <Archive className="me-1 h-4 w-4" />
+                {showArchived ? 'إخفاء المؤرشفة' : `المؤرشفة (${archivedCount})`}
+              </Button>
+            </div>
+          ) : null}
           {balances.length === 0 ? <EmptyState text="لا عهد" action={perms.custody ? <Button size="sm" onClick={() => setOpening(true)}>فتح عهدة</Button> : undefined} /> : (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {balances.map((b) => (
-                <CustodyCard key={b.custody.id} b={b} onMove={(type) => setMove({ b, type })} onClose={() => {
+                <CustodyCard key={b.custody.id} b={b} onMove={(type) => setMove({ b, type })} onArchive={() => void exec({ type: 'archiveCustody', custodyId: b.custody.id, archived: !b.custody.archived }, b.custody.archived ? 'استُعيدت العهدة' : 'أُرشفت العهدة')} onClose={() => {
                   if (window.confirm(b.actual > 0 ? 'سيُرجع الرصيد المتبقي للمنشأة وتُقفل العهدة. متابعة؟' : 'إقفال العهدة؟')) void exec({ type: 'closeCustody', custodyId: b.custody.id, date: todayIso() }, 'سُوّيت العهدة وأُقفلت');
                 }} />
               ))}
@@ -190,9 +229,9 @@ export function CustodyPage() {
           )}
         </TabsContent>
         <TabsContent value="advances" className="mt-3">
-          {advances.length === 0 ? <EmptyState text="لا سلف" /> : (
-            <ResponsiveTable
-              rows={advances}
+          {advanceRows.length === 0 ? <EmptyState text="لا سلف" /> : (
+            <LocalListTable
+              list={advances}
               rowKey={(a) => a.id}
               card={(a) => (
                 <div className="space-y-1.5">
@@ -202,14 +241,6 @@ export function CustodyPage() {
                   <TxnActions txn={a} compact />
                 </div>
               )}
-              columns={[
-                { header: 'التاريخ', cell: (a) => a.date },
-                { header: 'الشخص', cell: (a) => <PartyName id={a.personId} /> },
-                { header: 'الغرض', cell: (a) => a.purpose },
-                { header: 'المبلغ', cell: (a) => <Money value={a.amount} className="font-semibold" /> },
-                { header: 'الحالة', cell: (a) => <StatusBadge status={a.status} /> },
-                { header: '', cell: (a) => <TxnActions txn={a} compact /> },
-              ]}
             />
           )}
           <p className="mt-2 text-xs text-muted-foreground">السلفة تظهر في «عليه» بحساب الشخص، وتُسدَّد من صفحة التسويات.</p>

@@ -87,6 +87,7 @@ export function useExpensesPermissions() {
       settle: can(EXP.settlementsCreate),
       reports: can(EXP.reportsRead),
       setup: can(EXP.setupManage),
+      periods: can(EXP.periodsManage),
       settings: can(EXP.settingsUpdate),
     }),
     [can],

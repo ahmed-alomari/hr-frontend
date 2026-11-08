@@ -2,10 +2,11 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
-import { Ban, Check, Send, X } from 'lucide-react';
+import { Ban, Check, Lock, Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ExpensesCommand } from '../data/commands';
 import { useExpensesStore } from '../data/store';
+import { periodLockMessage } from '../domain/periods';
 import { canDecide, canVoid, currentDeciders } from '../domain/policy';
 import type { AnyTxn } from '../domain/types';
 import { ReasonDialog } from './common';
@@ -35,6 +36,15 @@ export function TxnActions({ txn, compact }: { txn: AnyTxn; compact?: boolean })
   const directory = useDirectory();
   const [dialog, setDialog] = React.useState<'reject' | 'void' | null>(null);
   if (!data || !actorId) return null;
+  const locked = periodLockMessage(data, txn.date);
+  if (locked) {
+    return (
+      <span className="inline-flex items-center gap-1 self-center text-xs text-muted-foreground" title={locked}>
+        <Lock className="h-3.5 w-3.5" />
+        فترة مقفلة
+      </span>
+    );
+  }
 
   const attempt = async (command: ExpensesCommand, ok: string) => {
     try {
