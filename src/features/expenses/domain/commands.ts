@@ -5,7 +5,7 @@
  * checked there, not in screens).
  */
 import { computeLedger } from './ledger';
-import { applyDecision, approvalPlan, canDecide, canVoid, groupOf, OPEN_POLICY, txnGroupId } from './policy';
+import { applyDecision, approvalPlan, canDecide, canVoid, groupFilingBlock, groupOf, groupStatusOf, OPEN_POLICY, txnGroupId } from './policy';
 import { ORG } from './types';
 import type {
   Advance,
@@ -59,14 +59,13 @@ function replaceTxn(data: ExpensesData, txn: AnyTxn): ExpensesData {
  * The group a new record is filed under: the one chosen (open, of this
  * company), else the company's default group.
  */
-export function resolveGroupId(data: ExpensesData, groupId: string | null | undefined): string | null {
-  if (groupId) {
-    const group = data.groups.find((g) => g.id === groupId);
-    if (!group) throw new CommandError('المجموعة غير موجودة');
-    if (group.closed) throw new CommandError(`المجموعة «${group.name}» مغلقة`);
-    return group.id;
-  }
-  return groupOf(data, null)?.id ?? null;
+export function resolveGroupId(data: ExpensesData, groupId: string | null | undefined, actorId?: string): string | null {
+  const group = groupId ? data.groups.find((g) => g.id === groupId) : groupOf(data, null);
+  if (groupId && !group) throw new CommandError('المجموعة غير موجودة');
+  if (!group) return null;
+  const block = groupFilingBlock(group, actorId);
+  if (block) throw new CommandError(block);
+  return group.id;
 }
 
 /**
@@ -111,7 +110,7 @@ export function saveExpense(data: ExpensesData, draft: ExpenseDraft, submit: boo
     throw new CommandError('لا يُعدَّل إلا المسودة أو المرفوض');
   }
   const groupId =
-    existing && draft.groupId === existing.groupId ? (existing.groupId ?? resolveGroupId(data, null)) : resolveGroupId(data, draft.groupId);
+    existing && draft.groupId === existing.groupId ? (existing.groupId ?? resolveGroupId(data, null, ctx.actorId)) : resolveGroupId(data, draft.groupId, ctx.actorId);
   const base = {
     ...draft,
     groupId,
@@ -245,7 +244,7 @@ export function openCustody(
   if (!input.holderId) throw new CommandError('اختر حامل العهدة');
   if (!(input.amount > 0)) throw new CommandError('أدخل مبلغ التسليم');
   if (input.limit != null && input.amount > input.limit) throw new CommandError('مبلغ التسليم يتجاوز سقف العهدة');
-  const groupId = resolveGroupId(data, input.groupId);
+  const groupId = resolveGroupId(data, input.groupId, ctx.actorId);
   const custody: Custody = {
     id: ctx.newId('cus'),
     groupId,
@@ -294,7 +293,7 @@ export function addCustodyMove(
     ...data,
     custodyMoves: [
       ...data.custodyMoves,
-      newMove(custody.id, input.type, input.amount, input.date, input.note, data, ctx, custody.groupId ?? resolveGroupId(data, null)),
+      newMove(custody.id, input.type, input.amount, input.date, input.note, data, ctx, resolveGroupId(data, custody.groupId, ctx.actorId)),
     ],
   };
 }
@@ -320,7 +319,7 @@ export function closeCustody(data: ExpensesData, custodyId: string, date: string
         'إرجاع الرصيد عند الإقفال',
         data,
         ctx,
-        custody.groupId ?? resolveGroupId(data, null),
+        resolveGroupId(data, custody.groupId, ctx.actorId),
       ),
       status: 'approved',
       approval: null,
@@ -348,7 +347,7 @@ export function addAdvance(
 ): ExpensesData {
   if (!input.personId) throw new CommandError('اختر الشخص');
   if (!(input.amount > 0)) throw new CommandError('أدخل مبلغ السلفة');
-  const groupId = resolveGroupId(data, input.groupId);
+  const groupId = resolveGroupId(data, input.groupId, ctx.actorId);
   const advance: Advance = {
     id: ctx.newId('adv'),
     kind: 'advance',
@@ -380,7 +379,7 @@ export function addSettlement(
 ): ExpensesData {
   if (!input.fromId || !input.toId || input.fromId === input.toId) throw new CommandError('اختر طرفين مختلفين');
   if (!(input.amount > 0)) throw new CommandError('أدخل مبلغ السداد');
-  const groupId = resolveGroupId(data, input.groupId);
+  const groupId = resolveGroupId(data, input.groupId, ctx.actorId);
   const settlement: Settlement = {
     id: ctx.newId('set'),
     kind: 'settlement',
@@ -429,10 +428,10 @@ export function upsertCostCenter(data: ExpensesData, center: CostCenter): Expens
 export function upsertGroup(data: ExpensesData, group: ExpenseGroup): ExpensesData {
   const existing = data.groups.find((g) => g.id === group.id);
   const isDefault = Boolean(existing?.isDefault);
-  if (isDefault && group.closed) {
-    throw new CommandError('المجموعة الافتراضية لا تُغلق');
-  }
-  const next: ExpenseGroup = { ...group, isDefault };
+  const status = isDefault ? 'active' : groupStatusOf(group);
+  if (isDefault && groupStatusOf(group) !== 'active') throw new CommandError('المجموعة الافتراضية تبقى نشطة');
+  if (!isDefault && group.memberIds.length === 0) throw new CommandError('حدّد أعضاء المجموعة: لا يرفع فيها مصروفاً إلا أعضاؤها');
+  const next: ExpenseGroup = { ...group, isDefault, status, closed: status !== 'active' };
   return {
     ...data,
     groups: existing ? data.groups.map((g) => (g.id === group.id ? next : g)) : [...data.groups, next],

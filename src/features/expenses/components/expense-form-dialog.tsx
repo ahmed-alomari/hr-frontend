@@ -14,7 +14,7 @@ import type { ExpenseDraft } from '../domain/commands';
 import { buildBearing, custodyPayments, validateExpense } from '../domain/expense-builder';
 import { expenseEffects } from '../domain/ledger';
 import { minorToInput, sumMinor, toMinor, type Minor } from '../domain/money';
-import { approvalRequired, blocksSubmit, checkPolicies, policyOf } from '../domain/policy';
+import { approvalRequired, blocksSubmit, checkPolicies, groupStatusOf, policyOf } from '../domain/policy';
 import { ORG } from '../domain/types';
 import type { AllocationLine, AttachmentMeta, Expense, PartyId, SplitMethod } from '../domain/types';
 import { AmountInput, Field, FormDialog, Money, PartyChecklist, PartyName, PartySelect } from './common';
@@ -180,7 +180,7 @@ export function ExpenseFormDialog({
   const effects = amount > 0 && issues.length === 0 ? expenseEffects({ ...draft, id: 'preview', kind: 'expense', currency: currency.code, status: 'approved', createdBy: actorId ?? '', createdAt: '', attachments } as Expense) : [];
   const group = groupId ? data.groups.find((g) => g.id === groupId) : undefined;
   const submitLabel = policy.approval === 'none' ? 'حفظ' : !approvalRequired(policy, amount) ? 'حفظ (اعتماد تلقائي)' : 'إرسال للاعتماد';
-  const pickable = openGroups(data).length > 1 || (group?.closed ?? false);
+  const pickable = openGroups(data).length > 1 || (group != null && groupStatusOf(group) !== 'active');
 
   const pickGroup = (id: string | null) => {
     setGroupId(id);

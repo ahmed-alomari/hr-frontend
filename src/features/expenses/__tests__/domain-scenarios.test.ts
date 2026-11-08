@@ -9,7 +9,7 @@ import { computeLedger, partyBalance, settlementSuggestions, statement } from '.
 import { splitByWeights, splitEqual, sumMinor, toMinor } from '../domain/money';
 import { mergeParticipants } from '../domain/participants';
 import { applyDecision, approvalPlan, canDecide, checkPolicies, currentDeciders } from '../domain/policy';
-import { bucketOf, cashReport, expenseReport, weekStart } from '../domain/reports';
+import { bucketOf, cashMovements, cashReport, expenseReport, peopleReport, weekStart } from '../domain/reports';
 import { ORG } from '../domain/types';
 import type { Advance, CustodyMove, Expense, ExpensesData, PaymentPart, Settlement, TxnStatus } from '../domain/types';
 
@@ -111,6 +111,100 @@ describe('custody', () => {
     expect(expenseReport(d, { currency: CUR }, 'month').total).toBe(30000);
     const cash = cashReport(d, { currency: CUR });
     expect(cash).toMatchObject({ expensesPaidDirect: 0, custodyFunding: 100000, custodyReturns: 70000, netOutflow: 30000 });
+  });
+});
+
+describe('cash movements (حركة النقد)', () => {
+  // Organization cash: out = 100000 + 20000 + 50000 + 40000 + 18000 = 228000; in = 70000 + 20000 = 90000.
+  const cashData = () =>
+    data({
+      custodyMoves: [
+        move('m1', 'issue', 100000, '2026-10-02'),
+        move('m2', 'topup', 20000, '2026-10-03'),
+        move('m3', 'return', 70000, '2026-10-08'),
+        move('m4', 'topup', 5000, '2026-10-05', 'submitted'), // pending: not cash yet
+      ],
+      advances: [{ id: 'adv1', kind: 'advance', personId: 'M', amount: 50000, purpose: 'سلفة سفر', ...meta('2026-10-04') }],
+      settlements: [
+        { id: 's1', kind: 'settlement', fromId: ORG, toId: 'A', amount: 18000, method: 'cash', ...meta('2026-10-07') },
+        { id: 's2', kind: 'settlement', fromId: 'M', toId: ORG, amount: 20000, method: 'transfer', ...meta('2026-10-09') },
+      ],
+      expenses: [
+        exp('e1', 30000, [{ source: 'custody', custodyId: 'C1', payerId: 'K', amount: 30000 }], undefined, { date: '2026-10-05' }), // from custody: not cash
+        exp('e2', 40000, [{ source: 'org', amount: 40000 }], undefined, { date: '2026-10-06' }), // org cash
+        exp('e3', 9000, [{ source: 'personal', payerId: 'A', amount: 9000 }], undefined, { date: '2026-10-06' }), // personal: not cash
+      ],
+    });
+
+  it('lists every approved record that moved the organization cash, in and out, oldest first', () => {
+    const rows = cashMovements(cashData(), { currency: CUR });
+    expect(rows.map((r) => [r.date, r.type, r.direction, r.amount, r.partyId])).toEqual([
+      ['2026-10-02', 'custody_issue', 'out', 100000, 'K'],
+      ['2026-10-03', 'custody_topup', 'out', 20000, 'K'],
+      ['2026-10-04', 'advance', 'out', 50000, 'M'],
+      ['2026-10-06', 'expense', 'out', 40000, null],
+      ['2026-10-07', 'settlement_paid', 'out', 18000, 'A'],
+      ['2026-10-08', 'custody_return', 'in', 70000, 'K'],
+      ['2026-10-09', 'settlement_received', 'in', 20000, 'M'],
+    ]);
+    expect(rows.find((r) => r.type === 'expense')).toMatchObject({ categoryId: 'cat:fuel', method: null, costCenterIds: [], groupId: null });
+    expect(rows.find((r) => r.type === 'settlement_received')?.method).toBe('transfer');
+    expect(rows.find((r) => r.type === 'settlement_paid')?.method).toBe('cash');
+  });
+
+  it('the movements add up to the cash report, in and out, with no double count', () => {
+    const d = cashData();
+    const rows = cashMovements(d, { currency: CUR });
+    const out = rows.filter((r) => r.direction === 'out').reduce((t, r) => t + r.amount, 0);
+    const inn = rows.filter((r) => r.direction === 'in').reduce((t, r) => t + r.amount, 0);
+    const cash = cashReport(d, { currency: CUR });
+    expect({ out, in: inn, net: out - inn }).toEqual({ out: 228000, in: 90000, net: 138000 });
+    expect(cash).toMatchObject({
+      expensesPaidDirect: 40000,
+      custodyFunding: 120000,
+      advancesPaid: 50000,
+      settlementsPaid: 18000,
+      custodyReturns: 70000,
+      settlementsReceived: 20000,
+      netOutflow: out - inn,
+    });
+  });
+
+  it('a date range keeps only the movements inside it', () => {
+    const rows = cashMovements(cashData(), { currency: CUR, from: '2026-10-04', to: '2026-10-07' });
+    expect(rows.map((r) => r.type)).toEqual(['advance', 'expense', 'settlement_paid']);
+  });
+});
+
+describe('people report (تقرير الأشخاص)', () => {
+  const peopleData = () =>
+    data({
+      custodyMoves: [move('m1', 'issue', 100000, '2026-10-02'), move('m2', 'return', 20000, '2026-10-08')],
+      expenses: [
+        exp('e1', 30000, [{ source: 'custody', custodyId: 'C1', payerId: 'K', amount: 30000 }], buildBearing('org', 30000, []), { date: '2026-10-05' }),
+        exp('e2', 40000, [{ source: 'personal', payerId: 'A', amount: 40000 }], buildBearing('org', 40000, []), { date: '2026-10-06' }),
+        exp('e3', 9000, [{ source: 'personal', payerId: 'A', amount: 9000 }], buildBearing('equal', 9000, ['A', 'S']), { date: '2026-10-06' }),
+      ],
+      advances: [{ id: 'adv1', kind: 'advance', personId: 'M', amount: 50000, purpose: 'سلفة', ...meta('2026-10-04') }],
+      settlements: [{ id: 's1', kind: 'settlement', fromId: 'M', toId: ORG, amount: 20000, method: 'cash', ...meta('2026-10-09') }],
+    });
+
+  it('splits what each person spent, holds, is owed and owes', () => {
+    const by = Object.fromEntries(peopleReport(peopleData(), { currency: CUR }).map((r) => [r.partyId, r]));
+    // K holds the custody: 100000 in, 30000 spent from it, 20000 back, 50000 still held, on 3 days.
+    expect(by.K).toMatchObject({ spent: 30000, spentCustody: 30000, spentPersonal: 0, custodyIn: 100000, custodyOut: 20000, custodyNow: 50000, hasCustody: true, days: 3, owedToThem: 0, theyOwe: 0 });
+    // A paid 49000. The organization owes him 40000, and S owes him 4500 of the shared 9000.
+    expect(by.A).toMatchObject({ spent: 49000, spentPersonal: 49000, borne: 4500, days: 1, owedToThem: 44500, theyOwe: 0, hasCustody: false });
+    expect(by.S).toMatchObject({ spent: 0, borne: 4500, theyOwe: 4500, owedToThem: 0, days: 1, hasCustody: false });
+    // M took 50000 and repaid 20000, so 30000 remains on him.
+    expect(by.M).toMatchObject({ advances: 50000, paidOut: 20000, theyOwe: 30000, owedToThem: 0, days: 2, hasCustody: false, spent: 0 });
+  });
+
+  it('the period limits the activity and keeps the balance as it is now', () => {
+    const by = Object.fromEntries(peopleReport(peopleData(), { currency: CUR, from: '2026-10-06', to: '2026-10-06' }).map((r) => [r.partyId, r]));
+    expect(by.A).toMatchObject({ spent: 49000, days: 1, owedToThem: 44500 });
+    expect(by.K).toMatchObject({ spent: 0, custodyIn: 0, days: 0, custodyNow: 50000, hasCustody: true });
+    expect(by.M).toMatchObject({ advances: 0, paidOut: 0, days: 0, theyOwe: 30000 });
   });
 });
 
@@ -233,6 +327,24 @@ describe('approval', () => {
     any = applyDecision(any, 'B', 'approved', null, 'now');
     expect(any.status).toBe('approved');
     expect(any.approval?.steps.map((s) => s.status)).toEqual(['skipped', 'approved']);
+  });
+
+  it('a parallel stage completes at the chosen count', () => {
+    const policy = {
+      ...homeGroup().policy,
+      approval: 'always' as const,
+      stages: [{ mode: 'parallel' as const, approverIds: ['A', 'B', 'C'], requiredCount: 2 }],
+    };
+    let txn = {
+      ...exp('e1', 100, [{ source: 'org', amount: 100 }], undefined, { status: 'submitted', createdBy: 'K' }),
+      approval: approvalPlan(policy, 100, 'K').approval,
+    };
+    expect(currentDeciders(txn)?.sort()).toEqual(['A', 'B', 'C']);
+    txn = applyDecision(txn, 'C', 'approved', null, 'now');
+    expect(txn.status).toBe('submitted');
+    txn = applyDecision(txn, 'A', 'approved', null, 'now');
+    expect(txn.status).toBe('approved');
+    expect(txn.approval?.steps.find((s) => s.partyId === 'B')?.status).toBe('skipped');
   });
 
   it('switching the mode changes no balance', () => {

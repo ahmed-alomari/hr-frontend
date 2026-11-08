@@ -54,6 +54,20 @@ export type GroupRule = 'none' | 'always' | 'above';
  */
 export type ApprovalMode = 'sequential' | 'parallel' | 'any_one';
 
+/** One stage of a group's approval, as a stage of an HR request. */
+export type ApprovalStageMode = ApprovalMode | 'optional';
+
+export interface ApprovalStage {
+  mode: ApprovalStageMode;
+  /** Company users. More than one is a choice, not a requirement. */
+  approverIds: string[];
+  /** Parallel only: how many approvals complete the stage. null: every approver. */
+  requiredCount: number | null;
+}
+
+/** A group accepts new records only while active. */
+export type GroupStatus = 'active' | 'maintenance' | 'suspended' | 'ended';
+
 /**
  * A group's policy: what its records need. Every rule is optional; a group
  * without a manager and approvers is decided by whoever holds the approve
@@ -72,11 +86,13 @@ export interface GroupPolicy {
   monthlyLimitPerPerson: Minor | null;
   /** A violation blocks sending (else it warns). */
   blockOnViolation: boolean;
-  /** Decides first when set (a company user). */
+  /** Decides first when set (a company user). Kept for policies saved before stages. */
   managerId: string | null;
-  /** Decide after the manager, by `approvalMode` (company users). */
+  /** Decide after the manager, by `approvalMode` (company users). Kept for old policies. */
   approverIds: string[];
   approvalMode: ApprovalMode;
+  /** The approval path when set. Empty or missing: the manager and approvers above. */
+  stages?: ApprovalStage[];
 }
 
 /**
@@ -91,7 +107,9 @@ export interface ExpenseGroup {
   memberIds: string[];
   costCenterId?: string | null;
   closed?: boolean;
-  /** The company's own group: always there, never closed. */
+  /** active accepts records. Missing: active, or ended when `closed`. */
+  status?: GroupStatus;
+  /** The company's own group: always there, always active. */
   isDefault?: boolean;
   policy: GroupPolicy;
 }
@@ -101,6 +119,8 @@ export type ApprovalStepStatus = 'pending' | 'approved' | 'rejected' | 'skipped'
 export interface ApprovalStep {
   partyId: string;
   role: 'manager' | 'approver';
+  /** Which stage of `TxnApproval.stages` this step belongs to. */
+  stage?: number;
   status: ApprovalStepStatus;
   decidedAt?: string | null;
   note?: string | null;
@@ -113,6 +133,8 @@ export interface ApprovalStep {
  */
 export interface TxnApproval {
   mode: ApprovalMode;
+  /** Present when the path was built from stages. Old records have steps only. */
+  stages?: Array<{ mode: ApprovalMode; requiredCount: number | null }>;
   steps: ApprovalStep[];
 }
 

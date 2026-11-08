@@ -48,6 +48,7 @@ export const expensesNavGroups: ExpensesNavGroup[] = [
     icon: BarChart3,
     items: [
       { labelAr: 'تحليل المصروفات', href: expensesRoutes.reports, icon: BarChart3 },
+      { labelAr: 'تقرير الأشخاص', href: expensesRoutes.reportPeople, icon: Users },
       { labelAr: 'تقرير العهد', href: expensesRoutes.reportCustody, icon: Wallet },
       { labelAr: 'حركة النقد', href: expensesRoutes.reportCash, icon: Banknote },
     ],

@@ -6,7 +6,7 @@ import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { Badge } from '@/components/ui/badge';
 import { useExpensesStore } from '../data/store';
 import { allTxns } from '../domain/ledger';
-import { checkPolicies, groupOf, txnGroupId } from '../domain/policy';
+import { checkPolicies, groupOf, groupStatusOf, txnGroupId } from '../domain/policy';
 import type { AnyTxn } from '../domain/types';
 import { expensesRoutes } from '../constants/routes';
 import { EmptyState, LoadingBlock, Money, PartyName, Section } from './common';
@@ -24,7 +24,7 @@ export function ApprovalsPage() {
   if (!data) return <LoadingBlock />;
   const pending = allTxns(data).filter((t) => t.status === 'submitted' && t.currency === currency.code).reverse();
   const mine = pending.filter((t) => actorId && mayDecideNow(actorId, t, perms.approve));
-  const noApproval = data.groups.every((g) => g.closed || g.policy.approval === 'none');
+  const noApproval = data.groups.every((g) => groupStatusOf(g) !== 'active' || g.policy.approval === 'none');
   const others = pending.filter((t) => !mine.includes(t));
   const drafts = allTxns(data).filter((t) => t.status === 'draft' && t.createdBy === actorId);
 

@@ -6,7 +6,7 @@
  * mode (simple / advanced) only changes what the screens show.
  */
 import type { Minor } from './money';
-import type { AnyTxn, ApprovalStep, Category, Expense, ExpenseGroup, ExpensesData, GroupPolicy, TxnApproval, TxnStatus } from './types';
+import type { AnyTxn, ApprovalStage, ApprovalStep, Category, Expense, ExpenseGroup, ExpensesData, GroupPolicy, GroupStatus, TxnApproval, TxnStatus } from './types';
 
 /** The policy of a company that never set one: nothing required. */
 export const OPEN_POLICY: GroupPolicy = {
@@ -20,13 +20,16 @@ export const OPEN_POLICY: GroupPolicy = {
   managerId: null,
   approverIds: [],
   approvalMode: 'sequential',
+  stages: [],
 };
 
 export const DEFAULT_GROUP_NAME = 'عام';
 
 const RULES = ['none', 'always', 'above'] as const;
 const MODES = ['sequential', 'parallel', 'any_one'] as const;
+const STAGE_MODES = ['sequential', 'parallel', 'any_one', 'optional'] as const;
 const STEP_STATUSES = ['pending', 'approved', 'rejected', 'skipped'] as const;
+const GROUP_STATUSES = ['active', 'maintenance', 'suspended', 'ended'] as const;
 
 const oneOf = <T extends string>(list: readonly T[], value: unknown, fallback: T): T =>
   list.includes(value as T) ? (value as T) : fallback;
@@ -50,7 +53,27 @@ export function readPolicy(raw: unknown): GroupPolicy {
     managerId: textOrNull(r.managerId),
     approverIds: Array.isArray(r.approverIds) ? r.approverIds.filter((x): x is string => typeof x === 'string' && !!x) : [],
     approvalMode: oneOf(MODES, r.approvalMode, 'sequential'),
+    stages: readStages(r.stages),
   };
+}
+
+function readStages(raw: unknown): ApprovalStage[] {
+  if (!Array.isArray(raw)) return [];
+  const stages: ApprovalStage[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const s = item as Record<string, unknown>;
+    const approverIds = Array.isArray(s.approverIds) ? s.approverIds.filter((x): x is string => typeof x === 'string' && !!x) : [];
+    if (approverIds.length === 0) continue;
+    const mode = oneOf(STAGE_MODES, s.mode, 'sequential');
+    const count = s.requiredCount;
+    stages.push({
+      mode,
+      approverIds,
+      requiredCount: mode === 'parallel' && typeof count === 'number' && Number.isInteger(count) && count >= 1 ? count : null,
+    });
+  }
+  return stages;
 }
 
 /** A stored approval path (jsonb) read safely. */
@@ -58,8 +81,16 @@ export function readApproval(raw: unknown): TxnApproval | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   const steps: unknown[] = Array.isArray(r.steps) ? r.steps : [];
+  const stageRows: unknown[] = Array.isArray(r.stages) ? r.stages : [];
+  const stages = stageRows.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const s = item as Record<string, unknown>;
+    const count = s.requiredCount;
+    return [{ mode: oneOf(MODES, s.mode, 'sequential'), requiredCount: typeof count === 'number' && Number.isInteger(count) && count >= 1 ? count : null }];
+  });
   return {
     mode: oneOf(MODES, r.mode, 'sequential'),
+    stages: stages.length > 0 ? stages : undefined,
     steps: steps
       .filter(
         (s): s is Record<string, unknown> => !!s && typeof s === 'object' && typeof (s as Record<string, unknown>).partyId === 'string',
@@ -67,6 +98,7 @@ export function readApproval(raw: unknown): TxnApproval | null {
       .map((s) => ({
         partyId: s.partyId as string,
         role: s.role === 'manager' ? 'manager' : 'approver',
+        stage: typeof s.stage === 'number' ? s.stage : undefined,
         status: oneOf(STEP_STATUSES, s.status, 'pending'),
         decidedAt: textOrNull(s.decidedAt),
         note: textOrNull(s.note),
@@ -189,52 +221,83 @@ export function blocksSubmit(violations: readonly PolicyViolation[], policy: Gro
   return policy.blockOnViolation && violations.length > 0;
 }
 
-/**
- * The approval path of a record sent now: approved at once when its group
- * needs no approval for this amount; else the manager first, then the
- * approvers by the group's mode. The author never decides their own record:
- * their step is skipped (no step left: anyone with the approve permission).
- */
-export function approvalPlan(policy: GroupPolicy, amount: Minor, authorId: string): { status: TxnStatus; approval: TxnApproval | null } {
-  if (!approvalRequired(policy, amount)) {
-    return { status: 'approved', approval: null };
-  }
-  const steps: ApprovalStep[] = [];
-  const seen = new Set<string>();
-  const add = (partyId: string, role: ApprovalStep['role']) => {
-    if (seen.has(partyId)) return;
-    seen.add(partyId);
-    steps.push(
-      partyId === authorId
-        ? {
-            partyId,
-            role,
-            status: 'skipped',
-            note: 'هو من سجّل العملية',
-          }
-        : { partyId, role, status: 'pending' },
-    );
-  };
-  if (policy.managerId) add(policy.managerId, 'manager');
-  for (const id of policy.approverIds) add(id, 'approver');
-  return {
-    status: 'submitted',
-    approval: { mode: policy.approvalMode, steps },
-  };
+/** Stages that decide, in order. A policy without stages keeps manager then approvers. */
+export function approvalStages(policy: GroupPolicy): Array<ApprovalStage & { role: ApprovalStep['role'] }> {
+  if (policy.stages && policy.stages.length > 0) return policy.stages.map((s) => ({ ...s, role: 'approver' as const }));
+  const out: Array<ApprovalStage & { role: ApprovalStep['role'] }> = [];
+  if (policy.managerId) out.push({ mode: 'sequential', approverIds: [policy.managerId], requiredCount: null, role: 'manager' });
+  if (policy.approverIds.length > 0) out.push({ mode: policy.approvalMode, approverIds: policy.approverIds, requiredCount: null, role: 'approver' });
+  return out;
 }
 
 /**
- * Who may decide a sent record now: null = anyone holding the approve
- * permission (no step waits); otherwise the manager while their step waits,
- * then the next approver (sequential) or every waiting one.
+ * The approval path of a record sent now: approved at once when its group
+ * needs no approval for this amount; else one stage after another. An
+ * optional stage does not wait. The author never decides their own record.
  */
+export function approvalPlan(policy: GroupPolicy, amount: Minor, authorId: string): { status: TxnStatus; approval: TxnApproval | null } {
+  if (!approvalRequired(policy, amount)) return { status: 'approved', approval: null };
+  const blocking = approvalStages(policy).filter((s) => s.mode !== 'optional' && s.approverIds.length > 0);
+  const steps: ApprovalStep[] = [];
+  const seen = new Set<string>();
+  blocking.forEach((stage, stageIndex) => {
+    for (const partyId of stage.approverIds) {
+      if (seen.has(partyId)) continue;
+      seen.add(partyId);
+      steps.push(
+        partyId === authorId
+          ? { partyId, role: stage.role, stage: stageIndex, status: 'skipped', note: 'هو من سجّل العملية' }
+          : { partyId, role: stage.role, stage: stageIndex, status: 'pending' },
+      );
+    }
+  });
+  const first = blocking[0]?.mode;
+  return {
+    status: 'submitted',
+    approval: {
+      mode: first === 'parallel' || first === 'any_one' ? first : 'sequential',
+      stages: blocking.map((s) => ({ mode: s.mode === 'parallel' || s.mode === 'any_one' ? s.mode : 'sequential', requiredCount: s.requiredCount })),
+      steps,
+    },
+  };
+}
+
+function stageNeed(meta: { mode: TxnApproval['mode']; requiredCount: number | null }, steps: ApprovalStep[]): number {
+  const live = steps.filter((s) => s.status !== 'skipped').length;
+  if (live === 0) return 0;
+  if (meta.mode === 'any_one') return 1;
+  if (meta.mode === 'parallel' && meta.requiredCount != null) return Math.min(meta.requiredCount, live);
+  return live;
+}
+
+function stageComplete(meta: { mode: TxnApproval['mode']; requiredCount: number | null }, steps: ApprovalStep[]): boolean {
+  const approved = steps.filter((s) => s.status === 'approved').length;
+  const pending = steps.filter((s) => s.status === 'pending');
+  return approved >= stageNeed(meta, steps) || pending.length === 0;
+}
+
+/** Who may decide now: null = anyone with the approve permission. */
 export function currentDeciders(txn: AnyTxn): string[] | null {
-  const steps = txn.approval?.steps ?? [];
+  const approval = txn.approval;
+  const steps = approval?.steps ?? [];
   const pending = steps.filter((s) => s.status === 'pending');
   if (pending.length === 0) return null;
+  const staged = approval?.stages;
+  if (staged && staged.length > 0) {
+    for (let i = 0; i < staged.length; i++) {
+      const meta = staged[i]!;
+      const ofStage = steps.filter((s) => (s.stage ?? 0) === i);
+      if (stageComplete(meta, ofStage)) continue;
+      const waiting = ofStage.filter((s) => s.status === 'pending');
+      if (waiting.length === 0) return null;
+      if (meta.mode === 'sequential') return [waiting[0]!.partyId];
+      return waiting.map((s) => s.partyId);
+    }
+    return null;
+  }
   const manager = pending.find((s) => s.role === 'manager');
   if (manager) return [manager.partyId];
-  if (txn.approval?.mode === 'sequential') return [pending[0].partyId];
+  if (approval?.mode === 'sequential') return [pending[0]!.partyId];
   return pending.map((s) => s.partyId);
 }
 
@@ -245,10 +308,7 @@ export function canDecide(actorId: string, txn: AnyTxn): boolean {
   return deciders === null || deciders.includes(actorId);
 }
 
-/**
- * One decision on the path. A rejection ends it; an approval completes it
- * when no step waits (any_one: the first approver after the manager).
- */
+/** One decision. A rejection ends it. An approval ends it when every stage is complete. */
 export function applyDecision<T extends AnyTxn>(
   txn: T,
   actorId: string,
@@ -260,6 +320,8 @@ export function applyDecision<T extends AnyTxn>(
   const steps = (approval?.steps ?? []).map((s) =>
     s.partyId === actorId && s.status === 'pending' ? { ...s, status: decision, decidedAt: now, note } : s,
   );
+  const next = { ...txn, approval: approval ? { ...approval, steps } : null } as T;
+  const skipRest = (list: ApprovalStep[]) => list.map((s) => (s.status === 'pending' ? { ...s, status: 'skipped' as const } : s));
   const finish = (status: TxnStatus, finalSteps: ApprovalStep[]): T => ({
     ...txn,
     status,
@@ -268,23 +330,42 @@ export function applyDecision<T extends AnyTxn>(
     decidedAt: now,
     decisionNote: note,
   });
-  if (decision === 'rejected') {
-    return finish(
-      'rejected',
-      steps.map((s) => (s.status === 'pending' ? { ...s, status: 'skipped' } : s)),
-    );
+  if (decision === 'rejected') return finish('rejected', skipRest(steps));
+  const staged = approval?.stages;
+  if (staged && staged.length > 0) {
+    const done = staged.every((meta, i) => stageComplete(meta, steps.filter((s) => (s.stage ?? 0) === i)));
+    return done ? finish('approved', skipRest(steps)) : next;
   }
   const waiting = steps.filter((s) => s.status === 'pending');
   const managerWaits = waiting.some((s) => s.role === 'manager');
   const approverDecided = steps.some((s) => s.role === 'approver' && s.status === 'approved');
   const done = waiting.length === 0 || (!managerWaits && approval?.mode === 'any_one' && approverDecided);
-  if (done) {
-    return finish(
-      'approved',
-      steps.map((s) => (s.status === 'pending' ? { ...s, status: 'skipped' } : s)),
-    );
-  }
-  return { ...txn, approval: approval ? { ...approval, steps } : null };
+  return done ? finish('approved', skipRest(steps)) : next;
+}
+
+const GROUP_STATUS_LABEL: Record<Exclude<GroupStatus, 'active'>, string> = {
+  maintenance: 'تحت الصيانة',
+  suspended: 'موقوفة',
+  ended: 'منتهية ومغلقة',
+};
+
+export function groupStatusOf(group: ExpenseGroup): GroupStatus {
+  if (group.status && (GROUP_STATUSES as readonly string[]).includes(group.status)) return group.status;
+  return group.closed ? 'ended' : 'active';
+}
+
+export const GROUP_STATUS_LABELS_AR: Record<GroupStatus, string> = {
+  active: 'نشطة',
+  maintenance: 'تحت الصيانة',
+  suspended: 'موقوفة',
+  ended: 'منتهية',
+};
+
+export function groupFilingBlock(group: ExpenseGroup, actorId: string | undefined): string | null {
+  const status = groupStatusOf(group);
+  if (status !== 'active') return `المجموعة «${group.name}» ${GROUP_STATUS_LABEL[status]}`;
+  if (actorId && !group.isDefault && !group.memberIds.includes(actorId)) return `التسجيل في «${group.name}» لأعضائها فقط`;
+  return null;
 }
 
 export function canVoid(txn: AnyTxn): boolean {
@@ -301,6 +382,13 @@ export const STATUS_LABELS_AR: Record<TxnStatus, string> = {
 
 export const APPROVAL_MODE_LABELS_AR: Record<GroupPolicy['approvalMode'], string> = {
   sequential: 'تسلسلي — واحد بعد الآخر بالترتيب',
-  parallel: 'متوازي — موافقة الجميع بأي ترتيب',
+  parallel: 'متوازٍ — في آنٍ واحد',
   any_one: 'موافقة أحدهم تكفي',
+};
+
+export const STAGE_MODE_LABELS_AR: Record<ApprovalStage['mode'], string> = {
+  sequential: 'تسلسلي',
+  parallel: 'متوازٍ',
+  any_one: 'موافقة أحد المعتمدين',
+  optional: 'اختياري',
 };

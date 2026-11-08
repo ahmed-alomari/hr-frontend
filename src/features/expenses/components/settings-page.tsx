@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { cn } from '@/shared/utils';
 import type { ExpensesSettings } from '../domain/types';
@@ -32,10 +31,6 @@ export function SettingsPage() {
             </button>
           ))}
         </div>
-      </Section>
-
-      <Section title="الاعتماد والمرفقات والحدود" description="لكل مجموعة سياستها: من يعتمد وبأي طريقة، ومتى يلزم الإيصال، والحد الشهري. كل عملية بلا مجموعة تتبع المجموعة الافتراضية «عام».">
-        <Link href="/expenses/setup?tab=groups" className="text-sm font-medium text-primary hover:underline">إدارة المجموعات وسياساتها</Link>
       </Section>
     </div>
   );

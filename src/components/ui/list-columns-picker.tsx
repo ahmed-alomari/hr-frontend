@@ -15,8 +15,13 @@ export type ListColumnOption = { key: string; label: string };
  * (with the list's filters, so saved views carry it). The screen and its
  * export drop the same columns.
  */
-export function useColumnVisibility(storageKey: string | null, options: readonly ListColumnOption[]) {
-  const [hiddenList, setHiddenList] = usePersistedFilterState<string[]>(storageKey, []);
+export function useColumnVisibility(
+  storageKey: string | null,
+  options: readonly ListColumnOption[],
+  /** Hidden until the user picks them. Omitted means every optional column starts visible. */
+  defaultHidden: readonly string[] = [],
+) {
+  const [hiddenList, setHiddenList] = usePersistedFilterState<string[]>(storageKey, [...defaultHidden]);
   const hidden = React.useMemo(
     () => new Set((Array.isArray(hiddenList) ? hiddenList : []).filter((k) => options.some((o) => o.key === k))),
     [hiddenList, options],
