@@ -32,7 +32,7 @@ type ExpensesCommandBody =
   | { type: 'addCustodyMove'; custodyId: string; moveType: 'topup' | 'return'; amount: Minor; date: string; note: string | null }
   | { type: 'closeCustody'; custodyId: string; date: string }
   | { type: 'addAdvance'; personId: string; amount: Minor; purpose: string; date: string; groupId?: string | null }
-  | { type: 'addSettlement'; fromId: PartyId; toId: PartyId; amount: Minor; method: Settlement['method']; date: string; note: string | null; groupId?: string | null }
+  | { type: 'addSettlement'; fromId: PartyId; toId: PartyId; amount: Minor; method: Settlement['method']; date: string; note: string | null; groupId?: string | null; allowExcess?: boolean }
   /** A new row is sent with an empty id; the server gives it one. */
   | { type: 'upsertCategory'; category: Category }
   | { type: 'upsertCostCenter'; center: CostCenter }

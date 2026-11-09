@@ -1,14 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useSetPageTitle } from '@/components/layouts/page-title-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
-import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
-import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
-import { Can } from '@/components/shared/can';
 import { usePagePermissions } from '@/features/auth/permissions';
 import { BRANCHES_PAGE_PERMISSIONS } from '@/features/system/organization/branches/permissions';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
@@ -17,42 +12,14 @@ import { employeesApi, type EmployeeResponseDto } from '@/features/hr/organizati
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
 import { useDefaultCompany } from '@/features/hr/organization/hooks/useActiveCompany';
 import { branchesApi } from '@/features/hr/organization/lib/api/branches';
-import {
-  ORGANIZATION_ARCHIVE_SCOPE_DEFAULT,
-  ORGANIZATION_ARCHIVE_SCOPE_OPTIONS,
-  organizationListStatusQuery,
-  type OrganizationArchiveScope,
-} from '@/features/hr/organization/lib/archive-scope';
+import { ORGANIZATION_ARCHIVE_SCOPE_DEFAULT, ORGANIZATION_ARCHIVE_SCOPE_OPTIONS, organizationListStatusQuery, type OrganizationArchiveScope } from '@/features/hr/organization/lib/archive-scope';
 import { useServerDirectoryPagination } from '@/components/ui/paged-list';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
 import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
-import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
-import {
-  createBranch,
-  deleteBranch,
-  updateBranch,
-} from '@/features/system/organization/branches/services/branches.service';
+import { createBranch, deleteBranch, updateBranch } from '@/features/system/organization/branches/services/branches.service';
 import { mapBranchResponse } from '@/features/system/organization/branches/constants/branches-directory';
 import { generateEntityCode } from '@/features/hr/requests/lib/types';
-import {
-  BRANCH_EMPTY_FORM,
-  branchRowToDraftForm,
-  draftFormToCreatePayload,
-  draftFormToUpdatePayload,
-  type BranchDraftForm,
-  type BranchRow,
-} from '@/features/system/organization/branches/constants/branches-directory';
+import { BRANCH_EMPTY_FORM, branchRowToDraftForm, draftFormToCreatePayload, draftFormToUpdatePayload, type BranchDraftForm, type BranchRow } from '@/features/system/organization/branches/constants/branches-directory';
 
-const BRANCH_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الشركة', kind: 'text' },
-  { label: 'الفرع', kind: 'name' },
-  { label: 'الرمز', kind: 'code' },
-  { label: 'المدينة', kind: 'text' },
-  { label: 'المدير', kind: 'name' },
-  { label: 'الهاتف', kind: 'code' },
-  { label: 'الحالة', kind: 'status' },
-];
 
 export function useBranchesDirectoryModel() {
   useSetPageTitle({ titleAr: 'الفروع', descriptionAr: 'إدارة فروع الشركة وتوزيع الموظفين.', iconName: 'Building2' });
@@ -239,51 +206,9 @@ export function useBranchesDirectoryModel() {
     }
   }, [confirmId, perms.canDelete, reloadList]);
 
-  const getExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    if (!defaultCompanyId) return [];
-    const { items } = await fetchAllPaginatedItems((page, limit) =>
-      branchesApi.getAll({
-        companyId: defaultCompanyId,
-        page,
-        limit,
-        ...organizationListStatusQuery(archiveScope),
-      }),
-    );
-    return items.map(mapBranchResponse).map((b) => [
-      companyLabel(b.companyId),
-      b.name,
-      b.code || '—',
-      b.city || '—',
-      b.manager || '—',
-      b.phone ?? b.mobile ?? '—',
-      [b.isActive ? 'نشط' : 'غير نشط', b.isHeadquarters ? 'المقر الرئيسي' : null].filter(Boolean).join(' — '),
-    ]);
-  });
 
   const archiveScopeLabel =
     ORGANIZATION_ARCHIVE_SCOPE_OPTIONS.find((o) => o.value === archiveScope)?.label ?? '';
-
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton />
-        <RegisterExportMenu
-          title="سجل الفروع"
-          fileName="branches"
-          columns={BRANCH_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={[`العرض: ${archiveScopeLabel}`]}
-          landscape
-        />
-        <Can when={perms.canCreate}>
-          <Button variant="luxe" size="sm" className="h-8 gap-2" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> فرع جديد
-          </Button>
-        </Can>
-      </div>
-    ),
-    [openCreate, perms.canCreate, getExportRows, archiveScopeLabel],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -315,6 +240,7 @@ export function useBranchesDirectoryModel() {
   );
 
   return {
+    archiveScopeLabel,
     perms,
     accessDenied,
     layoutView,

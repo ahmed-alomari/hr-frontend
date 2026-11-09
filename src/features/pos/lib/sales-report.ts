@@ -186,7 +186,13 @@ export function lineFacts(data: PosCompanyData, f: ReportFilters): LineFact[] {
         unitPrice: line.unitPrice,
         sourcePrice: line.sourcePrice,
         unitCost,
-        cost: unitCost == null ? null : round2(unitCost * netQty),
+        // What inventory charged, when kept: the unit cost is only its rounding.
+        cost:
+          typeof line.costTotal === 'number'
+            ? round2(line.costTotal * keep)
+            : unitCost == null
+              ? null
+              : round2(unitCost * netQty),
       });
     }
   }

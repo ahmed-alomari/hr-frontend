@@ -1,5 +1,7 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
 import { FileDown, FileSpreadsheet, Loader2, Rows3, Table2 } from 'lucide-react';
@@ -250,31 +252,6 @@ export function DisciplineAuditLogClient() {
     [pdfRows, companyNameAr, companyNameEn],
   );
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" variant="outline" size="sm" className="h-8 w-8 shrink-0" aria-label="تصدير سجل العمليات" disabled={exporting} aria-busy={exporting}>
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportPdf()}>
-              <FileDown className="h-4 w-4" />
-              PDF
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportExcel()}>
-              <FileSpreadsheet className="h-4 w-4" />
-              Excel
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    ),
-    [activeFilterCount, exporting, handleExportPdf, handleExportExcel],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -374,6 +351,52 @@ export function DisciplineAuditLogClient() {
     },
   ], [expandedSnapshots, toggleSnapshot]);
 
+  const tools = useListTools<AuditLogEntry>({
+    section: 'hr',
+    page: 'discipline-audit-log',
+    columns,
+    rows: items,
+    fetchAll: fetchAllEntries,
+    resetKey: JSON.stringify([q, catFilter, [...selectedActorIds], statusFilter, dateBounds]),
+    fields: {
+      occurredAt: { kind: 'date', text: (e) => e.occurredAt, group: (e) => e.occurredAt.slice(0, 10) },
+      actor: { kind: 'name', text: (e) => e.actorNameAr, group: (e) => e.actorNameAr },
+      category: { text: (e) => AUDIT_CATEGORY_LABELS_AR[e.category], group: (e) => AUDIT_CATEGORY_LABELS_AR[e.category] },
+      action: { text: (e) => AUDIT_ACTION_LABELS_AR[e.actionType], group: (e) => AUDIT_ACTION_LABELS_AR[e.actionType] },
+      recordRef: { kind: 'code', text: (e) => e.recordRefAr },
+      statusAfter: { kind: 'status', text: (e) => e.recordStatusAfterAr, group: (e) => e.recordStatusAfterAr },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        <FoldedHeaderTool>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="h-8 w-8 shrink-0" aria-label="تصدير سجل العمليات" disabled={exporting} aria-busy={exporting}>
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportPdf()}>
+                <FileDown className="h-4 w-4" />
+                PDF
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportExcel()}>
+                <FileSpreadsheet className="h-4 w-4" />
+                Excel
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </FoldedHeaderTool>
+      </div>
+    ),
+    [activeFilterCount, exporting, handleExportPdf, handleExportExcel, tools.depsKey],
+  );
+
   const renderEntryCard = (e: AuditLogEntry) => {
     const expanded = expandedSnapshots.has(e.id);
     return (
@@ -442,22 +465,25 @@ export function DisciplineAuditLogClient() {
           ) : listFiltered.length === 0 ? (
             <EmptyState title="لا توجد عمليات مطابقة لنوع العملية المحدد." />
           ) : (
-            <DisciplinePaginatedList pagination={pagination}>
+            <ListToolsTable tools={tools} keyExtractor={(e) => e.id}>
+            <DisciplinePaginatedList pagination={tools.pagination(pagination)}>
               {viewMode === 'cards' ? (
               <EntityActionCardGrid className="sm:grid-cols-2 lg:grid-cols-3">
-                {items.map(renderEntryCard)}
+                {tools.rows.map(renderEntryCard)}
               </EntityActionCardGrid>
               ) : (
               <DataTable
                 variant="directory"
                 alwaysShowTable
                 tableClassName="min-w-[860px]"
-                columns={columns}
-                data={items}
+                columns={tools.columns}
+                {...tools.tableSort}
+                data={tools.rows}
                 keyExtractor={(e) => e.id}
               />
               )}
             </DisciplinePaginatedList>
+            </ListToolsTable>
           )}
         </>
       )}

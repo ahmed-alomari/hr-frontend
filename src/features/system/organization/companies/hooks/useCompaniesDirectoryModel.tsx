@@ -1,46 +1,21 @@
 'use client';
 
 import * as React from 'react';
-import { Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useSetPageTitle } from '@/components/layouts/page-title-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
-import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
-import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
-import { Can } from '@/components/shared/can';
 import { usePagePermissions } from '@/features/auth/permissions';
 import { COMPANIES_PAGE_PERMISSIONS } from '@/features/system/organization/companies/permissions';
 import { toast } from 'sonner';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import { resolveDirectoryLoadFailure } from '@/features/hr/lib/api/directory-load-error';
-import {
-  companiesApi,
-  type CreateCompanyDto,
-  type UpdateCompanyDto,
-} from '@/features/hr/organization/lib/api/companies';
+import { companiesApi, type CreateCompanyDto, type UpdateCompanyDto } from '@/features/hr/organization/lib/api/companies';
 import { useServerDirectoryPagination } from '@/components/ui/paged-list';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
 import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
-import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
 import { slugify } from '@/features/hr/requests/lib/types';
 import { formatDisplayDateTime } from '@/shared/utils';
-import {
-  COMPANY_EMPTY_FORM,
-  companyToDraftForm,
-  type CompanyDraftForm,
-  type CompanyRow,
-} from '@/features/system/organization/companies/constants/companies-directory';
+import { COMPANY_EMPTY_FORM, companyToDraftForm, type CompanyDraftForm, type CompanyRow } from '@/features/system/organization/companies/constants/companies-directory';
 
-const COMPANY_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الشركة', kind: 'name' },
-  { label: 'المدينة', kind: 'text' },
-  { label: 'البريد', kind: 'code' },
-  { label: 'الهاتف', kind: 'code' },
-  { label: 'السجل التجاري', kind: 'code' },
-  { label: 'الحالة', kind: 'status' },
-];
 
 export function useCompaniesDirectoryModel() {
   useSetPageTitle({
@@ -155,37 +130,6 @@ export function useCompaniesDirectoryModel() {
     [],
   );
 
-  const getExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    const { items } = await fetchAllPaginatedItems((page, limit) => companiesApi.getAll({ page, limit }));
-    return (items as CompanyRow[]).map((row) => [
-      row.nameAr,
-      row.city ?? '—',
-      row.email ?? '—',
-      row.phone ?? '—',
-      row.commercialRegistrationNo ?? '—',
-      row.isActive ? 'نشط' : 'غير نشط',
-    ]);
-  });
-
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton />
-        <RegisterExportMenu
-          title="سجل الشركات"
-          fileName="companies"
-          columns={COMPANY_EXPORT_COLUMNS}
-          getRows={getExportRows}
-        />
-        <Can when={perms.canCreate}>
-          <Button variant="luxe" size="sm" className="h-8 gap-2" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> شركة جديدة
-          </Button>
-        </Can>
-      </div>
-    ),
-    [openCreate, perms.canCreate, getExportRows],
-  );
 
   useEntityFilterSlot(
     () => (

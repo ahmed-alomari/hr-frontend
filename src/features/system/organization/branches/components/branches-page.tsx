@@ -11,11 +11,12 @@ import {
 } from '@/components/ui/shared-dialogs';
 import { ForbiddenState } from '@/components/shared/forbidden-state';
 import { useBranchesDirectoryModel } from '@/features/system/organization/branches/hooks/useBranchesDirectoryModel';
-import { BranchesListViews } from '@/features/system/organization/branches/components/branches-list-views';
+import { BranchesListViews, useBranchesListTools } from '@/features/system/organization/branches/components/branches-list-views';
 import { BranchDetailDialog } from '@/features/system/organization/branches/dialogs/branch-detail-dialog';
 
 export default function BranchesPage() {
   const model = useBranchesDirectoryModel();
+  const tools = useBranchesListTools(model);
 
   if (model.accessDenied) {
     return <ForbiddenState />;
@@ -28,7 +29,7 @@ export default function BranchesPage() {
       ) : model.listError ? (
         <EmptyState title="تعذر تحميل الفروع" description={model.listError} />
       ) : (
-        <BranchesListViews model={model} />
+        <BranchesListViews model={model} tools={tools} />
       )}
 
       <HRSettingsFormDrawer

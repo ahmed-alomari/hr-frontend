@@ -11,11 +11,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'next/navigation';
 import { allTxns } from '../domain/ledger';
 import { formatMoney, minorToInput, type Minor } from '../domain/money';
-import { GROUP_STATUS_LABELS_AR, groupStatusOf, txnGroupId } from '../domain/policy';
+import { GROUP_STATUS_LABELS_AR, groupCostCenterIds, groupStatusOf, txnGroupId } from '../domain/policy';
 import type { Category, CostCenter, ExpenseGroup, GroupPolicy, GroupStatus } from '../domain/types';
 import { GroupPolicyFields, newGroupPolicy, openGroups, policySummary } from './group-policy';
-import { AmountInput, EmptyState, Field, FormDialog, LoadingBlock, Money, PartyChecklist, PartyName, Section, useRunCommand } from './common';
-import { useCurrency, useExpensesData, useExpensesPermissions } from './expenses-provider';
+import { AmountInput, EmptyState, Field, FormDialog, LoadingBlock, Money, PartyName, PickList, Section, useRunCommand } from './common';
+import { useCurrency, useDirectory, useExpensesData, useExpensesPermissions } from './expenses-provider';
 
 const COLORS = ['#0ea5e9', '#f97316', '#a855f7', '#14b8a6', '#ef4444', '#6366f1', '#eab308', '#64748b', '#22c55e', '#ec4899'];
 /** A new row: the server gives it its id. */
@@ -79,11 +79,12 @@ function CostCenterDialog({ value, onClose }: { value: CostCenter | 'new' | null
 function GroupDialog({ value, onClose }: { value: ExpenseGroup | 'new' | null; onClose: () => void }) {
   const run = useRunCommand();
   const data = useExpensesData();
+  const directory = useDirectory();
   const [name, setName] = React.useState('');
   const [description, setDescription] = React.useState('');
   const [members, setMembers] = React.useState<string[]>([]);
   const [status, setStatus] = React.useState<GroupStatus>('active');
-  const [costCenterId, setCostCenterId] = React.useState<string | null>(null);
+  const [costCenterIds, setCostCenterIds] = React.useState<string[]>([]);
   const [policy, setPolicy] = React.useState<GroupPolicy>(newGroupPolicy);
   React.useEffect(() => {
     if (!value) return;
@@ -92,7 +93,7 @@ function GroupDialog({ value, onClose }: { value: ExpenseGroup | 'new' | null; o
     setDescription(g?.description ?? '');
     setMembers(g?.memberIds ?? []);
     setStatus(g ? groupStatusOf(g) : 'active');
-    setCostCenterId(g?.costCenterId ?? null);
+    setCostCenterIds(g ? groupCostCenterIds(g) : []);
     setPolicy(g?.policy ?? newGroupPolicy());
   }, [value]);
   if (!value || !data) return null;
@@ -105,7 +106,7 @@ function GroupDialog({ value, onClose }: { value: ExpenseGroup | 'new' | null; o
       <Button variant="outline" onClick={onClose}>إلغاء</Button>
       <Button disabled={!name.trim() || missingAmount || missingMembers} onClick={() => {
         const base: ExpenseGroup = value === 'new' ? { id: NEW_ID, name: '', memberIds: [], policy: savedPolicy } : value;
-        void run({ type: 'upsertGroup', group: { ...base, name: name.trim(), description: description.trim() || null, memberIds: members, costCenterId, status: isDefault ? 'active' : status, closed: !isDefault && status !== 'active', policy: savedPolicy } }, 'حُفظت المجموعة').then((ok) => ok && onClose());
+        void run({ type: 'upsertGroup', group: { ...base, name: name.trim(), description: description.trim() || null, memberIds: members, costCenterId: costCenterIds[0] ?? null, costCenterIds, status: isDefault ? 'active' : status, closed: !isDefault && status !== 'active', policy: savedPolicy } }, 'حُفظت المجموعة').then((ok) => ok && onClose());
       }}>حفظ</Button>
     </>}>
       <Field label="الاسم"><Input className="h-10" value={name} onChange={(e) => setName(e.target.value)} /></Field>
@@ -121,16 +122,19 @@ function GroupDialog({ value, onClose }: { value: ExpenseGroup | 'new' | null; o
         </Field>
       )}
       <GroupPolicyFields value={policy} onChange={setPolicy} />
-      <Field label="الأعضاء" hint={isDefault ? 'المجموعة الافتراضية لكل من يملك صلاحية التطبيق. الأعضاء هنا يُقترحون عند التقسيم فقط.' : 'حدّد الأعضاء. لا يستطيع أحد رفع مصروف في هذه المجموعة سواهم.'}><PartyChecklist value={members} onChange={setMembers} /></Field>
+      <Field label="الأعضاء" hint={isDefault ? 'المجموعة الافتراضية لكل من يملك صلاحية التطبيق. الأعضاء هنا يُقترحون عند التقسيم فقط.' : 'حدّد الأعضاء. لا يستطيع أحد رفع مصروف في هذه المجموعة سواهم.'}><PickList options={directory.choices.map((p) => ({ id: p.id, name: p.name }))} value={members} onChange={setMembers} placeholder="اختر عضواً" renderName={(id) => <PartyName id={id} link={false} />} /></Field>
       {data.settings.mode === 'advanced' ? (
-        <Field label="مركز التكلفة الافتراضي">
-          <Select value={costCenterId ?? 'none'} onValueChange={(v) => setCostCenterId(v === 'none' ? null : v)}>
-            <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">بلا مركز</SelectItem>
-              {data.costCenters.map((c) => <SelectItem key={c.id} value={c.id}>{c.code} — {c.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+        <Field label="مراكز التكلفة" hint="عند تسجيل مصروف في هذه المجموعة تظهر هذه المراكز، وإن كان واحداً يُختار تلقائياً. بلا مراكز: تظهر كل المراكز.">
+          <PickList
+            options={data.costCenters.filter((c) => !c.archived).map((c) => ({ id: c.id, name: `${c.code} — ${c.name}` }))}
+            value={costCenterIds}
+            onChange={setCostCenterIds}
+            placeholder="اختر مركز تكلفة"
+            renderName={(id) => {
+              const center = data.costCenters.find((c) => c.id === id);
+              return center ? `${center.code} — ${center.name}` : id;
+            }}
+          />
         </Field>
       ) : null}
     </FormDialog>

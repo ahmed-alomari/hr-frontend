@@ -1,6 +1,9 @@
 'use client';
 
+import { hrFiltersKey, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
+import { useExpensesStore } from '../data/store';
 import * as React from 'react';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
@@ -44,8 +47,10 @@ export function CashReportPage() {
   const directory = useDirectory();
   const advanced = data?.settings.mode === 'advanced';
   const defaultPeriod = React.useMemo(() => last30Days(todayIso()), []);
-  const [period, setPeriod] = React.useState<PeriodRange>(defaultPeriod);
-  const [direction, setDirection] = React.useState<Direction>('all');
+  const companyId = useExpensesStore((s) => s.companyId);
+  const filterKey = (field: string) => hrFiltersKey('expenses', 'cash-report', companyId, field);
+  const [period, setPeriod] = usePersistedFilterState<PeriodRange>(filterKey('period'), defaultPeriod);
+  const [direction, setDirection] = usePersistedFilterState<Direction>(filterKey('direction'), 'all');
 
   const range = React.useMemo(() => ({ currency: currency.code, from: period.from || null, to: period.to || null }), [currency.code, period]);
   const cash = React.useMemo(() => (data ? cashReport(data, range) : null), [data, range]);
@@ -137,11 +142,13 @@ export function CashReportPage() {
     <div className="flex flex-col gap-5">
       <SetPageTitle titleAr="حركة النقد" descriptionAr="كل حركات النقد المعتمدة. خروج: مصروفات مباشرة وتمويل عهد وسلف وتعويضات؛ دخول: مرتجعات وسداد." iconName="Banknote" />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3">
-        <ReportSummaryCard label="خروج النقد" value={<Money value={cashOut} />} />
-        <ReportSummaryCard label="دخول النقد" value={<Money value={cashIn} />} />
-        <ReportSummaryCard label="الصافي" value={<Money value={cashOut - cashIn} />} hint="خروج − دخول" />
-      </div>
+      <PhoneStatsFold summary={<>الصافي <Money value={cashOut - cashIn} /></>}>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3">
+          <ReportSummaryCard label="خروج النقد" value={<Money value={cashOut} />} />
+          <ReportSummaryCard label="دخول النقد" value={<Money value={cashIn} />} />
+          <ReportSummaryCard label="الصافي" value={<Money value={cashOut - cashIn} />} hint="خروج − دخول" />
+        </div>
+      </PhoneStatsFold>
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">ملخص حسب النوع</h2>

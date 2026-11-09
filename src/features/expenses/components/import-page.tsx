@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -25,9 +26,11 @@ export function ImportLinkButton() {
   const perms = useExpensesPermissions();
   if (!perms.create || !perms.approve) return null;
   return (
-    <Button asChild type="button" variant="outline" size="sm" className="h-8 w-8 shrink-0 p-0" title="استيراد من Excel" aria-label="استيراد من Excel">
-      <Link href={expensesRoutes.import}><Upload className="h-4 w-4" /></Link>
-    </Button>
+    <FoldedHeaderTool>
+      <Button asChild type="button" variant="outline" size="sm" className="h-8 w-8 shrink-0 p-0" title="استيراد من Excel" aria-label="استيراد من Excel">
+        <Link href={expensesRoutes.import}><Upload className="h-4 w-4" /></Link>
+      </Button>
+    </FoldedHeaderTool>
   );
 }
 

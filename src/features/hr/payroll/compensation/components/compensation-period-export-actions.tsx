@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { FileDown, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -152,54 +153,56 @@ export function CompensationPeriodExportActions({
   };
 
   return (
-    <>
-      <div className={className}>
-        <DropdownMenu onOpenChange={setExportMenuOpen}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={cn('h-8 w-8 shrink-0', buttonClassName)}
-              disabled={triggerDisabled}
-              aria-label={ariaLabel}
-              title={lazyLoad && !exportMenuOpen && !pdfPreviewOpen
-                ? 'فتح القائمة لتحميل بيانات التصدير'
-                : (!hasLines && periodId ? 'لا توجد بيانات مسير لهذه الفترة' : undefined)}
-            >
-              {(excelExporting || summaryLoading)
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <FileDown className="h-4 w-4" />}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem
-              disabled={!period || !hasLines || excelExporting || summaryLoading}
-              onSelect={() => handleOpenPdfPreview()}
-            >
-              <FileDown className="h-4 w-4" />
-              PDF
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={!period || !hasLines || excelExporting || summaryLoading}
-              onSelect={() => void handleDownloadExcel()}
-            >
-              <FileSpreadsheet className="h-4 w-4" />
-              Excel
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+    <FoldedHeaderTool>
+      <>
+        <div className={className}>
+          <DropdownMenu onOpenChange={setExportMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={cn('h-8 w-8 shrink-0', buttonClassName)}
+                disabled={triggerDisabled}
+                aria-label={ariaLabel}
+                title={lazyLoad && !exportMenuOpen && !pdfPreviewOpen
+                  ? 'فتح القائمة لتحميل بيانات التصدير'
+                  : (!hasLines && periodId ? 'لا توجد بيانات مسير لهذه الفترة' : undefined)}
+              >
+                {(excelExporting || summaryLoading)
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <FileDown className="h-4 w-4" />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem
+                disabled={!period || !hasLines || excelExporting || summaryLoading}
+                onSelect={() => handleOpenPdfPreview()}
+              >
+                <FileDown className="h-4 w-4" />
+                PDF
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!period || !hasLines || excelExporting || summaryLoading}
+                onSelect={() => void handleDownloadExcel()}
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                Excel
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
-      <PdfPreviewExportDialog
-        open={pdfPreviewOpen}
-        onOpenChange={setPdfPreviewOpen}
-        title="معاينة مسير رواتب العاملين"
-        fileName={pdfFileName}
-        printable={printable}
-        orientation="landscape"
-        emptyMessage="لا توجد بيانات مسير للتصدير في هذه الفترة."
-      />
-    </>
+        <PdfPreviewExportDialog
+          open={pdfPreviewOpen}
+          onOpenChange={setPdfPreviewOpen}
+          title="معاينة مسير رواتب العاملين"
+          fileName={pdfFileName}
+          printable={printable}
+          orientation="landscape"
+          emptyMessage="لا توجد بيانات مسير للتصدير في هذه الفترة."
+        />
+      </>
+    </FoldedHeaderTool>
   );
 }

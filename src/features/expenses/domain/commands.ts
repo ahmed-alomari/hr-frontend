@@ -5,7 +5,7 @@
  * checked there, not in screens).
  */
 import { CommandError } from './errors';
-import { computeLedger } from './ledger';
+import { computeLedger, effectsOf } from './ledger';
 import { assertPeriodOpen } from './periods';
 import {
   applyDecision,
@@ -241,6 +241,34 @@ export function decideTxn(
 }
 
 /** Void keeps the record (and its history) but takes it out of balances and reports. */
+/**
+ * Voiding what was already paid back would silently turn the payment into a
+ * new debt on whoever received it: the payment is voided first, on purpose.
+ */
+function assertNotSettled(data: ExpensesData, txn: AnyTxn): void {
+  if (txn.status !== 'approved' || txn.kind === 'settlement') return;
+  const parties = computeLedger(data, txn.currency).parties;
+  for (const effect of effectsOf(txn)) {
+    if (effect.type !== 'debt' || effect.debtor === effect.creditor) continue;
+    const pair = parties
+      .get(effect.debtor)
+      ?.pairs.find((p) => p.counterparty === effect.creditor);
+    if ((pair?.net ?? 0) - effect.amount >= 0) continue;
+    const paid = data.settlements.some(
+      (s) =>
+        s.status === 'approved' &&
+        s.currency === txn.currency &&
+        ((s.fromId === effect.debtor && s.toId === effect.creditor) ||
+          (s.fromId === effect.creditor && s.toId === effect.debtor)),
+    );
+    if (paid) {
+      throw new CommandError(
+        'سُدّدت هذه العملية: ألغِ السداد المرتبط بها أولاً، ثم ألغِها',
+      );
+    }
+  }
+}
+
 export function voidTxn(
   data: ExpensesData,
   kind: AnyTxn['kind'],
@@ -282,6 +310,7 @@ export function voidTxn(
       );
     }
   }
+  assertNotSettled(data, txn);
   return replaceTxn(data, {
     ...txn,
     status: 'void',

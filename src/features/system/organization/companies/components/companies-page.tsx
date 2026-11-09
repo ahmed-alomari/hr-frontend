@@ -10,11 +10,12 @@ import {
 } from '@/components/ui/shared-dialogs';
 import { ForbiddenState } from '@/components/shared/forbidden-state';
 import { useCompaniesDirectoryModel } from '@/features/system/organization/companies/hooks/useCompaniesDirectoryModel';
-import { CompaniesListViews } from '@/features/system/organization/companies/components/companies-list-views';
+import { CompaniesListViews, useCompaniesListTools } from '@/features/system/organization/companies/components/companies-list-views';
 import { CompanyDetailDialog } from '@/features/system/organization/companies/dialogs/company-detail-dialog';
 
 export default function CompaniesPage() {
   const model = useCompaniesDirectoryModel();
+  const tools = useCompaniesListTools(model);
 
   if (model.accessDenied) {
     return <ForbiddenState />;
@@ -27,7 +28,7 @@ export default function CompaniesPage() {
       ) : model.listError ? (
         <EmptyState title="تعذر تحميل الشركات" description={model.listError} />
       ) : (
-        <CompaniesListViews model={model} />
+        <CompaniesListViews model={model} tools={tools} />
       )}
 
       <HRSettingsFormDrawer

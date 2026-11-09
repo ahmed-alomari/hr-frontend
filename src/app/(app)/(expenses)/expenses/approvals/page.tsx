@@ -1,5 +1,10 @@
+import { Suspense } from 'react';
 import { ApprovalsPage } from '@/features/expenses/components/approvals-page';
 
 export default function Page() {
-  return <ApprovalsPage />;
+  return (
+    <Suspense>
+      <ApprovalsPage />
+    </Suspense>
+  );
 }

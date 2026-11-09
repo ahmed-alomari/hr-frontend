@@ -2,24 +2,32 @@
 
 import * as React from 'react';
 import { ArrowLeft, Plus } from 'lucide-react';
+import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { PageHeaderPrimaryButton } from '@/components/layouts/page-header-primary-button';
 import { Button } from '@/components/ui/button';
+import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ListFilterBar, type PeriodRange } from '@/components/ui/list-filter-bar';
 import { LocalListTable, LocalListToolbar, useLocalList, type LocalListField } from '@/components/ui/local-list';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useUrlTab } from '@/components/ui/use-url-tab';
+import { hrFiltersKey, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
+import { useExpensesStore } from '../data/store';
 import { owedBetween } from '../domain/commands';
 import { STATUS_LABELS_AR } from '../domain/policy';
-import { settlementSuggestions } from '../domain/ledger';
+import { settlementSuggestions, type SettlementSuggestion } from '../domain/ledger';
 import { minorToInput, type Minor } from '../domain/money';
 import type { PartyId, Settlement, TxnStatus } from '../domain/types';
-import { AmountInput, EmptyState, Field, FormDialog, LoadingBlock, Money, PartyName, PartySelect, Section, StatusBadge, useRunCommand } from './common';
+import { AmountInput, EmptyState, Field, FormDialog, LoadingBlock, Money, PartyName, PartySelect, StatusBadge, useRunCommand } from './common';
 import { todayIso, useCurrency, useDirectory, useExpensesData, useExpensesPermissions, useLedger } from './expenses-provider';
 import { GroupField } from './group-policy';
 import { TxnActions } from './txn-actions';
 
-const METHOD_LABELS: Record<Settlement['method'], string> = { cash: 'نقداً', transfer: 'تحويل', payroll: 'خصم من الراتب', other: 'أخرى' };
+const METHOD_LABELS: Record<Settlement['method'], string> = { cash: 'نقداً', transfer: 'تحويل', payroll: 'خصم من الراتب (يدوي)', other: 'أخرى' };
 
 export function SettlementDialog({
   open,
@@ -54,8 +62,9 @@ export function SettlementDialog({
   const owed = fromId && toId ? owedBetween(data, fromId, toId, currency.code) : 0;
   const save = () => {
     if (!fromId || !toId) return;
-    if (amount.m > owed && !window.confirm('المبلغ أكبر مما على الدافع لهذا الطرف؛ الزيادة تصبح مستحقة للدافع. متابعة؟')) return;
-    void run({ type: 'addSettlement', fromId, toId, amount: amount.m, method, date, note: note.trim() || null, groupId }, 'سُجّل السداد').then((ok) => ok && onOpenChange(false));
+    const excess = amount.m > owed;
+    if (excess && !window.confirm('المبلغ أكبر مما على الدافع لهذا الطرف؛ الزيادة تصبح مستحقة للدافع. متابعة؟')) return;
+    void run({ type: 'addSettlement', fromId, toId, amount: amount.m, method, date, note: note.trim() || null, groupId, allowExcess: excess }, 'سُجّل السداد').then((ok) => ok && onOpenChange(false));
   };
   return (
     <FormDialog
@@ -88,12 +97,15 @@ export function SettlementDialog({
             <SelectContent>{(Object.keys(METHOD_LABELS) as Settlement['method'][]).map((m) => <SelectItem key={m} value={m}>{METHOD_LABELS[m]}</SelectItem>)}</SelectContent>
           </Select>
         </Field>
-        <Field label="التاريخ"><Input type="date" className="h-10" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+        <Field label="التاريخ"><Input type="date" className="h-10" max={todayIso()} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
       </div>
       <Field label="ملاحظة"><Input className="h-10" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
     </FormDialog>
   );
 }
+
+const TABS = ['due', 'history'] as const;
+type Tab = (typeof TABS)[number];
 
 export function SettlementsPage() {
   const data = useExpensesData();
@@ -101,11 +113,53 @@ export function SettlementsPage() {
   const currency = useCurrency();
   const perms = useExpensesPermissions();
   const directory = useDirectory();
-  const [dialog, setDialog] = React.useState<{ fromId: PartyId; toId: PartyId; amount: Minor } | null | 'new'>(null);
-  const history = React.useMemo(
-    () => (data ? data.settlements.filter((s) => s.currency === currency.code).sort((a, b) => b.date.localeCompare(a.date)) : []),
-    [data, currency.code],
-  );
+  const companyId = useExpensesStore((s) => s.companyId);
+  const [tab, setTab] = useUrlTab<Tab>(TABS, 'due');
+  const [dialog, setDialog] = React.useState<SettlementSuggestion | null | 'new'>(null);
+
+  const dueKey = (field: string) => hrFiltersKey('expenses', 'settlements-due', companyId, field);
+  const historyKey = (field: string) => hrFiltersKey('expenses', 'settlements', companyId, field);
+  const [dueSearch, setDueSearch] = usePersistedFilterState(dueKey('search'), '');
+  const [duePerson, setDuePerson] = usePersistedFilterState(dueKey('person'), 'all');
+  const [search, setSearch] = usePersistedFilterState(historyKey('search'), '');
+  const [person, setPerson] = usePersistedFilterState(historyKey('person'), 'all');
+  const [status, setStatus] = usePersistedFilterState(historyKey('status'), 'all');
+  const [method, setMethod] = usePersistedFilterState(historyKey('method'), 'all');
+  const [period, setPeriod] = usePersistedFilterState<PeriodRange>(historyKey('period'), { from: '', to: '' });
+
+  const suggestions = React.useMemo(() => (ledger ? settlementSuggestions(ledger) : []), [ledger]);
+  const dueRows = React.useMemo(() => {
+    const q = dueSearch.trim();
+    return suggestions.filter(
+      (s) =>
+        (duePerson === 'all' || s.fromId === duePerson || s.toId === duePerson) &&
+        (!q || directory.nameOf(s.fromId).includes(q) || directory.nameOf(s.toId).includes(q)),
+    );
+  }, [suggestions, dueSearch, duePerson, directory]);
+  const dueFields = React.useMemo<LocalListField<SettlementSuggestion>[]>(() => [
+    { key: 'from', label: 'الدافع', kind: 'name', text: (s) => directory.nameOf(s.fromId), cell: (s) => <PartyName id={s.fromId} />, groupKey: (s) => s.fromId, groupLabel: (id) => directory.nameOf(id) },
+    { key: 'to', label: 'المستلم', text: (s) => directory.nameOf(s.toId), cell: (s) => <PartyName id={s.toId} />, groupKey: (s) => s.toId, groupLabel: (id) => directory.nameOf(id) },
+    { key: 'amount', label: 'المبلغ', kind: 'number', text: (s) => currency.format(s.amount), sortValue: (s) => s.amount, sum: (s) => s.amount, formatSum: currency.format, cell: (s) => <Money value={s.amount} className="font-bold" /> },
+    { key: 'actions', label: '', sortable: false, screenOnly: true, text: () => '', cell: (s) => (perms.settle ? <Button size="sm" onClick={() => setDialog(s)}>سداد</Button> : null) },
+  ], [directory, currency, perms.settle]);
+  const due = useLocalList({ section: 'expenses', page: 'settlements-due', fields: dueFields, rows: dueRows });
+
+  const history = React.useMemo(() => {
+    if (!data) return [];
+    const q = search.trim();
+    return data.settlements
+      .filter(
+        (s) =>
+          s.currency === currency.code &&
+          (status === 'all' || s.status === status) &&
+          (method === 'all' || s.method === method) &&
+          (person === 'all' || s.fromId === person || s.toId === person) &&
+          (!period.from || s.date >= period.from) &&
+          (!period.to || s.date <= period.to) &&
+          (!q || directory.nameOf(s.fromId).includes(q) || directory.nameOf(s.toId).includes(q) || (s.note ?? '').includes(q)),
+      )
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [data, currency.code, status, method, person, period, search, directory]);
   const fields = React.useMemo<LocalListField<Settlement>[]>(() => [
     { key: 'date', label: 'التاريخ', kind: 'date', text: (s) => s.date, groupKey: (s) => s.date.slice(0, 7) },
     { key: 'from', label: 'الدافع', kind: 'name', text: (s) => directory.nameOf(s.fromId), cell: (s) => <PartyName id={s.fromId} />, groupKey: (s) => s.fromId, groupLabel: (id) => directory.nameOf(id) },
@@ -119,49 +173,99 @@ export function SettlementsPage() {
   ], [directory, currency]);
   const list = useLocalList({ section: 'expenses', page: 'settlements', fields, rows: history });
 
+  const dueFilterCount = (dueSearch.trim() ? 1 : 0) + (duePerson !== 'all' ? 1 : 0);
+  const historyFilterCount =
+    (search.trim() ? 1 : 0) + [person, status, method].filter((v) => v !== 'all').length + (period.from || period.to ? 1 : 0);
+  const periodLine = period.from || period.to ? `الفترة: ${period.from || '…'} إلى ${period.to || '…'}` : null;
+
   usePageHeaderActions(
-    () => (
-      <LocalListToolbar
-        list={list}
-        title="سجل السداد"
-        fileName="settlements"
-        subtitleLines={['المبالغ المجمّعة للمعتمد فقط']}
-        primary={
-          <PageHeaderPrimaryButton icon={Plus} label="تسجيل سداد" disabled={!perms.settle} onClick={() => setDialog('new')}>
-            تسجيل سداد
-          </PageHeaderPrimaryButton>
-        }
-      />
-    ),
-    [perms.settle, list.rows, list.visibleFields, list.groups, list.sort.sortKey],
+    () => {
+      const primary = (
+        <PageHeaderPrimaryButton icon={Plus} label="تسجيل سداد" disabled={!perms.settle} onClick={() => setDialog('new')}>
+          تسجيل سداد
+        </PageHeaderPrimaryButton>
+      );
+      return tab === 'due'
+        ? <LocalListToolbar list={due} title="مطلوب سداده" fileName="settlements-due" before={<FilterToggleButton activeFilterCount={dueFilterCount} />} primary={primary} />
+        : <LocalListToolbar list={list} title="سجل السداد" fileName="settlements" subtitleLines={['المبالغ المجمّعة للمعتمد فقط', ...(periodLine ? [periodLine] : [])]} before={<FilterToggleButton activeFilterCount={historyFilterCount} />} primary={primary} />;
+    },
+    [tab, perms.settle, dueFilterCount, historyFilterCount, periodLine, due.rows, due.visibleFields, due.groups, due.sort.sortKey, list.rows, list.visibleFields, list.groups, list.sort.sortKey],
+  );
+
+  const personOptions = [{ value: 'all', label: 'كل الأشخاص' }, ...directory.choices.map((p) => ({ value: p.id, label: p.name }))];
+  useEntityFilterSlot(
+    () =>
+      tab === 'due' ? (
+        <ListFilterBar
+          showDateSection={false}
+          showStatusSection={false}
+          showEmployeePicker={false}
+          periodFilterActive={dueFilterCount > 0}
+          onClearAll={() => {
+            setDueSearch('');
+            setDuePerson('all');
+          }}
+          leadingFilters={<EntityFilterSearchField value={dueSearch} onChange={setDueSearch} placeholder="بحث بالاسم" />}
+          inlineSelects={[{ id: 'person', value: duePerson, onChange: setDuePerson, placeholder: 'كل الأشخاص', options: personOptions }]}
+        />
+      ) : (
+        <ListFilterBar
+          optionalDateRange
+          showStatusSection={false}
+          showEmployeePicker={false}
+          periodValue={period}
+          onPeriodChange={setPeriod}
+          periodFilterActive={historyFilterCount > 0}
+          onClearAll={() => {
+            setSearch('');
+            setPerson('all');
+            setStatus('all');
+            setMethod('all');
+            setPeriod({ from: '', to: '' });
+          }}
+          leadingFilters={<EntityFilterSearchField value={search} onChange={setSearch} placeholder="بحث بالاسم أو الملاحظة" />}
+          inlineSelects={[
+            { id: 'person', value: person, onChange: setPerson, placeholder: 'كل الأشخاص', options: personOptions },
+            { id: 'status', value: status, onChange: setStatus, placeholder: 'كل الحالات', options: [{ value: 'all', label: 'كل الحالات' }, ...(Object.keys(STATUS_LABELS_AR) as TxnStatus[]).map((s) => ({ value: s, label: STATUS_LABELS_AR[s] }))] },
+            { id: 'method', value: method, onChange: setMethod, placeholder: 'كل الطرق', options: [{ value: 'all', label: 'كل الطرق' }, ...(Object.keys(METHOD_LABELS) as Settlement['method'][]).map((m) => ({ value: m, label: METHOD_LABELS[m] }))] },
+          ]}
+        />
+      ),
+    [tab, dueSearch, duePerson, search, person, status, method, period, directory.choices, dueFilterCount, historyFilterCount],
   );
 
   if (!data || !ledger) return <LoadingBlock />;
-  const suggestions = settlementSuggestions(ledger);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <SetPageTitle titleAr="التسويات والسداد" descriptionAr="ما يلزم سداده بين الأطراف ومع المنشأة" iconName="Banknote" />
-      <Section title="مطلوب سداده" description="دفعة مباشرة لكل طرفين بينهما مستحق (تبسيط الديون عبر أطراف ثالثة مؤجل)">
-        {suggestions.length === 0 ? <EmptyState text="لا مستحقات قائمة — كل الحسابات مسوّاة" /> : (
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {suggestions.map((s) => (
-              <li key={s.fromId + s.toId} className="flex items-center justify-between gap-2 rounded-xl border border-border p-3">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
+        <TabsList className="grid w-full grid-cols-2 sm:inline-flex sm:w-auto">
+          <TabsTrigger value="due">مطلوب سداده ({suggestions.length})</TabsTrigger>
+          <TabsTrigger value="history">سجل السداد ({data.settlements.filter((s) => s.currency === currency.code).length})</TabsTrigger>
+        </TabsList>
+        <TabsContent value="due" className="mt-3 space-y-2">
+          <p className="text-xs text-muted-foreground">دفعة مباشرة لكل طرفين بينهما مستحق.</p>
+          <LocalListTable
+            list={due}
+            rowKey={(s) => s.fromId + s.toId}
+            empty={<EmptyState text={suggestions.length === 0 ? 'لا مستحقات قائمة — كل الحسابات مسوّاة' : 'لا نتائج لهذه الفلاتر'} />}
+            card={(s) => (
+              <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0 text-sm">
                   <p className="truncate"><PartyName id={s.fromId} /> <span className="text-muted-foreground">يدفع لـ</span> <PartyName id={s.toId} /></p>
                   <Money value={s.amount} className="font-bold" />
                 </div>
                 {perms.settle ? <Button size="sm" onClick={() => setDialog(s)}>سداد</Button> : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-      <Section title="سجل السداد">
-        {history.length === 0 ? <EmptyState text="لا عمليات سداد" /> : (
+              </div>
+            )}
+          />
+        </TabsContent>
+        <TabsContent value="history" className="mt-3">
           <LocalListTable
             list={list}
             rowKey={(s) => s.id}
+            empty={<EmptyState text={historyFilterCount > 0 ? 'لا نتائج لهذه الفلاتر' : 'لا عمليات سداد'} />}
             card={(s) => (
               <div className="space-y-1.5">
                 <div className="flex items-start justify-between gap-2"><p className="min-w-0 text-sm"><PartyName id={s.fromId} /> ← <PartyName id={s.toId} /></p><Money value={s.amount} className="font-semibold" /></div>
@@ -170,8 +274,8 @@ export function SettlementsPage() {
               </div>
             )}
           />
-        )}
-      </Section>
+        </TabsContent>
+      </Tabs>
       <SettlementDialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)} preset={dialog === 'new' ? null : dialog} />
     </div>
   );

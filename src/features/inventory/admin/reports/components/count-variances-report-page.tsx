@@ -1,5 +1,8 @@
 'use client';
 
+import { ListGroupMenu } from '@/components/ui/list-group';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
@@ -9,22 +12,8 @@ import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { getInventoryCompanyId } from '@/features/inventory/lib/company-id';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
 import { WAREHOUSE_OPERATION_KIND_META } from '@/features/inventory/domain/constants/warehouse-operation-kinds';
-import {
-  inventoryReportsApi,
-  type CountVarianceQuery,
-  type CountVarianceRow,
-} from '@/features/inventory/admin/reports/lib/api/inventory-reports';
-import {
-  ReportStat,
-  ValueHiddenNote,
-  currencyLine,
-  currentMonthRange,
-  formatQty,
-  formatReportMoney,
-  itemLabel,
-  moneyCell,
-  periodLabel,
-} from '@/features/inventory/admin/reports/lib/report-shared';
+import { inventoryReportsApi, type CountVarianceQuery, type CountVarianceRow } from '@/features/inventory/admin/reports/lib/api/inventory-reports';
+import { ReportStat, ValueHiddenNote, currencyLine, currentMonthRange, formatQty, formatReportMoney, itemLabel, moneyCell, periodLabel } from '@/features/inventory/admin/reports/lib/report-shared';
 import { formatDateTime } from '@/shared/utils';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-list';
@@ -35,12 +24,6 @@ import { ListColumnsPicker, useColumnVisibility, type ListColumnOption } from '@
 import { ListSavedViews, listStateKeys } from '@/components/ui/list-saved-views';
 import { ListSortMenu, listSortQuery, useListSort, type ListSortOption } from '@/components/ui/list-sort';
 import type { ListTotals } from '@/components/ui/list-group';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import {
-  registerExportRows,
-  visibleExportColumns,
-  type RegisterExportColumn,
-} from '@/components/pdf/lib/register-export-rows';
 import { fetchAllPaginatedItems } from '@/shared/api/client';
 import { hrFiltersKey, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
 
@@ -218,37 +201,6 @@ export function CountVariancesReportPage() {
   ];
   const visibleColumns = columns.filter((column) => isShown(column.key));
 
-  const exportColumns = visibleExportColumns<CountVarianceRow>(
-    [
-      { label: 'التاريخ', kind: 'date', value: (r) => formatDateTime(r.occurredAt) },
-      { label: 'المستند', kind: 'code', value: (r) => r.reference },
-      { label: 'الصنف', kind: 'name', value: (r) => itemLabel(r) },
-      { label: 'SKU', kind: 'code', value: (r) => r.sku ?? '' },
-      {
-        label: 'المستودع / الموقع',
-        kind: 'text',
-        key: 'location',
-        value: (r) => [r.warehouseName, r.locationName].filter(Boolean).join(' · '),
-      },
-      { label: 'رصيد النظام', kind: 'number', key: 'systemQty', value: (r) => formatQty(r.systemQty) },
-      { label: 'المعدود', kind: 'number', key: 'countedQty', value: (r) => formatQty(r.countedQty) },
-      {
-        label: 'الفرق',
-        kind: 'number',
-        key: 'difference',
-        value: (r) => formatQty(r.difference),
-        total: (tt) => formatQty(tt.sums.difference),
-      },
-      {
-        label: 'قيمة الفرق',
-        kind: 'number',
-        key: 'differenceValue',
-        value: (r) => moneyCell(r.differenceValue),
-        total: (tt) => moneyCell(tt.sums.differenceValue),
-      },
-    ] satisfies RegisterExportColumn<CountVarianceRow>[],
-    isShown,
-  );
 
   const warehouseLabel = warehouseId !== 'all' ? warehouses.find((w) => w.id === warehouseId)?.nameAr : null;
   const filterSummary = [
@@ -261,12 +213,39 @@ export function CountVariancesReportPage() {
   ].filter((line): line is string => Boolean(line));
   const activeFilterCount = (warehouseId !== 'all' ? 1 : 0) + (direction !== 'all' ? 1 : 0) + 1;
 
-  const getExportRows = async () => {
-    const { items } = await fetchAllPaginatedItems((p, l) =>
-      inventoryReportsApi.countVariances({ ...filters, page: p, limit: l }),
-    );
-    return registerExportRows({ columns: exportColumns, rows: items, total: totals });
-  };
+  const groupingPage = 'count-variances-grouping';
+  const tools = useListTools<CountVarianceRow>({
+    section: 'inventory',
+    page: groupingPage,
+    columns: visibleColumns,
+    rows,
+    fetchAll: async () =>
+      (await fetchAllPaginatedItems((p, l) => inventoryReportsApi.countVariances({ ...filters, page: p, limit: l }))).items,
+    resetKey: JSON.stringify(filters),
+    fields: {
+      date: { kind: 'date', sortable: false, text: (r) => formatDateTime(r.occurredAt), group: (r) => r.occurredAt.slice(0, 7) },
+      document: { kind: 'code', sortable: false, text: (r) => r.reference, group: (r) => r.reference },
+      product: {
+        kind: 'name',
+        sortable: false,
+        text: (r) => itemLabel(r),
+        group: (r) => itemLabel(r),
+        alsoExport: [{ label: 'SKU', text: (r) => r.sku ?? '' }],
+      },
+      location: { sortable: false, text: (r) => [r.warehouseName, r.locationName].filter(Boolean).join(' · '), group: (r) => r.warehouseName },
+      systemQty: { kind: 'number', sortable: false, text: (r) => formatQty(r.systemQty) },
+      countedQty: { kind: 'number', sortable: false, text: (r) => formatQty(r.countedQty) },
+      difference: {
+        kind: 'number',
+        sortable: false,
+        text: (r) => formatQty(r.difference),
+        group: (r) => (r.difference < 0 ? 'عجز' : 'زيادة'),
+        sum: (r) => r.difference,
+        formatSum: formatQty,
+      },
+      differenceValue: { kind: 'number', sortable: false, text: (r) => moneyCell(r.differenceValue), sum: (r) => r.differenceValue ?? 0, formatSum: moneyCell },
+    },
+  });
 
   usePageHeaderActions(
     () => (
@@ -274,17 +253,9 @@ export function CountVariancesReportPage() {
         <FilterToggleButton activeFilterCount={activeFilterCount} />
         <ListColumnsPicker model={columnVisibility} />
         <ListSortMenu model={sort} />
-        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
-        <RegisterExportMenu
-          title="فروقات الجرد"
-          fileName="inventory-count-variances"
-          columns={exportColumns}
-          getRows={getExportRows}
-          subtitleLines={filterSummary}
-          landscape
-          pinnedColumnCount={1}
-          emptyMessage="لا توجد فروقات جرد ضمن الفلاتر الحالية."
-        />
+        <ListSavedViews storageKey={stateKeys.views} prefixes={[...stateKeys.prefixes, ...listStateKeys('inventory', groupingPage, companyId).prefixes]} />
+        <ListGroupMenu model={tools.group} />
+        {tools.exportMenu('فروقات الجرد', 'inventory-count-variances', filterSummary)}
       </div>
     ),
     [
@@ -294,7 +265,7 @@ export function CountVariancesReportPage() {
       columnVisibility.hiddenKey,
       JSON.stringify(filters),
       JSON.stringify(totals),
-      exportColumns.length,
+      tools.depsKey,
       filterSummary.join('|'),
       stateKeys.views,
     ],
@@ -384,22 +355,24 @@ export function CountVariancesReportPage() {
         iconName="ClipboardList"
       />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        <ReportStat label="مستندات" value={(t?.documents ?? 0).toLocaleString('en-US')} hint={`${total} بند`} />
-        <ReportStat
-          label="العجز"
-          tone="out"
-          value={formatQty(t?.shortageQty ?? 0)}
-          hint={valueVisible ? money(t?.shortageValue ?? 0) : undefined}
-        />
-        <ReportStat
-          label="الزيادة"
-          tone="in"
-          value={formatQty(t?.surplusQty ?? 0)}
-          hint={valueVisible ? money(t?.surplusValue ?? 0) : undefined}
-        />
-        {valueVisible ? <ReportStat label="صافي القيمة" value={money(t?.netValue ?? 0)} /> : null}
-      </div>
+      <PhoneStatsFold summary={<>العجز {formatQty(t?.shortageQty ?? 0)}</>}>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+          <ReportStat label="مستندات" value={(t?.documents ?? 0).toLocaleString('en-US')} hint={`${total} بند`} />
+          <ReportStat
+            label="العجز"
+            tone="out"
+            value={formatQty(t?.shortageQty ?? 0)}
+            hint={valueVisible ? money(t?.shortageValue ?? 0) : undefined}
+          />
+          <ReportStat
+            label="الزيادة"
+            tone="in"
+            value={formatQty(t?.surplusQty ?? 0)}
+            hint={valueVisible ? money(t?.surplusValue ?? 0) : undefined}
+          />
+          {valueVisible ? <ReportStat label="صافي القيمة" value={money(t?.netValue ?? 0)} /> : null}
+        </div>
+      </PhoneStatsFold>
 
       <ValueHiddenNote header={data} />
 
@@ -412,10 +385,11 @@ export function CountVariancesReportPage() {
         </div>
       ) : null}
 
+      <ListToolsTable tools={tools} keyExtractor={(row) => row.lineId}>
       <DirectoryPagedViews
         items={rows}
         loading={isLoading}
-        serverPagination={{
+        serverPagination={tools.pagination({
           page,
           pageSize,
           total,
@@ -425,7 +399,7 @@ export function CountVariancesReportPage() {
             setPageSize(size);
             setPage(1);
           },
-        }}
+        })}
       >
         {(rowsPage) => (
           <DataTable
@@ -444,6 +418,7 @@ export function CountVariancesReportPage() {
           />
         )}
       </DirectoryPagedViews>
+      </ListToolsTable>
     </div>
   );
 }

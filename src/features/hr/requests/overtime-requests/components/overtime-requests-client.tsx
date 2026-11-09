@@ -1,8 +1,14 @@
 'use client';
 
+import { employeeStatusFilterLabelAr } from '@/features/hr/lib/employee-status-filter';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
+import { PageHeaderPrimaryButton } from '@/components/layouts/page-header-primary-button';
+import { exportDate, exportDuration, exportText } from '@/features/hr/requests/lib/list-export-format';
+import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { toast } from 'sonner';
-import { Timer, CalendarDays, Ban, LogIn, LogOut, CheckCircle2 } from 'lucide-react';
+import { Timer, CalendarDays, Ban, LogIn, LogOut, CheckCircle2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -399,6 +405,48 @@ export function OvertimeRequestsClient() {
     },
   ], [m]);
 
+  const minutesOf = (n: number | null | undefined) => Number(n) || 0;
+  const tools = useListTools<OvertimeRequestRecord>({
+    section: 'hr',
+    page: 'overtime-requests',
+    columns,
+    rows: m.items,
+    fetchAll: m.pagination.loadAll,
+    resetKey: m.pagination.resetKey,
+    fields: {
+      employee: {
+        kind: 'name',
+        text: (x) => exportText(x.employeeNameAr),
+        group: (x) => x.employeeNameAr || null,
+        alsoExport: [{ label: 'القسم', text: (x) => exportText(x.departmentNameAr) }],
+      },
+      workDate: { kind: 'date', text: (x) => exportDate(x.workDate), sort: (x) => x.workDate ?? '', group: (x) => (x.workDate ? x.workDate.slice(0, 7) : null) },
+      minutes: { text: (x) => exportDuration(x.requestedMinutes), sort: (x) => minutesOf(x.requestedMinutes), sum: (x) => minutesOf(x.requestedMinutes), formatSum: (n) => exportDuration(n) },
+      approvedMinutes: { text: (x) => exportDuration(x.approvedMinutes), sort: (x) => minutesOf(x.approvedMinutes), sum: (x) => minutesOf(x.approvedMinutes), formatSum: (n) => exportDuration(n) },
+      reasonAr: { text: (x) => exportText(x.reasonAr), sortable: false },
+      status: { kind: 'status', text: (x) => OVERTIME_STATUS_LABELS[x.status] ?? x.status, group: (x) => OVERTIME_STATUS_LABELS[x.status] ?? x.status },
+      decisionNotes: { text: (x) => exportText(x.decisionNotesAr), sortable: false },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={m.activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('سجل طلبات العمل الإضافي', 'overtime-requests', [`حالة الموظفين: ${employeeStatusFilterLabelAr(m.employeeStatus)}`])}
+        <PageHeaderPrimaryButton
+          icon={Plus}
+          label="طلب عمل إضافي"
+          onClick={() => { m.setEditTarget(null); m.setDrawerOpen(true); }}
+        >
+          طلب عمل إضافي
+        </PageHeaderPrimaryButton>
+      </div>
+    ),
+    [m.activeFilterCount, m.employeeStatus, tools.depsKey],
+  );
+
   if (m.accessDenied) {
     return <ForbiddenState title="لا تملك صلاحية الوصول لطلبات العمل الإضافي" />;
   }
@@ -415,13 +463,15 @@ export function OvertimeRequestsClient() {
         {!m.loading && m.items.length === 0 && m.pagination.total === 0 ? (
           <EmptyState icon={Timer} title="لا توجد طلبات عمل إضافي" description="أضف طلب عمل إضافي جديد لموظف للبدء." />
         ) : (
-          <DirectoryPagedViews items={m.items} serverPagination={m.pagination} loading={m.loading}>
+          <ListToolsTable tools={tools} keyExtractor={(x) => x.id} onRowClick={(x) => { if (isEditable(x.status)) openEdit(x); else openDetail(x); }}>
+          <DirectoryPagedViews items={tools.rows} serverPagination={tools.pagination(m.pagination)} loading={m.loading || tools.loading}>
             {(pageItems) => m.viewMode === 'list' ? (
               <DataTable
                 variant="directory"
                 alwaysShowTable
                 tableClassName="min-w-[1200px]"
-                columns={columns}
+                columns={tools.columns}
+                {...tools.tableSort}
                 data={pageItems}
                 keyExtractor={(x) => x.id}
                 emptyText="لا توجد طلبات"
@@ -513,6 +563,7 @@ export function OvertimeRequestsClient() {
               </EntityActionCardGrid>
             )}
           </DirectoryPagedViews>
+          </ListToolsTable>
         )}
       </div>
 

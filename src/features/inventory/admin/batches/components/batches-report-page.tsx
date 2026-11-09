@@ -1,5 +1,6 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
@@ -10,19 +11,13 @@ import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-li
 import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
 import { Input } from '@/components/ui/input';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
-import { BatchesTable } from '@/features/inventory/admin/batches/components/batches-table';
+import { batchColumns, BatchesTable } from '@/features/inventory/admin/batches/components/batches-table';
 import { useInventoryBatches } from '@/features/inventory/admin/batches/hooks/use-inventory-batches';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
 import { useWarehouseLocations } from '@/features/inventory/admin/locations/hooks/use-warehouse-locations';
 import { getInventoryCompanyId } from '@/features/inventory/lib/company-id';
 import { inventoryBatchesApi } from '@/features/inventory/admin/batches/lib/api/inventory-batches';
-import type {
-  InventoryBatch,
-  InventoryBatchAvailability,
-  InventoryBatchSort,
-} from '@/features/inventory/domain/types/inventory-batch';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import { registerExportRows, type RegisterExportColumn } from '@/components/pdf/lib/register-export-rows';
+import type { InventoryBatch, InventoryBatchAvailability, InventoryBatchSort } from '@/features/inventory/domain/types/inventory-batch';
 import { fetchAllPaginatedItems } from '@/shared/api/client';
 import { formatDateTime, formatDisplayDate, formatMoneyDigits } from '@/shared/utils';
 
@@ -105,25 +100,6 @@ export function BatchesReportPage() {
   const total = data?.pagination.total ?? 0;
   const summary = data?.summary;
 
-  const exportColumns: RegisterExportColumn<InventoryBatch>[] = [
-    { label: 'تاريخ الدخول', kind: 'date', value: (b) => formatDateTime(b.occurredAt) },
-    {
-      label: 'المنتج',
-      kind: 'name',
-      value: (b) => (b.variantName ? `${b.productName} — ${b.variantName}` : b.productName),
-    },
-    { label: 'SKU', kind: 'code', value: (b) => b.variantSku || b.sku || '' },
-    { label: 'المستودع / الموقع', kind: 'text', value: (b) => `${b.warehouseName} · ${b.locationName || b.locationCode}` },
-    {
-      label: 'المصدر',
-      kind: 'code',
-      value: (b) => (b.isOpening ? 'رصيد افتتاحي' : (b.sourceOperationReference ?? '')),
-    },
-    { label: 'الصلاحية', kind: 'date', value: (b) => (b.expiryDate ? formatDisplayDate(b.expiryDate) : '') },
-    { label: 'الكمية', kind: 'number', value: (b) => qty(b.quantity), total: (t) => qty(t.sums.quantity ?? 0) },
-    { label: 'المصروف', kind: 'number', value: (b) => qty(b.consumedQuantity), total: (t) => qty(t.sums.consumed ?? 0) },
-    { label: 'المتبقي', kind: 'number', value: (b) => qty(b.remainingQuantity), total: (t) => qty(t.sums.remaining ?? 0) },
-  ];
   const warehouseLabel = warehouseId !== 'all' ? warehouses.find((w) => w.id === warehouseId)?.nameAr : null;
   const locationLabel = locationId !== 'all' ? locations.find((l) => l.id === locationId) : null;
   const filterSummary = [
@@ -135,37 +111,43 @@ export function BatchesReportPage() {
     `الترتيب: ${SORT_OPTIONS.find((o) => o.value === sort)?.label ?? sort}`,
   ].filter((line): line is string => Boolean(line));
 
-  const getExportRows = async () => {
-    const { items } = await fetchAllPaginatedItems((p, l) => inventoryBatchesApi.list({ ...batchFilters, page: p, limit: l }));
-    return registerExportRows({
-      columns: exportColumns,
-      rows: items,
-      total: summary
-        ? {
-            count: summary.batches,
-            sums: { quantity: summary.quantity, consumed: summary.consumed, remaining: summary.remaining },
-          }
-        : null,
-    });
-  };
+  const columns = React.useMemo(() => batchColumns(), []);
+  const tools = useListTools<InventoryBatch>({
+    section: 'inventory',
+    page: 'batches',
+    columns,
+    rows,
+    fetchAll: async () =>
+      (await fetchAllPaginatedItems((p, l) => inventoryBatchesApi.list({ ...batchFilters, page: p, limit: l }))).items,
+    resetKey: JSON.stringify(batchFilters),
+    fields: {
+      occurredAt: { kind: 'date', text: (b) => formatDateTime(b.occurredAt), sort: (b) => b.occurredAt, group: (b) => b.occurredAt.slice(0, 7) },
+      product: {
+        kind: 'name',
+        text: (b) => b.productName,
+        group: (b) => b.productName,
+        alsoExport: [{ label: 'SKU', text: (b) => b.variantSku || b.sku || '' }],
+      },
+      variant: { text: (b) => b.variantName ?? '—', group: (b) => b.variantName ?? null },
+      warehouse: { text: (b) => b.warehouseName, group: (b) => b.warehouseName },
+      location: { text: (b) => b.locationName || b.locationCode, group: (b) => b.locationName || b.locationCode },
+      quantity: { kind: 'number', text: (b) => qty(b.quantity), sort: (b) => b.quantity, sum: (b) => b.quantity, formatSum: qty },
+      consumed: { kind: 'number', text: (b) => qty(b.consumedQuantity), sort: (b) => b.consumedQuantity, sum: (b) => b.consumedQuantity, formatSum: qty },
+      remaining: { kind: 'number', text: (b) => qty(b.remainingQuantity), sort: (b) => b.remainingQuantity, sum: (b) => b.remainingQuantity, formatSum: qty },
+      expiry: { kind: 'date', text: (b) => (b.expiryDate ? formatDisplayDate(b.expiryDate) : ''), sort: (b) => b.expiryDate ?? '', group: (b) => (b.expiryDate ? b.expiryDate.slice(0, 7) : null) },
+      origin: { kind: 'code', text: (b) => (b.isOpening ? 'رصيد افتتاحي' : (b.sourceOperationReference ?? '')), sortable: false },
+    },
+  });
 
   usePageHeaderActions(
     () => (
       <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
         <FilterToggleButton />
-        <RegisterExportMenu
-          title="دفعات المخزون"
-          fileName="inventory-batches"
-          columns={exportColumns}
-          getRows={getExportRows}
-          subtitleLines={filterSummary}
-          landscape
-          pinnedColumnCount={1}
-          emptyMessage="لا توجد دفعات ضمن الفلاتر الحالية."
-        />
+        {tools.buttons}
+        {tools.exportMenu('دفعات المخزون', 'inventory-batches', filterSummary)}
       </div>
     ),
-    [JSON.stringify(batchFilters), JSON.stringify(summary), filterSummary.join('|')],
+    [JSON.stringify(batchFilters), filterSummary.join('|'), tools.depsKey],
   );
 
   useEntityFilterSlot(
@@ -261,10 +243,11 @@ export function BatchesReportPage() {
 
       {isError ? <p className="text-sm text-destructive">تعذر تحميل دفعات المخزون.</p> : null}
 
+      <ListToolsTable tools={tools} keyExtractor={(b) => b.id}>
       <DirectoryPagedViews
-        items={rows}
-        loading={isLoading}
-        serverPagination={{
+        items={tools.rows}
+        loading={isLoading || tools.loading}
+        serverPagination={tools.pagination({
           page,
           pageSize,
           total,
@@ -274,12 +257,14 @@ export function BatchesReportPage() {
             setPageSize(size);
             setPage(1);
           },
-        }}
+        })}
       >
         {(rowsPage) => (
           <BatchesTable
             rows={rowsPage}
-            loading={isLoading}
+            columns={tools.columns}
+            tableSort={tools.tableSort}
+            loading={isLoading || tools.loading}
             emptyText={
               availability === 'depleted'
                 ? 'لا توجد دفعات مستنفدة بهذه الفلاتر.'
@@ -290,6 +275,7 @@ export function BatchesReportPage() {
           />
         )}
       </DirectoryPagedViews>
+      </ListToolsTable>
     </div>
   );
 }

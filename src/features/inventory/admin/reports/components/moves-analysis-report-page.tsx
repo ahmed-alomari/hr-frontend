@@ -1,5 +1,7 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
@@ -31,7 +33,7 @@ import {
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import { DateRangeFilterTrigger, type DateRangeFilterValue } from '@/components/ui/date-range-filter-trigger';
-import { ListSavedViews, listStateKeys } from '@/components/ui/list-saved-views';
+import { listStateKeys } from '@/components/ui/list-saved-views';
 import type { ListTotals } from '@/components/ui/list-group';
 import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
 import { registerExportRows, type RegisterExportColumn } from '@/components/pdf/lib/register-export-rows';
@@ -168,6 +170,17 @@ export function MovesAnalysisReportPage() {
       : []),
   ];
 
+  const tools = useListTools<MovesAnalysisRow>({
+    section: 'inventory',
+    page: 'moves-analysis',
+    columns,
+    rows,
+    fields: {
+      kind: { kind: 'name', text: (r) => kindLabel(r.kind), group: (r) => r.kind, groupLabel: kindLabel },
+      warehouse: { text: (r) => r.warehouseName ?? '', group: (r) => r.warehouseName },
+    },
+  });
+
   const warehouseLabel = warehouseId !== 'all' ? warehouses.find((w) => w.id === warehouseId)?.nameAr : null;
   const filterSummary = [
     `الفترة: ${periodLabel(period.from, period.to)}`,
@@ -181,12 +194,12 @@ export function MovesAnalysisReportPage() {
     () => (
       <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
         <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
+        {tools.buttons}
         <RegisterExportMenu
           title="تحليل الحركات"
           fileName="inventory-moves-analysis"
           columns={exportColumns}
-          getRows={async () => registerExportRows({ columns: exportColumns, rows, total: totals })}
+          getRows={async () => registerExportRows({ columns: exportColumns, rows: tools.rows, total: totals })}
           subtitleLines={filterSummary}
           landscape={valueVisible}
           pinnedColumnCount={1}
@@ -194,7 +207,7 @@ export function MovesAnalysisReportPage() {
         />
       </div>
     ),
-    [activeFilterCount, JSON.stringify(data), exportColumns.length, filterSummary.join('|'), stateKeys.views],
+    [activeFilterCount, JSON.stringify(data), exportColumns.length, filterSummary.join('|'), tools.depsKey, stateKeys.views],
   );
 
   useEntityFilterSlot(
@@ -244,23 +257,25 @@ export function MovesAnalysisReportPage() {
         iconName="BarChart3"
       />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
-        <ReportStat label="مستندات" value={(t?.operationCount ?? 0).toLocaleString('en-US')} />
-        <ReportStat label="بنود" value={(t?.lineCount ?? 0).toLocaleString('en-US')} />
-        <ReportStat
-          label="وارد"
-          tone="in"
-          value={formatQty(t?.inQty ?? 0)}
-          hint={valueVisible ? money(t?.inValue ?? 0) : undefined}
-        />
-        <ReportStat
-          label="صادر"
-          tone="out"
-          value={formatQty(t?.outQty ?? 0)}
-          hint={valueVisible ? money(t?.outValue ?? 0) : undefined}
-        />
-        <ReportStat label="صافي" value={formatQty(t?.netQty ?? 0)} />
-      </div>
+      <PhoneStatsFold summary={<>مستندات {(t?.operationCount ?? 0).toLocaleString('en-US')}</>}>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
+          <ReportStat label="مستندات" value={(t?.operationCount ?? 0).toLocaleString('en-US')} />
+          <ReportStat label="بنود" value={(t?.lineCount ?? 0).toLocaleString('en-US')} />
+          <ReportStat
+            label="وارد"
+            tone="in"
+            value={formatQty(t?.inQty ?? 0)}
+            hint={valueVisible ? money(t?.inValue ?? 0) : undefined}
+          />
+          <ReportStat
+            label="صادر"
+            tone="out"
+            value={formatQty(t?.outQty ?? 0)}
+            hint={valueVisible ? money(t?.outValue ?? 0) : undefined}
+          />
+          <ReportStat label="صافي" value={formatQty(t?.netQty ?? 0)} />
+        </div>
+      </PhoneStatsFold>
 
       <ValueHiddenNote header={data} />
 
@@ -273,12 +288,14 @@ export function MovesAnalysisReportPage() {
         </div>
       ) : null}
 
+      <ListToolsTable tools={tools} keyExtractor={(row) => row.key}>
       <DataTable
         variant="directory"
         keepHeaderWhenEmpty
         className="inv-table-host"
-        columns={columns}
-        data={rows}
+        columns={tools.columns}
+        {...tools.tableSort}
+        data={tools.rows}
         keyExtractor={(row) => row.key}
         totals={totals}
         mobileCard={(row) => (
@@ -304,6 +321,7 @@ export function MovesAnalysisReportPage() {
         loading={isLoading}
         emptyText="لا توجد حركات مرحّلة في الفترة."
       />
+      </ListToolsTable>
     </div>
   );
 }

@@ -270,6 +270,7 @@ function OrderItemsPanel({
 
       {manyItems ? (
         <EntityFilterSearchField
+          compact={false}
           value={search}
           onChange={(value) => {
             setSearch(value);

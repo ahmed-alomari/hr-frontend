@@ -1,5 +1,6 @@
 'use client';
 
+import { useListTools } from '@/components/ui/list-tools';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
@@ -123,30 +124,6 @@ export function BrandsListPage() {
     setBrandToDelete(null);
   };
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton />
-        <ListSortMenu model={sort} />
-        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
-        <PageHeaderPrimaryButton
-          icon={Plus}
-          label="إضافة علامة تجارية"
-          disabled={!companyId}
-          onClick={openCreateDialog}
-        />
-        <RegisterExportMenu
-          title="سجل العلامات التجارية"
-          fileName="brands"
-          columns={BRANDS_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={filterSummary}
-          emptyMessage="لا توجد علامات تجارية للتصدير."
-        />
-      </div>
-    ),
-    [companyId, sort.sortKey, sort.label, search, stateKeys.views],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -214,6 +191,34 @@ export function BrandsListPage() {
     },
   ];
 
+  const tools = useListTools<Brand>({ section: 'catalog', page: 'brands', columns: columns, rows: [], fields: {}, savedViews: false });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton />
+        {tools.buttons}
+        <ListSortMenu model={sort} />
+        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
+        <PageHeaderPrimaryButton
+          icon={Plus}
+          label="إضافة علامة تجارية"
+          disabled={!companyId}
+          onClick={openCreateDialog}
+        />
+        <RegisterExportMenu
+          title="سجل العلامات التجارية"
+          fileName="brands"
+          columns={BRANDS_EXPORT_COLUMNS}
+          getRows={getExportRows}
+          subtitleLines={filterSummary}
+          emptyMessage="لا توجد علامات تجارية للتصدير."
+        />
+      </div>
+    ),
+    [companyId, sort.sortKey, sort.label, search, stateKeys.views, tools.depsKey],
+  );
+
   return (
     <div className="flex flex-col gap-5">
       <SetPageTitle
@@ -244,7 +249,7 @@ export function BrandsListPage() {
           <DataTable
             variant="directory"
             className="sto-table-host"
-            columns={columns}
+            columns={tools.columns}
             data={rowsPage}
             keyExtractor={(brand) => brand.id}
             loading={isLoading}

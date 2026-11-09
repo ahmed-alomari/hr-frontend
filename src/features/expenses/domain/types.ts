@@ -105,7 +105,10 @@ export interface ExpenseGroup {
   name: string;
   description?: string | null;
   memberIds: string[];
+  /** The first of `costCenterIds`. */
   costCenterId?: string | null;
+  /** The group's cost centers, in the order chosen. */
+  costCenterIds?: string[];
   closed?: boolean;
   /** active accepts records. Missing: active, or ended when `closed`. */
   status?: GroupStatus;
@@ -279,6 +282,10 @@ export interface ExpensesSettings {
   mode: 'simple' | 'advanced';
   /** Used when the company currency is unknown (demo). */
   fallbackCurrency: string;
+  /** own: each employee sees their own records; all: everyone sees everything. */
+  visibility: 'own' | 'all';
+  /** With `own`: the people who still see everything. */
+  fullViewerIds: PartyId[];
 }
 
 export interface ExpensesData {

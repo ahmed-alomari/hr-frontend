@@ -1,15 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useSetPageTitle } from '@/components/layouts/page-title-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
-import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
-import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
-import { Can } from '@/components/shared/can';
 import { usePagePermissions } from '@/features/auth/permissions';
 import { CONTACTS_PAGE_PERMISSIONS } from '@/features/system/organization/contacts/permissions';
 import { branchesApi } from '@/features/hr/organization/lib/api/branches';
@@ -18,35 +13,13 @@ import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import { resolveDirectoryLoadFailure } from '@/features/hr/lib/api/directory-load-error';
 import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
 import { useServerDirectoryPagination } from '@/components/ui/paged-list';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
 import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
 import { useDefaultCompany } from '@/features/hr/organization/hooks/useActiveCompany';
-import {
-  usersApi,
-  type UserResponseDto,
-  type CreateUserDto,
-  type UpdateUserDto,
-} from '@/features/hr/organization/lib/api/users';
+import { usersApi, type UserResponseDto, type CreateUserDto, type UpdateUserDto } from '@/features/hr/organization/lib/api/users';
 import type { BranchResponseDto } from '@/features/hr/organization/lib/api/branches';
-import {
-  ORGANIZATION_ARCHIVE_SCOPE_DEFAULT,
-  ORGANIZATION_ARCHIVE_SCOPE_OPTIONS,
-  organizationActiveListStatusQuery,
-  organizationListStatusQuery,
-  type OrganizationArchiveScope,
-} from '@/features/hr/organization/lib/archive-scope';
-import {
-  EMPTY_USER_FORM,
-  userToDraftForm,
-  formatUserDate,
-  companyLinkLabel,
-  branchLinkLabel,
-  USER_TYPE_LABELS as USER_TYPE_LABEL_MAP,
-  USER_TYPE_FILTER_OPTIONS,
-  type UserDraftForm,
-} from '@/features/system/organization/contacts/constants/users-directory';
+import { ORGANIZATION_ARCHIVE_SCOPE_DEFAULT, ORGANIZATION_ARCHIVE_SCOPE_OPTIONS, organizationActiveListStatusQuery, organizationListStatusQuery, type OrganizationArchiveScope } from '@/features/hr/organization/lib/archive-scope';
+import { EMPTY_USER_FORM, userToDraftForm, formatUserDate, companyLinkLabel, branchLinkLabel, USER_TYPE_FILTER_OPTIONS, type UserDraftForm } from '@/features/system/organization/contacts/constants/users-directory';
 
 export type UserRecord = UserResponseDto;
 
@@ -67,13 +40,6 @@ function userBelongsToCompany(user: UserRecord, companyId: string): boolean {
   return !user.defaultCompanyId && user.companies.length === 0;
 }
 
-const USER_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الاسم', kind: 'name' },
-  { label: 'البريد', kind: 'code' },
-  { label: 'النوع', kind: 'status' },
-  { label: 'الشركة', kind: 'text' },
-  { label: 'الحالة', kind: 'status' },
-];
 
 /**
  * The account-status categories actually shown on the list's status badge —
@@ -100,7 +66,7 @@ function userAccountStatusCategory(user: UserRecord): Exclude<AccountStatusFilte
   return 'active';
 }
 
-function userStatusLabel(user: UserRecord): string {
+export function userStatusLabel(user: UserRecord): string {
   return USER_ACCOUNT_STATUS_LABELS[userAccountStatusCategory(user)];
 }
 
@@ -316,24 +282,6 @@ export function useContactsDirectoryModel() {
     }
   }, [confirmId, perms.canDelete, reloadList, viewRow?.id]);
 
-  const getExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    const users = await fetchScopedUsers();
-    return users.map((row) => {
-      const link = row.companies.find((c) => c.isDefault) ?? row.companies[0];
-      const company = link
-        ? companyLinkLabel(link)
-        : row.defaultCompanyId
-          ? (companies.find((x) => x.id === row.defaultCompanyId)?.nameAr ?? row.defaultCompanyId.slice(0, 8))
-          : '—';
-      return [
-        row.fullNameAr ?? row.email,
-        row.email,
-        USER_TYPE_LABEL_MAP[row.userType ?? ''] ?? row.userType ?? '—',
-        company,
-        userStatusLabel(row),
-      ];
-    });
-  });
 
   const archiveScopeLabel =
     ORGANIZATION_ARCHIVE_SCOPE_OPTIONS.find((o) => o.value === archiveScope)?.label ?? '';
@@ -348,27 +296,6 @@ export function useContactsDirectoryModel() {
     if (search.trim()) parts.push(`بحث: ${search.trim()}`);
     return parts.join(' · ');
   }, [archiveScopeLabel, statusFilterLabel, typeFilter, typeFilterLabel, search]);
-
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton />
-        <RegisterExportMenu
-          title="سجل المستخدمين"
-          fileName="users"
-          columns={USER_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={[usersFilterSummaryLine]}
-        />
-        <Can when={perms.canCreate}>
-          <Button variant="luxe" size="sm" className="h-8 gap-2" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> مستخدم جديد
-          </Button>
-        </Can>
-      </div>
-    ),
-    [openCreate, perms.canCreate, getExportRows, usersFilterSummaryLine],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -421,6 +348,7 @@ export function useContactsDirectoryModel() {
   );
 
   return {
+    usersFilterSummaryLine,
     perms,
     accessDenied,
     users: pagedUsers,

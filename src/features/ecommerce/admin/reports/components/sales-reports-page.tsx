@@ -1,5 +1,6 @@
 'use client';
 
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import { companyCurrencyCode } from '@/features/auth/lib/company-currency';
 import * as React from 'react';
 import Link from 'next/link';
@@ -505,57 +506,59 @@ export function StoreReportsPage({ section = 'overview' }: { section?: ReportTab
 
           {tab === 'sales' ? (
             <div className="space-y-5">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-                <KpiCard
-                  label="الإيراد (مبيعات مؤكدة)"
-                  value={money(summary.data?.revenueTotal, currency)}
-                  hint={`${summary.data?.revenueOrdersCount ?? 0} طلب مدفوع أو محصّل`}
-                  icon={TrendingUp}
-                  loading={summary.isLoading}
-                />
-                <KpiCard
-                  label="الطلبات"
-                  value={String(summary.data?.ordersCount ?? 0)}
-                  hint={`${summary.data?.partnerOrdersCount ?? 0} مسجّل · ${summary.data?.guestOrdersCount ?? 0} ضيف`}
-                  icon={ShoppingBag}
-                  loading={summary.isLoading}
-                />
-                <KpiCard
-                  label="متوسط الطلب"
-                  value={money(summary.data?.averageOrderValue, currency)}
-                  hint="AOV"
-                  icon={Wallet}
-                  loading={summary.isLoading}
-                />
-                <KpiCard
-                  label="قيمة كل الطلبات"
-                  value={money(summary.data?.bookedTotal, currency)}
-                  hint={`${summary.data?.bookedOrdersCount ?? 0} طلب · لم يُحصّل بعد ${money(
-                    Math.max(
-                      0,
-                      Number(summary.data?.bookedTotal ?? 0) - Number(summary.data?.revenueTotal ?? 0),
-                    ),
-                    currency,
-                  )}`}
-                  icon={Wallet}
-                  loading={summary.isLoading}
-                />
-                <KpiCard
-                  label="وحدات مباعة"
-                  value={String(summary.data?.unitsSold ?? 0)}
-                  hint={`تسليم ${summary.data?.deliveredOrdersCount ?? 0}`}
-                  icon={Package}
-                  loading={summary.isLoading}
-                />
-                <KpiCard
-                  label="ملغى"
-                  value={String(summary.data?.cancelledOrdersCount ?? 0)}
-                  hint={`مسترد ${summary.data?.refundedOrdersCount ?? 0}`}
-                  icon={Ban}
-                  loading={summary.isLoading}
-                  tone="warn"
-                />
-              </div>
+              <PhoneStatsFold summary={money(summary.data?.revenueTotal, currency)}>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+                  <KpiCard
+                    label="الإيراد (مبيعات مؤكدة)"
+                    value={money(summary.data?.revenueTotal, currency)}
+                    hint={`${summary.data?.revenueOrdersCount ?? 0} طلب مدفوع أو محصّل`}
+                    icon={TrendingUp}
+                    loading={summary.isLoading}
+                  />
+                  <KpiCard
+                    label="الطلبات"
+                    value={String(summary.data?.ordersCount ?? 0)}
+                    hint={`${summary.data?.partnerOrdersCount ?? 0} مسجّل · ${summary.data?.guestOrdersCount ?? 0} ضيف`}
+                    icon={ShoppingBag}
+                    loading={summary.isLoading}
+                  />
+                  <KpiCard
+                    label="متوسط الطلب"
+                    value={money(summary.data?.averageOrderValue, currency)}
+                    hint="AOV"
+                    icon={Wallet}
+                    loading={summary.isLoading}
+                  />
+                  <KpiCard
+                    label="قيمة كل الطلبات"
+                    value={money(summary.data?.bookedTotal, currency)}
+                    hint={`${summary.data?.bookedOrdersCount ?? 0} طلب · لم يُحصّل بعد ${money(
+                      Math.max(
+                        0,
+                        Number(summary.data?.bookedTotal ?? 0) - Number(summary.data?.revenueTotal ?? 0),
+                      ),
+                      currency,
+                    )}`}
+                    icon={Wallet}
+                    loading={summary.isLoading}
+                  />
+                  <KpiCard
+                    label="وحدات مباعة"
+                    value={String(summary.data?.unitsSold ?? 0)}
+                    hint={`تسليم ${summary.data?.deliveredOrdersCount ?? 0}`}
+                    icon={Package}
+                    loading={summary.isLoading}
+                  />
+                  <KpiCard
+                    label="ملغى"
+                    value={String(summary.data?.cancelledOrdersCount ?? 0)}
+                    hint={`مسترد ${summary.data?.refundedOrdersCount ?? 0}`}
+                    icon={Ban}
+                    loading={summary.isLoading}
+                    tone="warn"
+                  />
+                </div>
+              </PhoneStatsFold>
 
               <section className="rounded-2xl border border-border bg-card p-4">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -865,35 +868,37 @@ export function StoreReportsPage({ section = 'overview' }: { section?: ReportTab
               {operations.isLoading ? (
                 <div className="h-40 animate-pulse rounded-xl bg-muted/40" />
               ) : operations.data ? (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <KpiCard
-                    label="رسائل اتصل بنا"
-                    value={String(operations.data.contactMessagesTotal)}
-                    icon={MessageSquare}
-                  />
-                  <KpiCard
-                    label="إضافات المفضلة"
-                    value={String(operations.data.wishlistAddsInPeriodCount)}
-                    hint={`${operations.data.wishlistTotalActiveCount} نشطة`}
-                    icon={Star}
-                  />
-                  <KpiCard
-                    label="تقييمات جديدة"
-                    value={String(operations.data.reviewsSubmittedInPeriodCount)}
-                    hint={`${operations.data.pendingReviewsCount} بانتظار المراجعة`}
-                    icon={Star}
-                  />
-                  <KpiCard
-                    label="متوسط التقييم"
-                    value={
-                      operations.data.averageApprovedRating != null
-                        ? operations.data.averageApprovedRating.toFixed(2)
-                        : '—'
-                    }
-                    hint={`${operations.data.approvedReviewsCount} معتمد`}
-                    icon={Star}
-                  />
-                </div>
+                <PhoneStatsFold>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <KpiCard
+                      label="رسائل اتصل بنا"
+                      value={String(operations.data.contactMessagesTotal)}
+                      icon={MessageSquare}
+                    />
+                    <KpiCard
+                      label="إضافات المفضلة"
+                      value={String(operations.data.wishlistAddsInPeriodCount)}
+                      hint={`${operations.data.wishlistTotalActiveCount} نشطة`}
+                      icon={Star}
+                    />
+                    <KpiCard
+                      label="تقييمات جديدة"
+                      value={String(operations.data.reviewsSubmittedInPeriodCount)}
+                      hint={`${operations.data.pendingReviewsCount} بانتظار المراجعة`}
+                      icon={Star}
+                    />
+                    <KpiCard
+                      label="متوسط التقييم"
+                      value={
+                        operations.data.averageApprovedRating != null
+                          ? operations.data.averageApprovedRating.toFixed(2)
+                          : '—'
+                      }
+                      hint={`${operations.data.approvedReviewsCount} معتمد`}
+                      icon={Star}
+                    />
+                  </div>
+                </PhoneStatsFold>
               ) : (
                 <EmptyChart />
               )}
@@ -1092,40 +1097,42 @@ function OverviewTab({
 
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          label="الإيراد"
-          value={money(current?.revenueTotal ?? summary.data?.revenueTotal, currency)}
-          hint={formatChangePercent(change?.revenueTotal) ?? undefined}
-          icon={TrendingUp}
-          loading={dashboard.isLoading}
-          delta={change?.revenueTotal}
-        />
-        <KpiCard
-          label="الطلبات"
-          value={String(current?.ordersCount ?? summary.data?.ordersCount ?? 0)}
-          hint={formatChangePercent(change?.ordersCount) ?? undefined}
-          icon={ShoppingBag}
-          loading={dashboard.isLoading}
-          delta={change?.ordersCount}
-        />
-        <KpiCard
-          label="متوسط الطلب"
-          value={money(current?.averageOrderValue ?? summary.data?.averageOrderValue, currency)}
-          hint={formatChangePercent(change?.averageOrderValue) ?? undefined}
-          icon={Wallet}
-          loading={dashboard.isLoading}
-          delta={change?.averageOrderValue}
-        />
-        <KpiCard
-          label="وحدات مباعة"
-          value={String(current?.unitsSold ?? summary.data?.unitsSold ?? 0)}
-          hint={formatChangePercent(change?.unitsSold) ?? undefined}
-          icon={Package}
-          loading={dashboard.isLoading}
-          delta={change?.unitsSold}
-        />
-      </div>
+      <PhoneStatsFold summary={money(current?.revenueTotal ?? summary.data?.revenueTotal, currency)}>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            label="الإيراد"
+            value={money(current?.revenueTotal ?? summary.data?.revenueTotal, currency)}
+            hint={formatChangePercent(change?.revenueTotal) ?? undefined}
+            icon={TrendingUp}
+            loading={dashboard.isLoading}
+            delta={change?.revenueTotal}
+          />
+          <KpiCard
+            label="الطلبات"
+            value={String(current?.ordersCount ?? summary.data?.ordersCount ?? 0)}
+            hint={formatChangePercent(change?.ordersCount) ?? undefined}
+            icon={ShoppingBag}
+            loading={dashboard.isLoading}
+            delta={change?.ordersCount}
+          />
+          <KpiCard
+            label="متوسط الطلب"
+            value={money(current?.averageOrderValue ?? summary.data?.averageOrderValue, currency)}
+            hint={formatChangePercent(change?.averageOrderValue) ?? undefined}
+            icon={Wallet}
+            loading={dashboard.isLoading}
+            delta={change?.averageOrderValue}
+          />
+          <KpiCard
+            label="وحدات مباعة"
+            value={String(current?.unitsSold ?? summary.data?.unitsSold ?? 0)}
+            hint={formatChangePercent(change?.unitsSold) ?? undefined}
+            icon={Package}
+            loading={dashboard.isLoading}
+            delta={change?.unitsSold}
+          />
+        </div>
+      </PhoneStatsFold>
 
       {alerts ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

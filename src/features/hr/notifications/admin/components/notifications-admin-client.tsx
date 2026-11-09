@@ -1,30 +1,12 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import {
-  Bell,
-  CheckCircle2,
-  Circle,
-  Clock,
-  FileDown,
-  FileSpreadsheet,
-  Loader2,
-  Mail,
-  Plus,
-  Trash2,
-  Users,
-} from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Bell, CheckCircle2, Circle, Clock, Mail, Plus, Trash2, Users } from 'lucide-react';
 import { PdfPreviewExportDialog } from '@/components/pdf/pdf-preview-export-dialog';
 import { PdfPreviewDownloadButton } from '@/components/pdf/pdf-preview-download-button';
 import { DisciplineLetterPrintHtml } from '@/components/pdf/print/discipline-letter-print-html';
-import { NotificationsRegisterPrintHtml } from '@/components/pdf/print/notifications-register-print-html';
 import { useDefaultCompany } from '@/features/hr/organization/hooks/useActiveCompany';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -35,10 +17,7 @@ import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
-import {
-  ListFilterBar,
-  type ListFilterInlineSelect,
-} from '@/components/ui/list-filter-bar';
+import { ListFilterBar, type ListFilterInlineSelect } from '@/components/ui/list-filter-bar';
 import { EMPTY_PERIOD_RANGE } from '@/features/hr/discipline/lib/discipline-date-filter';
 import { EmployeePicker } from '@/components/ui/employee-picker';
 import { DirectoryPageGate } from '@/components/shared/directory-page-gate';
@@ -46,35 +25,14 @@ import { FILTER_PERMISSIONS } from '@/features/auth/permissions/filter-permissio
 import { cn, formatDisplayDateTime } from '@/shared/utils';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
-import { downloadXlsxFromAoA, type XlsxCell } from '@/shared/export/download-xlsx';
-import {
-  ConfirmationModal,
-  EmptyState,
-  FormField,
-  HRSettingsFormDrawer,
-  MinimalDropdown,
-} from '@/components/ui/shared-dialogs';
+import { ConfirmationModal, EmptyState, FormField, HRSettingsFormDrawer, MinimalDropdown } from '@/components/ui/shared-dialogs';
 import { Dialog, DialogBody, DialogContent, DialogTitle, dialogShellBodyClass, dialogShellContentClass } from '@/components/ui/dialog';
 import { DataTable, AppPagination, usePagination, type ColumnDef } from '@/components/ui/data-table';
 import { PagedListViewport, PaginatedListShell } from '@/components/ui/paged-list';
 import { TableDateCell, TableRowActions } from '@/components/ui/table-cells';
 import { useNotificationsAdminDirectoryModel } from '@/features/hr/notifications/admin/hooks/useNotificationsAdminDirectoryModel';
-import {
-  NOTIFICATION_AUDIENCE_LABELS,
-  NOTIFICATION_CATEGORY_FILTER_ORDER,
-  NOTIFICATION_CATEGORY_LABELS,
-  NOTIFICATION_SEVERITY_LABELS,
-  mapSentNotification,
-  type HRAdminNotificationRecord,
-} from '@/features/hr/notifications/admin/constants/notification-labels';
-import {
-  notificationsApi,
-  type NotificationCategory,
-  type NotificationDetailResponseDto,
-  type NotificationRecipientDto,
-  type NotificationSeverity,
-  type SendNotificationDto,
-} from '@/features/hr/notifications/lib/api/notifications';
+import { NOTIFICATION_AUDIENCE_LABELS, NOTIFICATION_CATEGORY_FILTER_ORDER, NOTIFICATION_CATEGORY_LABELS, NOTIFICATION_SEVERITY_LABELS, mapSentNotification, type HRAdminNotificationRecord } from '@/features/hr/notifications/admin/constants/notification-labels';
+import { notificationsApi, type NotificationCategory, type NotificationDetailResponseDto, type NotificationRecipientDto, type NotificationSeverity, type SendNotificationDto } from '@/features/hr/notifications/lib/api/notifications';
 
 type CategoryFilter = 'all' | NotificationCategory;
 type SeverityFilter = 'all' | NotificationSeverity;
@@ -153,7 +111,6 @@ export function NotificationsAdminClient() {
   const { data: defaultCompany } = useDefaultCompany();
   const companyNameAr = defaultCompany?.nameAr ?? '';
   const companyNameEn = defaultCompany?.nameEn ?? '';
-  const [pdfOpen, setPdfOpen] = React.useState(false);
   const [letterOpen, setLetterOpen] = React.useState(false);
   const [letterRecord, setLetterRecord] = React.useState<HRAdminNotificationRecord | null>(null);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
@@ -201,106 +158,32 @@ export function NotificationsAdminClient() {
     );
   }, [letterRecord, companyNameAr, companyNameEn]);
 
-  // Exports cover every notification matching the current filters (all pages), not just the visible page.
+  // Every notification under the current filters: for a sort, a grouping or an export.
   const { companyId, filters, dateBounds } = m;
-  const [exportNotifications, setExportNotifications] = React.useState<HRAdminNotificationRecord[]>([]);
-  const [exporting, setExporting] = React.useState(false);
-
-  const fetchAllForExport = React.useCallback(async (): Promise<HRAdminNotificationRecord[] | null> => {
-    setExporting(true);
-    try {
-      const { items } = await fetchAllPaginatedItems((page, limit) =>
-        notificationsApi.list({
-          page,
-          limit,
-          ...(companyId ? { companyId } : {}),
-          ...(filters.category !== 'all' ? { category: filters.category } : {}),
-          ...(filters.severity !== 'all' ? { severity: filters.severity } : {}),
-          ...(dateBounds.from ? { from: dateBounds.from } : {}),
-          ...(dateBounds.to ? { to: dateBounds.to } : {}),
-          ...(filters.excludeExpired ? { excludeExpired: true } : {}),
-          ...(filters.sourceKind.trim() ? { sourceKind: filters.sourceKind.trim() } : {}),
-          ...(filters.sourceTable.trim() ? { sourceTable: filters.sourceTable.trim() } : {}),
-          ...(filters.sourceId.trim() ? { sourceId: filters.sourceId.trim() } : {}),
-        }),
-      );
-      return items.map((row) => {
-        const snapshot = row.audienceSnapshot;
-        const summaryAr = snapshot && typeof snapshot.summaryAr === 'string' && snapshot.summaryAr
-          ? snapshot.summaryAr
-          : (NOTIFICATION_AUDIENCE_LABELS[row.audienceKind] ?? row.audienceKind);
-        return mapSentNotification(row, summaryAr);
-      });
-    } catch (err) {
-      const { displayMessage } = handleApiError(err, 'notifications-admin.export');
-      toast.error(displayMessage || 'تعذّر تحميل الإشعارات للتصدير.');
-      return null;
-    } finally {
-      setExporting(false);
-    }
-  }, [companyId, filters, dateBounds]);
-
-  const handleExportPdf = useLatestCallback(async () => {
-    if (exporting) return;
-    const all = await fetchAllForExport();
-    if (!all) return;
-    if (all.length === 0) {
-      toast.error('لا توجد إشعارات للتصدير ضمن الفلاتر الحالية.');
-      return;
-    }
-    setExportNotifications(all);
-    setPdfOpen(true);
+  const loadAllNotifications = useLatestCallback(async (): Promise<HRAdminNotificationRecord[]> => {
+    const { items } = await fetchAllPaginatedItems((page, limit) =>
+      notificationsApi.list({
+        page,
+        limit,
+        ...(companyId ? { companyId } : {}),
+        ...(filters.category !== 'all' ? { category: filters.category } : {}),
+        ...(filters.severity !== 'all' ? { severity: filters.severity } : {}),
+        ...(dateBounds.from ? { from: dateBounds.from } : {}),
+        ...(dateBounds.to ? { to: dateBounds.to } : {}),
+        ...(filters.excludeExpired ? { excludeExpired: true } : {}),
+        ...(filters.sourceKind.trim() ? { sourceKind: filters.sourceKind.trim() } : {}),
+        ...(filters.sourceTable.trim() ? { sourceTable: filters.sourceTable.trim() } : {}),
+        ...(filters.sourceId.trim() ? { sourceId: filters.sourceId.trim() } : {}),
+      }),
+    );
+    return items.map((row) => {
+      const snapshot = row.audienceSnapshot;
+      const summaryAr = snapshot && typeof snapshot.summaryAr === 'string' && snapshot.summaryAr
+        ? snapshot.summaryAr
+        : (NOTIFICATION_AUDIENCE_LABELS[row.audienceKind] ?? row.audienceKind);
+      return mapSentNotification(row, summaryAr);
+    });
   });
-
-  const handleExportExcel = useLatestCallback(async () => {
-    if (exporting) return;
-    const all = await fetchAllForExport();
-    if (!all) return;
-    if (all.length === 0) {
-      toast.error('لا توجد إشعارات للتصدير ضمن الفلاتر الحالية.');
-      return;
-    }
-    const rows: XlsxCell[][] = [
-      ['العنوان', 'التصنيف', 'العدد', 'المقروء', 'تاريخ الإرسال', 'المصدر'],
-      ...all.map((n) => [
-        n.titleAr,
-        NOTIFICATION_CATEGORY_LABELS[n.category] ?? n.category,
-        n.recipientCount ?? 0,
-        n.readCount ?? 0,
-        formatDisplayDateTime(n.createdAt),
-        n.sourceKind ?? '—',
-      ]),
-    ];
-    await downloadXlsxFromAoA('notifications-register.xlsx', 'الإشعارات', rows);
-    toast.success('تم تنزيل ملف Excel.');
-  });
-
-  const notificationsPdfRows = React.useMemo(
-    () =>
-      exportNotifications.map((n) => ({
-        dateYmd: n.createdAt.slice(0, 10),
-        titleAr: n.titleAr,
-        recipientNameAr: n.audienceSummaryAr,
-        readAr: `${n.readCount ?? 0}/${n.recipientCount ?? 0}`,
-        inboxAr: String(n.recipientCount ?? 0),
-      })),
-    [exportNotifications],
-  );
-
-  const notificationsPrintable = React.useMemo(
-    () =>
-      notificationsPdfRows.length === 0 ? null : (
-        <NotificationsRegisterPrintHtml
-          companyNameAr={companyNameAr}
-          companyNameEn={companyNameEn}
-          titleAr="سجل الإشعارات المرسلة"
-          filterSummary="حسب الفلاتر الحالية"
-          rows={notificationsPdfRows}
-          includeRecipientColumn={false}
-        />
-      ),
-    [notificationsPdfRows, companyNameAr, companyNameEn],
-  );
 
   const allEmployeeOptions = React.useMemo(
     () => m.employeeOptions.map((e) => ({
@@ -385,53 +268,6 @@ export function NotificationsAdminClient() {
     ],
   );
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={m.activeFilterCount} />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 w-8 shrink-0"
-              aria-label="تصدير الإشعارات"
-              disabled={exporting}
-              aria-busy={exporting}
-            >
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportPdf()}>
-              <FileDown className="h-4 w-4" />
-              PDF
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportExcel()}>
-              <FileSpreadsheet className="h-4 w-4" />
-              Excel
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button
-          type="button"
-          size="sm"
-          variant="luxe"
-          className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
-          onClick={() => {
-            setForm({ ...EMPTY_FORM, employeeIds: new Set() });
-            setFormError(null);
-            setDrawerOpen(true);
-          }}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          إرسال إشعار
-        </Button>
-      </div>
-    ),
-    [m.activeFilterCount, exporting, handleExportPdf, handleExportExcel],
-  );
 
   const columns = React.useMemo((): ColumnDef<HRAdminNotificationRecord>[] => [
     {
@@ -499,6 +335,52 @@ export function NotificationsAdminClient() {
       ),
     },
   ], []);
+
+  const categoryOf = (n: HRAdminNotificationRecord) => NOTIFICATION_CATEGORY_LABELS[n.category] ?? n.category;
+  const tools = useListTools<HRAdminNotificationRecord>({
+    section: 'hr',
+    page: 'notifications-admin',
+    columns,
+    rows: m.notifications,
+    fetchAll: loadAllNotifications,
+    resetKey: JSON.stringify([companyId, filters, dateBounds]),
+    fields: {
+      title: { kind: 'name', text: (n) => n.titleAr },
+      categorySeverity: { text: categoryOf, group: categoryOf },
+      counts: {
+        text: (n) => `${n.readCount ?? 0}/${n.recipientCount ?? 0}`,
+        sort: (n) => n.recipientCount ?? 0,
+        sum: (n) => n.recipientCount ?? 0,
+      },
+      date: { kind: 'date', text: (n) => formatDisplayDateTime(n.createdAt), sort: (n) => n.createdAt, group: (n) => n.createdAt.slice(0, 7) },
+      source: { text: (n) => n.sourceKind ?? '—', group: (n) => n.sourceKind ?? null },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={m.activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('سجل الإشعارات المرسلة', 'notifications-register')}
+        <Button
+          type="button"
+          size="sm"
+          variant="luxe"
+          className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
+          onClick={() => {
+            setForm({ ...EMPTY_FORM, employeeIds: new Set() });
+            setFormError(null);
+            setDrawerOpen(true);
+          }}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          إرسال إشعار
+        </Button>
+      </div>
+    ),
+    [m.activeFilterCount, tools.depsKey],
+  );
 
   const resolveSendCompanyId = (): string | null => m.companyId;
 
@@ -583,28 +465,31 @@ export function NotificationsAdminClient() {
           }
         />
       ) : (
+        <ListToolsTable tools={tools} keyExtractor={(n) => n.id} onRowClick={(n) => { void openDetail(n); }}>
         <PagedListViewport>
           <PaginatedListShell
-            pagination={{
+            pagination={tools.pagination({
               page: m.page,
               pageSize: m.limit,
               total: m.total,
               totalPages: Math.max(1, Math.ceil(m.total / m.limit)),
               setPage: m.setPage,
               setPageSize: m.setLimit,
-            }}
+            })}
           >
             <DataTable
               variant="directory"
               alwaysShowTable
-              columns={columns}
-              data={m.notifications}
+              columns={tools.columns}
+              {...tools.tableSort}
+              data={tools.rows}
               keyExtractor={(n) => n.id}
-              loading={m.loading}
+              loading={m.loading || tools.loading}
               onRowClick={(n) => { void openDetail(n); }}
             />
           </PaginatedListShell>
         </PagedListViewport>
+        </ListToolsTable>
       )}
 
       </DirectoryPageGate>
@@ -682,14 +567,6 @@ export function NotificationsAdminClient() {
         loading={detailLoading}
         onClose={() => { setDetailRecord(null); setDetailData(null); }}
         onPreviewPdf={detailRecord ? () => openNotificationPreview(detailRecord) : undefined}
-      />
-
-      <PdfPreviewExportDialog
-        open={pdfOpen}
-        onOpenChange={setPdfOpen}
-        title="معاينة تصدير الإشعارات"
-        fileName="notifications-register.pdf"
-        printable={notificationsPrintable}
       />
 
       <PdfPreviewExportDialog

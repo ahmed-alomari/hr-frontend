@@ -2,12 +2,13 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
 import { ListFilterBar, type PeriodRange } from '@/components/ui/list-filter-bar';
 import { LocalListTable, LocalListToolbar, useLocalList, type LocalListField } from '@/components/ui/local-list';
 import { hrFiltersKey, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
@@ -86,7 +87,7 @@ export function PeopleReportPage() {
   const filterKey = (field: string) => hrFiltersKey('expenses', 'people-report', companyId, field);
   const [period, setPeriod] = usePersistedFilterState<PeriodRange>(filterKey('period'), defaultPeriod);
   const [slice, setSlice] = usePersistedFilterState<Slice>(filterKey('slice'), 'all');
-  const [query, setQuery] = React.useState('');
+  const [query, setQuery] = usePersistedFilterState(filterKey('query'), '');
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
   const rows = React.useMemo(() => {
@@ -155,6 +156,7 @@ export function PeopleReportPage() {
       <ListFilterBar
         showStatusSection={false}
         showEmployeePicker={false}
+        leadingFilters={<EntityFilterSearchField value={query} onChange={setQuery} placeholder="ابحث باسم الشخص" />}
         periodValue={period}
         onPeriodChange={setPeriod}
         defaultPeriod={defaultPeriod}
@@ -169,7 +171,7 @@ export function PeopleReportPage() {
         ]}
       />
     ),
-    [period, defaultPeriod, slice],
+    [period, defaultPeriod, slice, query],
   );
 
   if (!data) return <LoadingBlock />;
@@ -178,14 +180,14 @@ export function PeopleReportPage() {
     <div className="flex flex-col gap-4">
       <SetPageTitle titleAr="تقرير الأشخاص" descriptionAr="لكل شخص: كم صرف وفي كم يوم خلال الفترة، وهل معه عهدة، وكم له وكم عليه الآن." iconName="Users" />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        <ReportSummaryCard label="صرفوا في الفترة" value={<Money value={spentTotal} />} hint={`${rows.length} شخص`} />
-        <ReportSummaryCard label="معهم عهدة الآن" value={String(withCustody)} hint="من الظاهرة أسماؤهم" />
-        <ReportSummaryCard label="لهم الآن" value={<Money value={owedTotal} />} valueClassName="text-success" />
-        <ReportSummaryCard label="عليهم الآن" value={<Money value={oweTotal} />} valueClassName="text-destructive" />
-      </div>
-
-      <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ابحث باسم الشخص" className="h-10" />
+      <PhoneStatsFold summary={<>صرفوا <Money value={spentTotal} /></>}>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+          <ReportSummaryCard label="صرفوا في الفترة" value={<Money value={spentTotal} />} hint={`${rows.length} شخص`} />
+          <ReportSummaryCard label="معهم عهدة الآن" value={String(withCustody)} hint="من الظاهرة أسماؤهم" />
+          <ReportSummaryCard label="لهم الآن" value={<Money value={owedTotal} />} valueClassName="text-success" />
+          <ReportSummaryCard label="عليهم الآن" value={<Money value={oweTotal} />} valueClassName="text-destructive" />
+        </div>
+      </PhoneStatsFold>
 
       <LocalListTable
         list={list}

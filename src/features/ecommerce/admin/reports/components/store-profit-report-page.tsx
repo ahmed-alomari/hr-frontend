@@ -1,5 +1,6 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -151,15 +152,6 @@ export function StoreProfitReportPage() {
     }
   }, [rows, view, viewMeta, period]);
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <ReportExportMenu onExcel={() => void exportExcel()} />
-      </div>
-    ),
-    [activeFilterCount, exportExcel],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -260,7 +252,34 @@ export function StoreProfitReportPage() {
     },
   ];
 
-  const paged = usePagination(rows, DEFAULT_PAGE_SIZE);
+  const tools = useListTools<GroupRow>({
+    section: 'store',
+    page: 'profit-report',
+    columns,
+    rows,
+    fields: {
+      label: { kind: 'name', text: (r) => r.label },
+      units: { kind: 'number', text: (r) => formatAmount(r.units), sort: (r) => r.units, sum: (r) => r.units, formatSum: formatAmount },
+      orders: { kind: 'number', text: (r) => String(r.orders), sort: (r) => r.orders },
+      revenue: { kind: 'number', text: (r) => formatAmount(r.revenue), sort: (r) => r.revenue, sum: (r) => r.revenue, formatSum: formatAmount },
+      cost: { kind: 'number', text: (r) => formatAmount(r.cost), sort: (r) => r.cost, sum: (r) => r.cost, formatSum: formatAmount },
+      profit: { kind: 'number', text: (r) => formatAmount(r.profit), sort: (r) => r.profit, sum: (r) => r.profit, formatSum: formatAmount },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('ربح المتجر', 'store-profit')}
+        <ReportExportMenu onExcel={() => void exportExcel()} label="Excel بالتفاصيل" />
+      </div>
+    ),
+    [activeFilterCount, exportExcel, tools.depsKey],
+  );
+
+  const paged = usePagination(tools.rows, DEFAULT_PAGE_SIZE);
 
   return (
     <div className="flex flex-col gap-5">
@@ -290,7 +309,7 @@ export function StoreProfitReportPage() {
           {(rowsPage) => (
             <DataTable
               variant="directory"
-              columns={columns}
+              columns={tools.columns}
               data={rowsPage}
               keyExtractor={(r) => r.key}
               mobileCard={(r) => (

@@ -1,7 +1,8 @@
 'use client';
 
+import { ListToolsTable, useListTools, type ListToolField, type ListToolsModel } from '@/components/ui/list-tools';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
@@ -11,46 +12,16 @@ import { DataTable, usePagination, type ColumnDef } from '@/components/ui/data-t
 import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-list';
 import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
 import { ListFilterBar, type PeriodRange } from '@/components/ui/list-filter-bar';
-import { downloadXlsxFromAoA, type XlsxCell } from '@/shared/export/download-xlsx';
 import { cn } from '@/shared/utils';
-import {
-  ReportExportMenu,
-  ShareBar,
-} from '@/features/expenses/components/report-common';
+import { ShareBar } from '@/features/expenses/components/report-common';
 import { FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PAYMENT_METHOD_LABELS, resolvePosInvoiceStyle, type PosPaymentMethod } from '@/features/pos/domain/types';
-import { usePosContext } from '@/features/pos/hooks/use-pos-context';
+import { PosDataScope, usePosContext } from '@/features/pos/hooks/use-pos-context';
 import { formatAmount, formatDateTime, formatMoney } from '@/features/pos/lib/format';
 import { sessionToPrintable } from '@/features/pos/lib/receipt';
 import { summarizeSession } from '@/features/pos/lib/session-summary';
-import {
-  GROUPINGS,
-  NO_FILTERS,
-  dayOf,
-  discountedLines,
-  groupBy as groupFacts,
-  lineFacts,
-  closingTotals,
-  closingsByCashier,
-  closingsInPeriod,
-  collectionsByMethod,
-  collectionsInPeriod,
-  creditInvoices,
-  openReceivables,
-  paymentRows,
-  refundMethodLabel,
-  returnsInPeriod,
-  sortedForTime,
-  totalsOf,
-  type ClosingRow,
-  type CollectionRow,
-  type CreditInvoiceRow,
-  type GroupRow,
-  type Grouping,
-  type LineFact,
-  type ReportFilters,
-} from '@/features/pos/lib/sales-report';
+import { GROUPINGS, NO_FILTERS, dayOf, discountedLines, groupBy as groupFacts, lineFacts, closingTotals, closingsByCashier, closingsInPeriod, collectionsByMethod, collectionsInPeriod, creditInvoices, openReceivables, paymentRows, refundMethodLabel, returnsInPeriod, sortedForTime, totalsOf, type ClosingRow, type CollectionRow, type CreditInvoiceRow, type GroupRow, type Grouping, type LineFact, type ReportFilters } from '@/features/pos/lib/sales-report';
 import { PosGate, PrintPreviewDialog } from '@/features/pos/components/shared/pos-shared';
 
 const ALL = 'all';
@@ -90,10 +61,8 @@ function Profit({ value, currency }: { value: number; currency?: string | null }
 
 const marginText = (m: number | null) => (m == null ? '—' : `${m}%`);
 
-function Reports() {
+function Reports({ period, setPeriod, defaultPeriod }: { period: PeriodRange; setPeriod: (p: PeriodRange) => void; defaultPeriod: PeriodRange }) {
   const { data, currency } = usePosContext();
-  const defaultPeriod = React.useMemo<PeriodRange>(() => ({ from: today(), to: today() }), []);
-  const [period, setPeriod] = React.useState<PeriodRange>(defaultPeriod);
   const [view, setView] = React.useState<View>('product');
   const [registerId, setRegisterId] = React.useState(ALL);
   const [cashierName, setCashierName] = React.useState(ALL);
@@ -165,120 +134,239 @@ function Reports() {
 
   const stamp = `${filters.from ?? 'all'}-${filters.to ?? 'all'}`;
 
-  const exportExcel = React.useCallback(async () => {
-    let sheet: XlsxCell[][];
-    if (isGrouping) {
-      sheet = [
-        [viewMeta.column, 'الفواتير', 'الكمية', 'صافي المبيعات', 'الخصم', 'المرتجع', 'الضريبة', 'التكلفة', 'الربح', 'الهامش %', 'بلا تكلفة'],
-        ...groupRows.map((r) => [
-          r.detail ? `${r.label} (${r.detail})` : r.label,
-          r.invoices,
-          r.units,
-          r.revenue,
-          r.discount,
-          r.returned,
-          r.tax,
-          r.cost,
-          r.profit,
-          r.margin,
-          r.uncostedRevenue,
-        ]),
-      ];
-    } else if (view === 'payments') {
-      sheet = [
-        ['الوسيلة', 'العمليات', 'المحصّل', 'المردود', 'الصافي'],
-        ...payments.map((p) => [p.label, p.count, p.collected, p.refunded, p.net]),
-        ...collectionMethods
-          .filter((c) => c.count > 0)
-          .map((c) => [`تحصيل آجل · ${c.label}`, c.count, c.total, 0, c.total]),
-      ];
-    } else if (view === 'credit' || view === 'receivables') {
-      sheet = [
-        ['التاريخ', 'الفاتورة', 'العميل', 'نقطة البيع', 'الكاشير', 'الدفع', 'الإجمالي', 'آجل', 'المحصّل', 'المرتجع', 'المتبقي'],
-        ...(view === 'credit' ? credit : receivables).map((r) => [
-          formatDateTime(r.date),
-          r.saleNumber,
-          r.customer,
-          r.registerName,
-          r.cashierName,
-          r.payment,
-          r.total,
-          r.credit,
-          r.collected,
-          r.returned,
-          r.due,
-        ]),
-      ];
-    } else if (view === 'collections') {
-      sheet = [
-        ['التاريخ', 'الفاتورة', 'العميل', 'الوسيلة', 'المرجع', 'المكان', 'بواسطة', 'المبلغ'],
-        ...collections.map((c) => [
-          formatDateTime(c.createdAt),
-          c.saleNumber,
-          c.partnerName,
-          PAYMENT_METHOD_LABELS[c.method],
-          c.reference,
-          c.registerName,
-          c.createdBy,
-          c.amount,
-        ]),
-      ];
-    } else if (view === 'closings') {
-      sheet = [
-        ['الإغلاق', 'الفتح', 'نقطة البيع', 'الكاشير', 'العهدة', 'المتوقع', 'المعدود', 'الفرق', 'النوع', 'سبب الفرق'],
-        ...closings.map((c) => [
-          formatDateTime(c.closedAt),
-          formatDateTime(c.openedAt),
-          c.registerName,
-          c.cashierName,
-          c.openingFloat,
-          c.expectedCash,
-          c.countedCash,
-          c.difference,
-          differenceKind(c.difference),
-          c.reason ?? '',
-        ]),
-      ];
-    } else if (view === 'discounts') {
-      sheet = [
-        ['التاريخ', 'الفاتورة', 'الصنف', 'الكاشير', 'السعر الأصلي', 'سعر البيع', 'الخصم', 'التكلفة'],
-        ...discounted.map((f) => [formatDateTime(f.date), f.saleNumber, f.productName, f.cashierName, f.sourcePrice, f.unitPrice, f.discount, f.unitCost]),
-      ];
-    } else {
-      sheet = [
-        ['التاريخ', 'رقم المرتجع', 'على الفاتورة', 'السبب', 'الأصناف', 'الطريقة', 'المبلغ', 'حالة الرد'],
-        ...returns.map((r) => [
-          formatDateTime(r.createdAt),
-          r.number,
-          r.saleNumber,
-          r.reason,
-          r.lines.map((l) => `${l.name} × ${l.quantity}`).join('، '),
-          refundMethodLabel(r.refund.method),
-          r.refund.amount,
-          r.refund.status === 'done' ? 'تم' : 'معلّق',
-        ]),
-      ];
-    }
-    if (sheet.length <= 1) {
-      toast.error('لا توجد بيانات للتصدير ضمن الفلاتر الحالية.');
-      return;
-    }
-    try {
-      await downloadXlsxFromAoA(`pos-${view}-${stamp}.xlsx`, viewMeta.label, sheet);
-      toast.success('تم تنزيل ملف Excel.');
-    } catch {
-      toast.error('تعذر تصدير التقرير.');
-    }
-  }, [isGrouping, view, viewMeta, groupRows, payments, collectionMethods, credit, receivables, collections, closings, discounted, returns, stamp]);
+  /* ── Grouped table ── */
+  const maxRevenue = Math.max(0, ...groupRows.map((r) => r.revenue));
+  const groupColumns: ColumnDef<GroupRow>[] = [
+    {
+      key: 'label',
+      title: viewMeta.column,
+      render: (r) => (
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate font-medium">{r.label}</span>
+          {r.detail ? <span className="text-xs text-muted-foreground" dir="auto">{r.detail}</span> : null}
+        </div>
+      ),
+    },
+    { key: 'units', title: 'الكمية', render: (r) => <span className="tabular-nums">{formatAmount(r.units)}</span> },
+    { key: 'invoices', title: 'الفواتير', hideOnMobile: true, render: (r) => <span className="tabular-nums">{r.invoices}</span> },
+    { key: 'revenue', title: 'صافي المبيعات', render: (r) => <span className="font-semibold tabular-nums">{formatMoney(r.revenue, currency)}</span> },
+    {
+      key: 'cost',
+      title: 'التكلفة',
+      render: (r) => (r.costedRevenue > 0 ? <span className="tabular-nums">{formatAmount(r.cost)}</span> : <span className="text-muted-foreground">—</span>),
+    },
+    {
+      key: 'profit',
+      title: 'الربح',
+      render: (r) => (r.costedRevenue > 0 ? <Profit value={r.profit} /> : <span className="text-muted-foreground">—</span>),
+    },
+    { key: 'margin', title: 'الهامش', hideOnMobile: true, render: (r) => <span className="tabular-nums">{marginText(r.margin)}</span> },
+    {
+      key: 'share',
+      title: 'من المبيعات',
+      hideOnMobile: true,
+      render: (r) => <ShareBar value={r.revenue} max={maxRevenue} total={totals.revenue} />,
+    },
+  ];
+
+
+  /* ── The open view's table: columns, rows and what its tools need ── */
+  const paymentColumns: ColumnDef<PaymentRow>[] = [
+            { key: 'label', title: 'الوسيلة', render: (p) => <span className="font-medium">{p.label}</span> },
+            { key: 'count', title: 'العمليات', render: (p) => <span className="tabular-nums">{p.count}</span> },
+            { key: 'collected', title: 'المحصّل', render: (p) => <span className="tabular-nums">{formatAmount(p.collected)}</span> },
+            { key: 'refunded', title: 'المردود', render: (p) => <span className="tabular-nums">{formatAmount(p.refunded)}</span> },
+            { key: 'net', title: 'الصافي', render: (p) => <span className="font-semibold tabular-nums">{formatMoney(p.net, currency)}</span> },
+          ];
+  const returnColumns: ColumnDef<ReturnRow>[] = [
+                {
+                  key: 'number',
+                  title: 'المرتجع',
+                  render: (r) => (
+                    <div className="flex flex-col">
+                      <span className="font-medium" dir="ltr">
+                        {r.number}
+                      </span>
+                      <span className="text-xs text-muted-foreground">على {r.saleNumber}</span>
+                    </div>
+                  ),
+                },
+                { key: 'date', title: 'التاريخ', hideOnMobile: true, render: (r) => formatDateTime(r.createdAt) },
+                { key: 'reason', title: 'السبب', hideOnMobile: true, render: (r) => r.reason },
+                {
+                  key: 'lines',
+                  title: 'الأصناف',
+                  hideOnMobile: true,
+                  render: (r) => r.lines.map((l) => `${l.name} × ${l.quantity}`).join('، '),
+                },
+                {
+                  key: 'amount',
+                  title: 'المبلغ',
+                  render: (r) => <span className="font-semibold tabular-nums">{formatMoney(r.refund.amount, currency)}</span>,
+                },
+                {
+                  key: 'status',
+                  title: 'الرد',
+                  render: (r) =>
+                    r.refund.status === 'done' ? <Badge variant="success">تم</Badge> : <Badge variant="warning">معلّق</Badge>,
+                },
+              ];
+  const amount = (n: number) => formatAmount(n);
+  const table: ReportTable = isGrouping
+    ? reportTable<GroupRow>(groupColumns, groupRows, {
+        label: {
+          kind: 'name',
+          text: (r) => (r.detail ? `${r.label} (${r.detail})` : r.label),
+          alsoExport: [{ label: 'إيراد بلا تكلفة', text: (r) => amount(r.uncostedRevenue) }],
+        },
+        units: { kind: 'number', text: (r) => amount(r.units), sort: (r) => r.units, sum: (r) => r.units, formatSum: amount },
+        invoices: { kind: 'number', text: (r) => String(r.invoices), sort: (r) => r.invoices, sum: (r) => r.invoices },
+        revenue: {
+          kind: 'number',
+          text: (r) => amount(r.revenue),
+          sort: (r) => r.revenue,
+          sum: (r) => r.revenue,
+          formatSum: amount,
+          alsoExport: [
+            { label: 'الخصم', text: (r) => amount(r.discount) },
+            { label: 'المرتجع', text: (r) => amount(r.returned) },
+            { label: 'الضريبة', text: (r) => amount(r.tax) },
+          ],
+        },
+        cost: { kind: 'number', text: (r) => (r.costedRevenue > 0 ? amount(r.cost) : '—'), sort: (r) => r.cost, sum: (r) => r.cost, formatSum: amount },
+        profit: { kind: 'number', text: (r) => (r.costedRevenue > 0 ? amount(r.profit) : '—'), sort: (r) => r.profit, sum: (r) => r.profit, formatSum: amount },
+        margin: { kind: 'number', text: (r) => marginText(r.margin), sort: (r) => Number(r.margin) || 0 },
+      })
+    : view === 'payments'
+      ? reportTable<PaymentRow>(paymentColumns, payments, {
+          label: { kind: 'name', text: (p) => p.label },
+          count: { kind: 'number', text: (p) => String(p.count), sort: (p) => p.count, sum: (p) => p.count },
+          collected: { kind: 'number', text: (p) => amount(p.collected), sort: (p) => p.collected, sum: (p) => p.collected, formatSum: amount },
+          refunded: { kind: 'number', text: (p) => amount(p.refunded), sort: (p) => p.refunded, sum: (p) => p.refunded, formatSum: amount },
+          net: { kind: 'number', text: (p) => amount(p.net), sort: (p) => p.net, sum: (p) => p.net, formatSum: amount },
+        })
+      : view === 'credit' || view === 'receivables'
+        ? reportTable<CreditInvoiceRow>(creditColumns(currency), view === 'credit' ? credit : receivables, {
+            invoice: {
+              kind: 'code',
+              text: (r) => r.saleNumber,
+              alsoExport: [
+                { label: 'التاريخ', text: (r) => formatDateTime(r.date) },
+                { label: 'العميل', text: (r) => r.customer },
+                { label: 'نقطة البيع', text: (r) => r.registerName },
+                { label: 'الكاشير', text: (r) => r.cashierName },
+              ],
+            },
+            payment: { text: (r) => r.payment, group: (r) => r.payment },
+            total: { kind: 'number', text: (r) => amount(r.total), sort: (r) => r.total, sum: (r) => r.total, formatSum: amount },
+            credit: { kind: 'number', text: (r) => amount(r.credit), sort: (r) => r.credit, sum: (r) => r.credit, formatSum: amount },
+            collected: { kind: 'number', text: (r) => amount(r.collected), sort: (r) => r.collected, sum: (r) => r.collected, formatSum: amount },
+            returned: { kind: 'number', text: (r) => amount(r.returned), sort: (r) => r.returned, sum: (r) => r.returned, formatSum: amount },
+            due: { kind: 'number', text: (r) => amount(r.due), sort: (r) => r.due, sum: (r) => r.due, formatSum: amount },
+          })
+        : view === 'collections'
+          ? reportTable<CollectionRow>(collectionColumns(currency), collections, {
+              customer: {
+                kind: 'name',
+                text: (c) => c.partnerName,
+                group: (c) => c.partnerName,
+                alsoExport: [
+                  { label: 'الفاتورة', text: (c) => c.saleNumber },
+                  { label: 'التاريخ', text: (c) => formatDateTime(c.createdAt) },
+                ],
+              },
+              method: {
+                text: (c) => PAYMENT_METHOD_LABELS[c.method],
+                group: (c) => PAYMENT_METHOD_LABELS[c.method],
+                alsoExport: [{ label: 'المرجع', text: (c) => c.reference ?? '' }],
+              },
+              where: { text: (c) => c.registerName ?? '—', group: (c) => c.registerName ?? null },
+              by: { text: (c) => c.createdBy, group: (c) => c.createdBy },
+              amount: { kind: 'number', text: (c) => amount(c.amount), sort: (c) => c.amount, sum: (c) => c.amount, formatSum: amount },
+            })
+          : view === 'closings'
+            ? reportTable<ClosingRow>(closingColumns(setZSessionId), closings, {
+                shift: {
+                  kind: 'name',
+                  text: (c) => `${c.registerName} · ${c.cashierName}`,
+                  sort: (c) => c.closedAt,
+                  group: (c) => c.cashierName,
+                  alsoExport: [
+                    { label: 'الفتح', text: (c) => formatDateTime(c.openedAt) },
+                    { label: 'الإغلاق', text: (c) => formatDateTime(c.closedAt) },
+                    { label: 'العهدة', text: (c) => amount(c.openingFloat) },
+                  ],
+                },
+                expected: { kind: 'number', text: (c) => amount(c.expectedCash), sort: (c) => c.expectedCash, sum: (c) => c.expectedCash, formatSum: amount },
+                counted: { kind: 'number', text: (c) => amount(c.countedCash), sort: (c) => c.countedCash, sum: (c) => c.countedCash, formatSum: amount },
+                difference: {
+                  kind: 'number',
+                  text: (c) => `${amount(c.difference)} (${differenceKind(c.difference)})`,
+                  sort: (c) => c.difference,
+                  group: (c) => differenceKind(c.difference),
+                  sum: (c) => c.difference,
+                  formatSum: amount,
+                },
+                reason: { text: (c) => c.reason ?? '', sortable: false },
+              })
+            : view === 'discounts'
+              ? reportTable<LineFact>(discountColumns(currency), discounted, {
+                  product: {
+                    kind: 'name',
+                    text: (f) => f.productName,
+                    group: (f) => f.productName,
+                    alsoExport: [
+                      { label: 'الفاتورة', text: (f) => f.saleNumber },
+                      { label: 'الكاشير', text: (f) => f.cashierName },
+                    ],
+                  },
+                  date: { kind: 'date', text: (f) => formatDateTime(f.date), sort: (f) => f.date, group: (f) => f.date.slice(0, 10) },
+                  source: { kind: 'number', text: (f) => amount(f.sourcePrice ?? 0), sort: (f) => f.sourcePrice ?? 0 },
+                  price: { kind: 'number', text: (f) => amount(f.unitPrice), sort: (f) => f.unitPrice },
+                  discount: { kind: 'number', text: (f) => amount(f.discount), sort: (f) => f.discount, sum: (f) => f.discount, formatSum: amount },
+                  cost: { kind: 'number', text: (f) => (f.unitCost == null ? '—' : amount(f.unitCost)), sort: (f) => f.unitCost ?? 0 },
+                })
+              : reportTable<ReturnRow>(returnColumns, returns, {
+                  number: { kind: 'code', text: (r) => r.number, alsoExport: [{ label: 'على الفاتورة', text: (r) => r.saleNumber }] },
+                  date: { kind: 'date', text: (r) => formatDateTime(r.createdAt), sort: (r) => r.createdAt, group: (r) => r.createdAt.slice(0, 10) },
+                  reason: { text: (r) => r.reason, group: (r) => r.reason },
+                  lines: { text: (r) => r.lines.map((l) => `${l.name} × ${l.quantity}`).join('، '), sortable: false },
+                  amount: {
+                    kind: 'number',
+                    text: (r) => amount(r.refund.amount),
+                    sort: (r) => r.refund.amount,
+                    sum: (r) => r.refund.amount,
+                    formatSum: amount,
+                    alsoExport: [{ label: 'الطريقة', text: (r) => refundMethodLabel(r.refund.method) }],
+                  },
+                  status: { kind: 'status', text: (r) => (r.refund.status === 'done' ? 'تم' : 'معلّق'), group: (r) => (r.refund.status === 'done' ? 'تم' : 'معلّق') },
+                });
+  // Credit collections count as money in: the payments export lists them after the methods.
+  const extraPaymentRows: PaymentRow[] = view === 'payments'
+    ? collectionMethods
+        .filter((c) => c.count > 0)
+        .map((c) => ({ ...payments[0], method: c.method, label: `تحصيل آجل · ${c.label}`, count: c.count, collected: c.total, refunded: 0, net: c.total }))
+    : [];
+  const tools = useListTools<unknown>({
+    section: 'pos',
+    page: `reports-${isGrouping ? 'grouped' : view}`,
+    columns: table.columns,
+    rows: table.rows,
+    resetKey: `${view}|${stamp}|${search}|${registerId}|${cashierName}|${categoryId}|${paymentMethod}`,
+    fields: table.fields,
+    extraExportRows: extraPaymentRows,
+  });
+  const toolsFor = <T,>() => tools as unknown as ListToolsModel<T>;
 
   usePageHeaderActions(
     () => (
       <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
         <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <ReportExportMenu onExcel={() => void exportExcel()} />
+        {tools.buttons}
+        {tools.exportMenu(viewMeta.label, `pos-${view}-${stamp}`, [`الفترة: ${filters.from ?? '…'} — ${filters.to ?? '…'}`])}
       </div>
     ),
-    [activeFilterCount, exportExcel],
+    [activeFilterCount, view, stamp, tools.depsKey],
   );
 
   useEntityFilterSlot(
@@ -344,47 +432,12 @@ function Reports() {
     [period, defaultPeriod, searchInput, view, registerId, cashierName, categoryId, paymentMethod, data.registers, cashiers, categories],
   );
 
-  /* ── Grouped table ── */
-  const maxRevenue = Math.max(0, ...groupRows.map((r) => r.revenue));
-  const groupColumns: ColumnDef<GroupRow>[] = [
-    {
-      key: 'label',
-      title: viewMeta.column,
-      render: (r) => (
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate font-medium">{r.label}</span>
-          {r.detail ? <span className="text-xs text-muted-foreground" dir="auto">{r.detail}</span> : null}
-        </div>
-      ),
-    },
-    { key: 'units', title: 'الكمية', render: (r) => <span className="tabular-nums">{formatAmount(r.units)}</span> },
-    { key: 'invoices', title: 'الفواتير', hideOnMobile: true, render: (r) => <span className="tabular-nums">{r.invoices}</span> },
-    { key: 'revenue', title: 'صافي المبيعات', render: (r) => <span className="font-semibold tabular-nums">{formatMoney(r.revenue, currency)}</span> },
-    {
-      key: 'cost',
-      title: 'التكلفة',
-      render: (r) => (r.costedRevenue > 0 ? <span className="tabular-nums">{formatAmount(r.cost)}</span> : <span className="text-muted-foreground">—</span>),
-    },
-    {
-      key: 'profit',
-      title: 'الربح',
-      render: (r) => (r.costedRevenue > 0 ? <Profit value={r.profit} /> : <span className="text-muted-foreground">—</span>),
-    },
-    { key: 'margin', title: 'الهامش', hideOnMobile: true, render: (r) => <span className="tabular-nums">{marginText(r.margin)}</span> },
-    {
-      key: 'share',
-      title: 'من المبيعات',
-      hideOnMobile: true,
-      render: (r) => <ShareBar value={r.revenue} max={maxRevenue} total={totals.revenue} />,
-    },
-  ];
 
-  const grouped = usePagination(groupRows, DEFAULT_PAGE_SIZE);
-  const discountsPage = usePagination(discounted, DEFAULT_PAGE_SIZE);
-  const returnsPage = usePagination(returns, DEFAULT_PAGE_SIZE);
-  const creditPage = usePagination(view === 'receivables' ? receivables : credit, DEFAULT_PAGE_SIZE);
-  const collectionsPage = usePagination(collections, DEFAULT_PAGE_SIZE);
-  const closingsPage = usePagination(closings, DEFAULT_PAGE_SIZE);
+  const paged = usePagination(tools.rows, DEFAULT_PAGE_SIZE);
+  const pagedAs = <T,>() => paged.slice as unknown as T[];
+  // A new view starts on its first page, even with the same number of rows.
+  const setPagedPage = paged.setPage;
+  React.useEffect(() => { setPagedPage(1); }, [view, setPagedPage]);
   const pagination = (p: { page: number; pageSize: number; total: number; setPage: (n: number) => void; setPageSize: (n: number) => void }) => ({
     page: p.page,
     pageSize: p.pageSize,
@@ -403,11 +456,13 @@ function Reports() {
       />
 
       {isGrouping ? (
-        <DirectoryPagedViews items={grouped.slice} loading={false} serverPagination={pagination(grouped)}>
+        <ListToolsTable tools={toolsFor<GroupRow>()} keyExtractor={(r) => r.key}>
+        <DirectoryPagedViews items={pagedAs<GroupRow>()} loading={tools.loading} serverPagination={pagination(paged)}>
           {(rowsPage) => (
             <DataTable
               variant="directory"
-              columns={groupColumns}
+              columns={toolsFor<GroupRow>().columns}
+              {...tools.tableSort}
               data={rowsPage}
               keyExtractor={(r) => r.key}
               mobileCard={(r) => (
@@ -441,34 +496,33 @@ function Reports() {
             />
           )}
         </DirectoryPagedViews>
+        </ListToolsTable>
       ) : view === 'payments' ? (
         <DataTable
           variant="directory"
-          columns={[
-            { key: 'label', title: 'الوسيلة', render: (p) => <span className="font-medium">{p.label}</span> },
-            { key: 'count', title: 'العمليات', render: (p) => <span className="tabular-nums">{p.count}</span> },
-            { key: 'collected', title: 'المحصّل', render: (p) => <span className="tabular-nums">{formatAmount(p.collected)}</span> },
-            { key: 'refunded', title: 'المردود', render: (p) => <span className="tabular-nums">{formatAmount(p.refunded)}</span> },
-            { key: 'net', title: 'الصافي', render: (p) => <span className="font-semibold tabular-nums">{formatMoney(p.net, currency)}</span> },
-          ]}
-          data={payments}
+          columns={toolsFor<PaymentRow>().columns}
+          {...tools.tableSort}
+          data={toolsFor<PaymentRow>().rows}
           keyExtractor={(p) => p.method}
           emptyText="لا مدفوعات ضمن الفلاتر الحالية."
         />
       ) : view === 'credit' || view === 'receivables' ? (
         <div className="space-y-3">
           <CreditSummary rows={view === 'credit' ? credit : receivables} collections={collections} currency={currency} view={view} />
-          <DirectoryPagedViews items={creditPage.slice} loading={false} serverPagination={pagination(creditPage)}>
+          <ListToolsTable tools={toolsFor<CreditInvoiceRow>()} keyExtractor={(r) => r.saleId}>
+          <DirectoryPagedViews items={pagedAs<CreditInvoiceRow>()} loading={tools.loading} serverPagination={pagination(paged)}>
             {(rowsPage) => (
               <DataTable
                 variant="directory"
-                columns={creditColumns(currency)}
+                columns={toolsFor<CreditInvoiceRow>().columns}
+                {...tools.tableSort}
                 data={rowsPage}
                 keyExtractor={(r) => r.saleId}
                 emptyText={view === 'credit' ? 'لا مبيعات آجلة ضمن الفلاتر الحالية.' : 'لا مستحقات مفتوحة على العملاء.'}
               />
             )}
           </DirectoryPagedViews>
+          </ListToolsTable>
         </div>
       ) : view === 'collections' ? (
         <div className="space-y-3">
@@ -485,17 +539,20 @@ function Reports() {
             keyExtractor={(c) => c.method}
             emptyText="لا تحصيلات."
           />
-          <DirectoryPagedViews items={collectionsPage.slice} loading={false} serverPagination={pagination(collectionsPage)}>
+          <ListToolsTable tools={toolsFor<CollectionRow>()} keyExtractor={(c) => c.id}>
+          <DirectoryPagedViews items={pagedAs<CollectionRow>()} loading={tools.loading} serverPagination={pagination(paged)}>
             {(rowsPage) => (
               <DataTable
                 variant="directory"
-                columns={collectionColumns(currency)}
+                columns={toolsFor<CollectionRow>().columns}
+                {...tools.tableSort}
                 data={rowsPage}
                 keyExtractor={(c) => c.id}
                 emptyText="لا تحصيلات آجل ضمن الفلاتر الحالية."
               />
             )}
           </DirectoryPagedViews>
+          </ListToolsTable>
         </div>
       ) : view === 'closings' ? (
         <div className="space-y-3">
@@ -516,74 +573,51 @@ function Reports() {
               emptyText="لا ورديات."
             />
           ) : null}
-          <DirectoryPagedViews items={closingsPage.slice} loading={false} serverPagination={pagination(closingsPage)}>
+          <ListToolsTable tools={toolsFor<ClosingRow>()} keyExtractor={(c) => c.sessionId}>
+          <DirectoryPagedViews items={pagedAs<ClosingRow>()} loading={tools.loading} serverPagination={pagination(paged)}>
             {(rowsPage) => (
               <DataTable
                 variant="directory"
-                columns={closingColumns(setZSessionId)}
+                columns={toolsFor<ClosingRow>().columns}
+                {...tools.tableSort}
                 data={rowsPage}
                 keyExtractor={(c) => c.sessionId}
                 emptyText="لا ورديات أُغلقت ضمن الفلاتر الحالية."
               />
             )}
           </DirectoryPagedViews>
+          </ListToolsTable>
         </div>
       ) : view === 'discounts' ? (
-        <DirectoryPagedViews items={discountsPage.slice} loading={false} serverPagination={pagination(discountsPage)}>
+        <ListToolsTable tools={toolsFor<LineFact>()} keyExtractor={(f) => `${f.saleId}:${f.productKey}:${f.date}`}>
+        <DirectoryPagedViews items={pagedAs<LineFact>()} loading={tools.loading} serverPagination={pagination(paged)}>
           {(rowsPage) => (
             <DataTable
               variant="directory"
-              columns={discountColumns(currency)}
+              columns={toolsFor<LineFact>().columns}
+              {...tools.tableSort}
               data={rowsPage}
               keyExtractor={(f) => `${f.saleId}:${f.productKey}:${f.date}`}
               emptyText="لا خصومات ولا أسعار معدّلة ضمن الفلاتر الحالية."
             />
           )}
         </DirectoryPagedViews>
+        </ListToolsTable>
       ) : (
-        <DirectoryPagedViews items={returnsPage.slice} loading={false} serverPagination={pagination(returnsPage)}>
+        <ListToolsTable tools={toolsFor<ReturnRow>()} keyExtractor={(r) => r.id}>
+        <DirectoryPagedViews items={pagedAs<ReturnRow>()} loading={tools.loading} serverPagination={pagination(paged)}>
           {(rowsPage) => (
             <DataTable
               variant="directory"
-              columns={[
-                {
-                  key: 'number',
-                  title: 'المرتجع',
-                  render: (r) => (
-                    <div className="flex flex-col">
-                      <span className="font-medium" dir="ltr">
-                        {r.number}
-                      </span>
-                      <span className="text-xs text-muted-foreground">على {r.saleNumber}</span>
-                    </div>
-                  ),
-                },
-                { key: 'date', title: 'التاريخ', hideOnMobile: true, render: (r) => formatDateTime(r.createdAt) },
-                { key: 'reason', title: 'السبب', hideOnMobile: true, render: (r) => r.reason },
-                {
-                  key: 'lines',
-                  title: 'الأصناف',
-                  hideOnMobile: true,
-                  render: (r) => r.lines.map((l) => `${l.name} × ${l.quantity}`).join('، '),
-                },
-                {
-                  key: 'amount',
-                  title: 'المبلغ',
-                  render: (r) => <span className="font-semibold tabular-nums">{formatMoney(r.refund.amount, currency)}</span>,
-                },
-                {
-                  key: 'status',
-                  title: 'الرد',
-                  render: (r) =>
-                    r.refund.status === 'done' ? <Badge variant="success">تم</Badge> : <Badge variant="warning">معلّق</Badge>,
-                },
-              ]}
+              columns={toolsFor<ReturnRow>().columns}
+              {...tools.tableSort}
               data={rowsPage}
               keyExtractor={(r) => r.id}
               emptyText="لا مرتجعات ضمن الفلاتر الحالية."
             />
           )}
         </DirectoryPagedViews>
+        </ListToolsTable>
       )}
       <PrintPreviewDialog
         open={!!zSession}
@@ -606,6 +640,19 @@ function Reports() {
     </div>
   );
 }
+
+type PaymentRow = ReturnType<typeof paymentRows>[number];
+type ReturnRow = ReturnType<typeof returnsInPeriod>[number];
+type ReportTable = {
+  columns: ColumnDef<unknown>[];
+  rows: unknown[];
+  fields: Partial<Record<string, ListToolField<unknown>>>;
+};
+const reportTable = <T,>(
+  columns: ColumnDef<T>[],
+  rows: readonly T[],
+  fields: Partial<Record<string, ListToolField<T>>>,
+) => ({ columns, rows, fields }) as unknown as ReportTable;
 
 const differenceKind = (d: number) => (d < -0.004 ? 'عجز' : d > 0.004 ? 'زيادة' : 'مطابق');
 
@@ -632,6 +679,7 @@ function ClosingSummary({ rows, currency }: { rows: ClosingRow[]; currency: stri
     { label: 'إجمالي الزيادة', value: formatMoney(t.overage, currency), tone: t.overage > 0 ? 'text-warning' : '' },
   ];
   return (
+    <PhoneStatsFold summary={<>العجز {formatMoney(t.shortage, currency)}</>}>
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {cards.map((c) => (
@@ -646,6 +694,7 @@ function ClosingSummary({ rows, currency }: { rows: ClosingRow[]; currency: stri
         حدة حتى لا تُخفي زيادةُ وردية عجزَ أخرى.
       </p>
     </div>
+    </PhoneStatsFold>
   );
 }
 
@@ -724,16 +773,18 @@ function CreditSummary({
           { label: 'تحصيلات الفترة', value: collections.reduce((a, c) => a + c.amount, 0) },
         ];
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      {cards.map((c) => (
-        <div key={c.label} className="rounded-xl border border-border bg-card p-3">
-          <div className="text-xs text-muted-foreground">{c.label}</div>
-          <div className="text-lg font-semibold tabular-nums">
-            {'count' in c && c.count ? c.value : formatMoney(c.value, currency)}
+    <PhoneStatsFold>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {cards.map((c) => (
+          <div key={c.label} className="rounded-xl border border-border bg-card p-3">
+            <div className="text-xs text-muted-foreground">{c.label}</div>
+            <div className="text-lg font-semibold tabular-nums">
+              {'count' in c && c.count ? c.value : formatMoney(c.value, currency)}
+            </div>
           </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </PhoneStatsFold>
   );
 }
 
@@ -841,9 +892,14 @@ function discountColumns(currency: string | null): ColumnDef<LineFact>[] {
 }
 
 export function PosReportsPage() {
+  const defaultPeriod = React.useMemo<PeriodRange>(() => ({ from: today(), to: today() }), []);
+  const [period, setPeriod] = React.useState<PeriodRange>(defaultPeriod);
+  // The report reads its own period, of any age.
   return (
-    <PosGate permission="pos.reports.read">
-      <Reports />
-    </PosGate>
+    <PosDataScope range={period.from && period.to ? { from: period.from, to: period.to } : undefined}>
+      <PosGate permission="pos.reports.read">
+        <Reports period={period} setPeriod={setPeriod} defaultPeriod={defaultPeriod} />
+      </PosGate>
+    </PosDataScope>
   );
 }

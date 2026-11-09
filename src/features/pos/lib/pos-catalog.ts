@@ -1,9 +1,8 @@
-import { apiRequest, type PaginatedResult } from '@/features/hr/lib/api/client';
-import { resolveScannedCode } from '@/features/catalog/products/lib/resolve-scanned-code';
+import { apiRequest } from '@/features/hr/lib/api/client';
 
 /**
- * What the register sells, read from the products app (its API only; POS
- * never copies products). Read-only: nothing here writes to the catalog.
+ * What the register sells, from POS's own read of the products (`pos.sell`):
+ * a cashier holds no right on the products app, and no cost reaches him.
  */
 
 export type PosCatalogProduct = {
@@ -27,100 +26,35 @@ export type PosCatalogVariant = {
   price: number | null;
 };
 
-type ProductRow = {
-  id: string;
-  nameAr: string;
-  sku: string;
-  barcode?: string | null;
-  priceAmount: string | number;
-  categoryId?: string | null;
-  posMenuCategoryId?: string | null;
-  posAvailable?: boolean;
-  saleOk?: boolean;
-  status?: string;
-};
-
-type VariantRow = {
-  id: string;
-  productId: string;
-  nameAr: string;
-  sku: string;
-  barcode: string | null;
-  isActive: boolean;
-  salePriceAmount?: string | number | null;
-};
-
-type MediaRow = { productId: string; url: string; isPrimary: boolean; position: number };
-
-const toNumber = (v: string | number | null | undefined): number => {
-  const n = typeof v === 'number' ? v : Number(v ?? 0);
-  return Number.isFinite(n) ? n : 0;
-};
-
 export async function fetchPosProducts(
   companyId: string,
   options: { onlyPosAvailable: boolean },
 ): Promise<PosCatalogProduct[]> {
-  const [products, media] = await Promise.all([
-    apiRequest<PaginatedResult<ProductRow>>('/inventory/products', {
-      query: {
-        companyId,
-        page: 1,
-        limit: 500,
-        archiveScope: 'active',
-        status: 'active',
-        posAvailable: options.onlyPosAvailable ? true : undefined,
-      },
-      throwOnError: true,
-    }),
-    apiRequest<PaginatedResult<MediaRow>>('/inventory/product-media', {
-      query: { companyId, page: 1, limit: 2000, archiveScope: 'active' },
-      silent: true,
-    }).catch(() => null),
-  ]);
-
-  const imageByProduct = new Map<string, MediaRow>();
-  for (const m of media?.items ?? []) {
-    const current = imageByProduct.get(m.productId);
-    if (!current || (m.isPrimary && !current.isPrimary) || m.position < current.position) {
-      imageByProduct.set(m.productId, m);
-    }
-  }
-
-  return (products.items ?? [])
-    .filter((p) => p.saleOk !== false)
-    .map((p) => ({
-      id: p.id,
-      name: p.nameAr,
-      sku: p.sku,
-      barcode: p.barcode ?? null,
-      price: toNumber(p.priceAmount),
-      categoryId: p.categoryId ?? null,
-      posMenuCategoryId: p.posMenuCategoryId ?? null,
-      imageUrl: imageByProduct.get(p.id)?.url ?? null,
-    }));
+  const rows = await apiRequest<PosCatalogProduct[]>('/pos/catalog', {
+    query: { companyId, onlyPosAvailable: options.onlyPosAvailable ? true : undefined },
+    throwOnError: true,
+  });
+  return Array.isArray(rows) ? rows : [];
 }
 
 export async function fetchPosVariants(companyId: string, productId: string): Promise<PosCatalogVariant[]> {
-  const res = await apiRequest<PaginatedResult<VariantRow>>('/inventory/product-variants', {
-    query: { companyId, productId, page: 1, limit: 200 },
+  const rows = await apiRequest<PosCatalogVariant[]>(`/pos/catalog/${productId}/variants`, {
+    query: { companyId },
     throwOnError: true,
   });
-  return (res.items ?? [])
-    .filter((v) => v.isActive !== false)
-    .map((v) => ({
-      id: v.id,
-      productId: v.productId,
-      name: v.nameAr,
-      sku: v.sku,
-      barcode: v.barcode,
-      price: v.salePriceAmount == null || v.salePriceAmount === '' ? null : toNumber(v.salePriceAmount),
-    }));
+  return Array.isArray(rows) ? rows : [];
 }
 
-/** A scanned barcode or SKU: the existing exact-match resolver of the products app. */
-export async function resolvePosScan(companyId: string, code: string) {
-  return resolveScannedCode(companyId, code);
+/** A scanned barcode or SKU, of a product or a variant. */
+export async function resolvePosScan(
+  companyId: string,
+  code: string,
+): Promise<{ productId: string; variantId: string | null } | null> {
+  return apiRequest<{ productId: string; variantId: string | null } | null>('/pos/catalog/scan', {
+    query: { companyId, code },
+    throwOnError: true,
+    silent: true,
+  });
 }
 
 /** Sample items so the design can be reviewed without catalog data. */

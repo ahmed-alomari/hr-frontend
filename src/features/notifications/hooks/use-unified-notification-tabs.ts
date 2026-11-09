@@ -6,7 +6,7 @@ import { useAuthStore } from '@/features/auth/lib/auth-store';
 import { useCurrentEmployee } from '@/features/hr/organization/employees/hooks/useCurrentEmployee';
 import { APP, useCompanyApps } from '@/shared/modules/company-apps';
 
-export type UnifiedNotificationTabId = 'hr' | 'inventory' | 'store' | 'contacts';
+export type UnifiedNotificationTabId = 'hr' | 'inventory' | 'store' | 'contacts' | 'expenses';
 
 export type UnifiedNotificationTab = {
   id: UnifiedNotificationTabId;
@@ -36,6 +36,7 @@ export function useUnifiedNotificationTabs(): {
   const inventoryEnabled = apps.isEnabled(APP.inventory);
   const storeEnabled = apps.isEnabled(APP.storeAdmin);
   const contactsEnabled = apps.isEnabled(APP.contacts);
+  const expensesEnabled = apps.isEnabled(APP.expenses);
 
   const tabs = React.useMemo(() => {
     const result: UnifiedNotificationTab[] = [];
@@ -72,8 +73,12 @@ export function useUnifiedNotificationTabs(): {
       });
     }
 
+    if (expensesEnabled && userId && ['exp.expenses.create', 'exp.expenses.read', 'exp.expenses.approve', 'exp.custody.read', 'exp.settlements.read', 'exp.reports.read'].some((code) => can(code))) {
+      result.push({ id: 'expenses', label: 'المصاريف', canUpdate: true });
+    }
+
     return result;
-  }, [hrEnabled, inventoryEnabled, storeEnabled, contactsEnabled, userId, employeeId, can]);
+  }, [hrEnabled, inventoryEnabled, storeEnabled, contactsEnabled, expensesEnabled, userId, employeeId, can]);
 
   return {
     tabs,

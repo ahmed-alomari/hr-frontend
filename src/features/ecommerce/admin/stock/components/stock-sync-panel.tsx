@@ -1,5 +1,6 @@
 'use client';
 
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -584,12 +585,14 @@ function RunReport({ run }: { run: Pick<StockSyncRun, 'report'> }) {
   const { totals, items, openLocalOrders } = run.report;
   return (
     <div className="space-y-3">
-      <div className="grid gap-2 sm:grid-cols-4">
-        <Stat label="الأصناف" value={totals.items} />
-        <Stat label="متتبَّعة في المخازن" value={totals.tracked} />
-        <Stat label="فرق مع كمية المنتج" value={totals.mismatched} warn={totals.mismatched > 0} />
-        <Stat label="غير متوفرة" value={totals.outOfStock} />
-      </div>
+      <PhoneStatsFold summary={<>الأصناف {totals.items}</>}>
+        <div className="grid gap-2 sm:grid-cols-4">
+          <Stat label="الأصناف" value={totals.items} />
+          <Stat label="متتبَّعة في المخازن" value={totals.tracked} />
+          <Stat label="فرق مع كمية المنتج" value={totals.mismatched} warn={totals.mismatched > 0} />
+          <Stat label="غير متوفرة" value={totals.outOfStock} />
+        </div>
+      </PhoneStatsFold>
       {openLocalOrders > 0 ? (
         <p className="rounded-xl border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-xs text-warning">
           {openLocalOrders} طلب مفتوح خُصم من كمية المنتج: إن أُلغي يعود لكمية المنتج، وعند شحنه لا يُصرف من المخازن.

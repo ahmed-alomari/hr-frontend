@@ -9,6 +9,7 @@ alwaysApply: false
 المرجع الكامل: @.claude/skills/list-screens/SKILL.md (اقرأه قبل بناء أو تعديل أي شاشة قائمة).
 
 ملخص ما لا يُخالف:
+- كل شاشة فيها سجلات أو تقرير أو كشف حساب: فلترة، وتصدير PDF وExcel، وأعمدة وترتيب وتجميع وعروض محفوظة، وترقيم صفحات، وإجماليات، وقائمتان في صفحة = تبويبات. التفصيل والاستثناءات في AGENTS.md القسم 8.
 - كل شاشة قائمة: فلاتر محفوظة (`usePersistedFilterState` + `hrFiltersKey`)، ترتيب من الخادم (`useListSort` + `ListSortMenu` + `sortKey`)، تجميع حين توجد حقول له (`useListGroup` + `ListGroupMenu` + `useGroupedList` + `GroupedDataTable`)، أعمدة اختيارية (`useColumnVisibility` + `ListColumnsPicker`)، عروض محفوظة (`listStateKeys` + `ListSavedViews`)، صف إجمالي لكل الصفحات، وتصدير PDF/Excel يتبع الشاشة.
 - الترتيب والتجميع والإجماليات من الخادم دائماً، لا من الصفحة الظاهرة. المفاتيح = مفاتيح الخادم حرفياً.
 - التخزين مقيّد بالشركة. لا عملة ثابتة (`companyCurrencyCode()`)، ولا جمع لعملتين.

@@ -15,7 +15,32 @@ import { IDEMPOTENT_COMMANDS, type ExpensesCommand } from './commands';
 
 type SourceState = 'loading' | 'live' | 'unavailable';
 
-type ExpensesView = ExpensesData & { actorId: string; currency: string };
+type ExpensesView = ExpensesData & { actorId: string; currency: string; fullAccess: boolean };
+
+/** A command's answer: only what it changed. */
+type CommandAnswer<R> = {
+  changes: Partial<ExpensesData>;
+  result: R;
+  actorId: string;
+  currency: string;
+  fullAccess: boolean;
+};
+
+/** New and edited rows into the data the screen already holds. */
+export function mergeChanges(data: ExpensesData, changes: Partial<ExpensesData>): ExpensesData {
+  const next = { ...data } as unknown as Record<string, unknown>;
+  for (const [key, rows] of Object.entries(changes)) {
+    if (!Array.isArray(rows)) {
+      next[key] = rows;
+      continue;
+    }
+    const current = (next[key] ?? []) as Array<{ id: string }>;
+    const byId = new Map(rows.map((row: { id: string }) => [row.id, row]));
+    const known = new Set(current.map((row) => row.id));
+    next[key] = [...current.map((row) => byId.get(row.id) ?? row), ...rows.filter((row: { id: string }) => !known.has(row.id))];
+  }
+  return next as unknown as ExpensesData;
+}
 
 type ExpensesState = {
   companyId: string | null;
@@ -24,6 +49,8 @@ type ExpensesState = {
   actorId: string | null;
   /** The company's base currency (balances and new records). */
   currency: string;
+  /** False: the data holds only this person's own records. */
+  fullAccess: boolean;
   liveParticipants: Participant[];
   participants: SourceState;
   loadError: string | null;
@@ -60,8 +87,8 @@ export function errorMessage(err: unknown): string {
 
 export const useExpensesStore = create<ExpensesState>((set, get) => {
   const apply = (view: ExpensesView) => {
-    const { actorId, currency, ...data } = view;
-    set({ data, actorId, currency });
+    const { actorId, currency, fullAccess, ...data } = view;
+    set({ data, actorId, currency, fullAccess });
   };
 
   const load = async (companyId: string) => {
@@ -100,6 +127,7 @@ export const useExpensesStore = create<ExpensesState>((set, get) => {
     data: null,
     actorId: null,
     currency: 'YER',
+    fullAccess: true,
     liveParticipants: [],
     participants: 'loading',
     loadError: null,
@@ -135,9 +163,9 @@ export const useExpensesStore = create<ExpensesState>((set, get) => {
       try {
         const sent = withRequestId(command);
         const send = () =>
-          apiRequest<{ data: ExpensesView; result: R }>('/expenses/commands', {
+          apiRequest<CommandAnswer<R>>('/expenses/commands', {
             method: 'POST',
-            body: { companyId, command: sent },
+            body: { companyId, command: sent, respond: 'changes' },
             silent: true,
             throwOnError: true,
           });
@@ -146,7 +174,12 @@ export const useExpensesStore = create<ExpensesState>((set, get) => {
           if (isLostAnswer(err) && sent.requestId) return send();
           throw err;
         });
-        if (get().companyId === companyId) apply(res.data);
+        if (get().companyId === companyId) {
+          const { data, fullAccess } = get();
+          // A setting can change what this person may read: read it all again.
+          if (!data || res.changes.settings || res.fullAccess !== fullAccess) await load(companyId);
+          else set({ data: mergeChanges(data, res.changes), actorId: res.actorId, currency: res.currency, fullAccess: res.fullAccess });
+        }
         return res.result;
       } catch (err) {
         throw new Error(errorMessage(err));

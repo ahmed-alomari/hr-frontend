@@ -1,20 +1,16 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { CheckCircle2, Plus, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { TableDateCell, TableRowActions, TableRowDetailDialog } from '@/components/ui/table-cells';
 import { FormField, EmptyState } from '@/components/ui/shared-dialogs';
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-  dialogFormFooterClass,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, dialogFormFooterClass } from '@/components/ui/dialog';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
@@ -27,13 +23,8 @@ import { DirectoryPagedViews } from '@/components/ui/paged-list';
 import { EmployeePicker } from '@/components/ui/employee-picker';
 import { useLeaveBalanceCreditModel } from '@/features/hr/leaves/balance-credit/hooks/useLeaveBalanceCreditModel';
 import type { LeaveBalanceCreditRequest } from '@/features/hr/leaves/balance-credit/types';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
 import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import {
-  employeeStatusFilterLabelAr,
-  isEmployeeStatusFilterActive,
-} from '@/features/hr/lib/employee-status-filter';
+import { employeeStatusFilterLabelAr, isEmployeeStatusFilterActive } from '@/features/hr/lib/employee-status-filter';
 import { exportDateTime, exportText } from '@/features/hr/requests/lib/list-export-format';
 
 const CREDIT_STATUS_ORDER: readonly string[] = ['pending', 'approved', 'rejected'];
@@ -50,14 +41,6 @@ function statusLabelAr(status: LeaveBalanceCreditRequest['status']) {
   return CREDIT_STATUS_LABELS[status] ?? status;
 }
 
-const CREDIT_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الموظف', kind: 'name' },
-  { label: 'نوع الإجازة', kind: 'text' },
-  { label: 'الأيام المضافة', kind: 'number' },
-  { label: 'الوصف', kind: 'text', weight: 1.6 },
-  { label: 'الحالة', kind: 'status' },
-  { label: 'التاريخ', kind: 'date' },
-];
 
 export function LeaveBalanceCreditClient() {
   const m = useLeaveBalanceCreditModel();
@@ -66,45 +49,10 @@ export function LeaveBalanceCreditClient() {
   const activeFilterCount = (m.branchId !== 'all' ? 1 : 0) + (m.departmentId !== 'all' ? 1 : 0) + (m.statusFilter !== 'all' ? 1 : 0) + (m.selectedEmpIds.size > 0 ? 1 : 0)
     + (isEmployeeStatusFilterActive(m.employeeStatus) ? 1 : 0);
 
-  const getExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    const rows = await m.loadAllForExport();
-    return rows.map((r) => [
-      exportText(r.employeeNameAr),
-      exportText(r.leaveTypeNameAr),
-      `+${toWesternDigits(String(r.daysAdded))}`,
-      exportText(r.reasonAr),
-      statusLabelAr(r.status),
-      exportDateTime(r.createdAt),
-    ]);
-  });
   const openAddFromHeader = useLatestCallback(() =>
     m.openAddDialog(m.selectedEmpIds.size > 0 ? m.selectedEmpIds : undefined),
   );
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <RegisterExportMenu
-          title="سجل طلبات إضافة رصيد الإجازات"
-          fileName="leave-balance-credits"
-          columns={CREDIT_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={[`حالة الموظفين: ${employeeStatusFilterLabelAr(m.employeeStatus)}`]}
-        />
-        <Button
-          variant="luxe"
-          size="sm"
-          className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
-          onClick={openAddFromHeader}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          طلب إضافة رصيد
-        </Button>
-      </div>
-    ),
-    [activeFilterCount, m.employeeStatus, openAddFromHeader],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -249,6 +197,43 @@ export function LeaveBalanceCreditClient() {
     [m.approveCreditRequest, m.rejectCreditRequest],
   );
 
+  const tools = useListTools<LeaveBalanceCreditRequest>({
+    section: 'hr',
+    page: 'leave-balance-credit',
+    columns,
+    rows: m.sortedRequests,
+    fetchAll: m.loadAllForExport,
+    resetKey: m.pagination.resetKey,
+    fields: {
+      employee: { kind: 'name', text: (r) => exportText(r.employeeNameAr), group: (r) => r.employeeNameAr || null },
+      leaveType: { text: (r) => exportText(r.leaveTypeNameAr), group: (r) => r.leaveTypeNameAr || null },
+      days: { text: (r) => `+${toWesternDigits(String(r.daysAdded))}`, sort: (r) => Number(r.daysAdded) || 0, sum: (r) => Number(r.daysAdded) || 0 },
+      reason: { text: (r) => exportText(r.reasonAr), sortable: false },
+      status: { kind: 'status', text: (r) => statusLabelAr(r.status), group: (r) => statusLabelAr(r.status) },
+      createdAt: { kind: 'date', text: (r) => exportDateTime(r.createdAt), sort: (r) => r.createdAt ?? '', group: (r) => (r.createdAt ? r.createdAt.slice(0, 7) : null) },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('سجل طلبات إضافة رصيد الإجازات', 'leave-balance-credits', [`حالة الموظفين: ${employeeStatusFilterLabelAr(m.employeeStatus)}`])}
+        <Button
+          variant="luxe"
+          size="sm"
+          className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
+          onClick={openAddFromHeader}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          طلب إضافة رصيد
+        </Button>
+      </div>
+    ),
+    [activeFilterCount, m.employeeStatus, openAddFromHeader, tools.depsKey],
+  );
+
   if (m.accessDenied) {
     return <ForbiddenState title="لا تملك صلاحية الوصول لطلبات إضافة الرصيد" />;
   }
@@ -265,15 +250,17 @@ export function LeaveBalanceCreditClient() {
         ) : m.sortedRequests.length === 0 && !m.loading ? (
           <EmptyState title="لا توجد طلبات ضمن الفلاتر" />
         ) : (
+          <ListToolsTable tools={tools} keyExtractor={(r) => r.id} onRowClick={(r) => setDetailRow(r)}>
           <DirectoryPagedViews
-            items={m.sortedRequests}
-            serverPagination={m.pagination}
-            loading={m.loading}
+            items={tools.rows}
+            serverPagination={tools.pagination(m.pagination)}
+            loading={m.loading || tools.loading}
             resetDeps={[m.branchId, m.departmentId, m.statusFilter, m.selectedEmpKey, m.dateBounds.from, m.dateBounds.to]}
           >
             {(pageItems) => (
           <DataTable
-            columns={columns}
+            columns={tools.columns}
+            {...tools.tableSort}
             data={pageItems}
             keyExtractor={(r) => r.id}
             emptyText="لا توجد طلبات"
@@ -347,6 +334,7 @@ export function LeaveBalanceCreditClient() {
           />
             )}
           </DirectoryPagedViews>
+          </ListToolsTable>
         )}
       </div>
 

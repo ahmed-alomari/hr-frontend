@@ -293,6 +293,8 @@ export interface UseServerDirectoryPaginationOptions<T> {
   loadBulk?: () => Promise<{ items: T[]; total: number }>;
 }
 
+const LOAD_ALL_PAGE_SIZE = 200;
+
 /** Server-paginated list state; refetches when `page` / `pageSize` change (unless `bulkMode`). */
 export function useServerDirectoryPagination<T>(
   loadPage: (page: number, pageSize: number) => Promise<{ items: T[]; total: number }>,
@@ -395,13 +397,26 @@ export function useServerDirectoryPagination<T>(
     return items;
   }, [bulkItems, bulkMode, items, page, pageSize]);
 
-  const pagination: PaginationBarState = {
+  /** Every row under the current filters, for a sort, a grouping or an export over the whole list. */
+  const loadAll = React.useCallback(async (): Promise<T[]> => {
+    if (bulkMode && loadBulkRef.current) return (await loadBulkRef.current()).items;
+    const all: T[] = [];
+    for (let next = 1; ; next += 1) {
+      const res = await loadPageRef.current(next, LOAD_ALL_PAGE_SIZE);
+      all.push(...res.items);
+      if (res.items.length === 0 || all.length >= res.total) return all;
+    }
+  }, [bulkMode]);
+
+  const pagination: PaginationBarState & { loadAll: () => Promise<T[]>; resetKey: string } = {
     page,
     pageSize,
     total,
     totalPages,
     setPage: setPageClamped,
     setPageSize: setPageSizeReset,
+    loadAll,
+    resetKey,
   };
 
   const reload = React.useCallback(async () => {

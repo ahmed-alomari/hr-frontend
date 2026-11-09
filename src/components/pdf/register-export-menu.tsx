@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { Check, FileDown, FileSpreadsheet, ListFilter, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -244,51 +245,53 @@ export function RegisterExportMenu({
   );
 
   return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 w-8 shrink-0"
-            aria-label={`تصدير ${title}`}
-            disabled={busy}
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuItem onSelect={() => void exportPdf()}>
-            <FileDown className="h-4 w-4" />
-            PDF
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void exportExcel()}>
-            <FileSpreadsheet className="h-4 w-4" />
-            Excel
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <PdfPreviewExportDialog
-        open={pdfRows !== null}
-        onOpenChange={(open) => {
-          if (!open) setPdfRows(null);
-        }}
-        title={`معاينة تصدير ${title}`}
-        fileName={`${fileName}.pdf`}
-        printable={printable}
-        orientation={landscape ? 'landscape' : 'portrait'}
-        headerExtra={
-          removableColumns.length > 0 ? (
-            <PrintFieldsPicker
-              columns={removableColumns}
-              hidden={hiddenLabels}
-              onToggle={toggleField}
-              onReset={resetFields}
-            />
-          ) : null
-        }
-      />
-    </>
+    <FoldedHeaderTool>
+      <>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 shrink-0"
+              aria-label={`تصدير ${title}`}
+              disabled={busy}
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onSelect={() => void exportPdf()}>
+              <FileDown className="h-4 w-4" />
+              PDF
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void exportExcel()}>
+              <FileSpreadsheet className="h-4 w-4" />
+              Excel
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <PdfPreviewExportDialog
+          open={pdfRows !== null}
+          onOpenChange={(open) => {
+            if (!open) setPdfRows(null);
+          }}
+          title={`معاينة تصدير ${title}`}
+          fileName={`${fileName}.pdf`}
+          printable={printable}
+          orientation={landscape ? 'landscape' : 'portrait'}
+          headerExtra={
+            removableColumns.length > 0 ? (
+              <PrintFieldsPicker
+                columns={removableColumns}
+                hidden={hiddenLabels}
+                onToggle={toggleField}
+                onReset={resetFields}
+              />
+            ) : null
+          }
+        />
+      </>
+    </FoldedHeaderTool>
   );
 }

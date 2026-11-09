@@ -1,5 +1,6 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { Trash2, CalendarDays, Megaphone, Send, Search, Plus } from 'lucide-react';
 import {
@@ -151,25 +152,6 @@ export function CircularsClient() {
       ]),
   );
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <RegisterExportMenu
-          title="سجل التعاميم"
-          fileName="discipline-circulars"
-          columns={CIRCULAR_EXPORT_COLUMNS}
-          getRows={getExportRows}
-        />
-        <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
-          onClick={() => { setDraft({ ...EMPTY, date: new Date().toISOString().slice(0, 10), executeSend: false }); setFormError(null); setDrawerOpen(true); }}>
-          <Plus className="h-3.5 w-3.5" />
-          تعميم جديد
-        </Button>
-      </div>
-    ),
-    [activeFilterCount, getExportRows],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -282,6 +264,42 @@ export function CircularsClient() {
       ),
     },
   ], [handleMarkSent]);
+
+  const tools = useListTools<HRDisciplineCircularRecord>({
+    section: 'hr',
+    page: 'discipline-circulars',
+    columns,
+    rows: m.items,
+    fetchAll: loadAllForExport,
+    resetKey: JSON.stringify([q, [...selectedEmpIds], audienceFilter, dateBounds]),
+    fields: {
+      title: { kind: 'name', text: (c) => c.titleAr || '—' },
+      audience: { text: (c) => c.audienceSummaryAr || '—', group: (c) => c.audienceSummaryAr || null },
+      date: { kind: 'date', text: (c) => (c.date ? c.date.slice(0, 10) : '—'), group: (c) => (c.date ? c.date.slice(0, 7) : null) },
+      body: { text: (c) => c.bodyAr || '—', sortable: false },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        <RegisterExportMenu
+          title="سجل التعاميم"
+          fileName="discipline-circulars"
+          columns={CIRCULAR_EXPORT_COLUMNS}
+          getRows={getExportRows}
+        />
+        <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
+          onClick={() => { setDraft({ ...EMPTY, date: new Date().toISOString().slice(0, 10), executeSend: false }); setFormError(null); setDrawerOpen(true); }}>
+          <Plus className="h-3.5 w-3.5" />
+          تعميم جديد
+        </Button>
+      </div>
+    ),
+    [activeFilterCount, getExportRows, tools.depsKey],
+  );
 
   const handleSave = async () => {
     setFormError(null);
@@ -434,10 +452,11 @@ export function CircularsClient() {
           </Button>
         </div>
       ) : (
-        <DisciplinePaginatedList pagination={m.pagination}>
+        <ListToolsTable tools={tools} keyExtractor={(c) => c.id} onRowClick={(c) => setDetailCircular(c)}>
+        <DisciplinePaginatedList pagination={tools.pagination(m.pagination)}>
           {viewMode === 'cards' ? (
           <EntityActionCardGrid>
-            {m.items.map((c) => (
+            {tools.rows.map((c) => (
             <EntityActionCard
               key={c.id}
               title={c.titleAr || 'تعميم'}
@@ -491,13 +510,15 @@ export function CircularsClient() {
             variant="directory"
             alwaysShowTable
             tableClassName="min-w-[880px]"
-            columns={columns}
-            data={m.items}
+            columns={tools.columns}
+            {...tools.tableSort}
+            data={tools.rows}
             keyExtractor={(c) => c.id}
             onRowClick={(c) => setDetailCircular(c)}
           />
           )}
         </DisciplinePaginatedList>
+        </ListToolsTable>
       )}
       </DisciplineListViewport>
 

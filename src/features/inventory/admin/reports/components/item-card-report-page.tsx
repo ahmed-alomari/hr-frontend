@@ -1,5 +1,7 @@
 'use client';
 
+import { useListTools } from '@/components/ui/list-tools';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
@@ -159,25 +161,6 @@ export function ItemCardReportPage() {
     ];
   };
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={(warehouseId !== 'all' ? 1 : 0) + 1} />
-        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
-        <RegisterExportMenu
-          title="كرت الصنف"
-          fileName="inventory-item-card"
-          columns={exportColumns}
-          getRows={getExportRows}
-          subtitleLines={filterSummary}
-          landscape
-          pinnedColumnCount={1}
-          emptyMessage="اختر صنفًا أولًا."
-        />
-      </div>
-    ),
-    [warehouseId, JSON.stringify(filters), JSON.stringify(report?.closing), exportColumns.length, filterSummary.join('|'), stateKeys.views],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -330,6 +313,29 @@ export function ItemCardReportPage() {
       : []),
   ];
 
+  const tools = useListTools<ItemCardRow>({ section: 'inventory', page: 'item-card', columns: columns, rows: [], fields: {}, savedViews: false });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={(warehouseId !== 'all' ? 1 : 0) + 1} />
+        {tools.buttons}
+        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
+        <RegisterExportMenu
+          title="كرت الصنف"
+          fileName="inventory-item-card"
+          columns={exportColumns}
+          getRows={getExportRows}
+          subtitleLines={filterSummary}
+          landscape
+          pinnedColumnCount={1}
+          emptyMessage="اختر صنفًا أولًا."
+        />
+      </div>
+    ),
+    [warehouseId, JSON.stringify(filters), JSON.stringify(report?.closing), exportColumns.length, filterSummary.join('|'), stateKeys.views, tools.depsKey],
+  );
+
   const mobileCard = (row: ItemCardRow) => (
     <div className="space-y-1.5">
       <div className="flex items-start justify-between gap-2">
@@ -387,30 +393,32 @@ export function ItemCardReportPage() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-            <ReportStat
-              label="رصيد أول المدة"
-              value={formatQty(report?.opening.qty ?? 0)}
-              hint={valueVisible ? money(report?.opening.value ?? 0) : undefined}
-            />
-            <ReportStat
-              label="الوارد"
-              tone="in"
-              value={formatQty(report?.totals.inQty ?? 0)}
-              hint={valueVisible ? money(report?.totals.inValue ?? 0) : undefined}
-            />
-            <ReportStat
-              label="الصادر"
-              tone="out"
-              value={formatQty(report?.totals.outQty ?? 0)}
-              hint={valueVisible ? money(report?.totals.outValue ?? 0) : undefined}
-            />
-            <ReportStat
-              label="رصيد آخر المدة"
-              value={formatQty(report?.closing.qty ?? 0)}
-              hint={valueVisible ? money(report?.closing.value ?? 0) : undefined}
-            />
-          </div>
+          <PhoneStatsFold>
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+              <ReportStat
+                label="رصيد أول المدة"
+                value={formatQty(report?.opening.qty ?? 0)}
+                hint={valueVisible ? money(report?.opening.value ?? 0) : undefined}
+              />
+              <ReportStat
+                label="الوارد"
+                tone="in"
+                value={formatQty(report?.totals.inQty ?? 0)}
+                hint={valueVisible ? money(report?.totals.inValue ?? 0) : undefined}
+              />
+              <ReportStat
+                label="الصادر"
+                tone="out"
+                value={formatQty(report?.totals.outQty ?? 0)}
+                hint={valueVisible ? money(report?.totals.outValue ?? 0) : undefined}
+              />
+              <ReportStat
+                label="رصيد آخر المدة"
+                value={formatQty(report?.closing.qty ?? 0)}
+                hint={valueVisible ? money(report?.closing.value ?? 0) : undefined}
+              />
+            </div>
+          </PhoneStatsFold>
 
           <ValueHiddenNote header={report} />
 
@@ -440,7 +448,7 @@ export function ItemCardReportPage() {
                 variant="directory"
                 keepHeaderWhenEmpty
                 className="inv-table-host"
-                columns={columns}
+                columns={tools.columns}
                 mobileCard={mobileCard}
                 data={rowsPage}
                 keyExtractor={(row) => row.key}

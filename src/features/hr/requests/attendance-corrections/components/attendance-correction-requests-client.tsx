@@ -1,59 +1,28 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
-import { Ban, CalendarDays, CheckCircle2, Loader2, Plus, XCircle } from 'lucide-react';
+import { CalendarDays, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
-import {
-  EntityActionCard,
-  EntityActionCardChip,
-  EntityActionCardGrid,
-  type WorkflowStatusTone,
-} from '@/components/ui/entity-action-card';
+import { EntityActionCard, EntityActionCardChip, EntityActionCardGrid, type WorkflowStatusTone } from '@/components/ui/entity-action-card';
 import { DirectoryPagedViews, useServerDirectoryPagination } from '@/components/ui/paged-list';
 import { correctionRequestsApi } from '@/features/hr/requests/lib/api/correction-requests';
-import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import {
-  employeeStatusFilterLabelAr,
-  employeeStatusQuery,
-  isEmployeeStatusFilterActive,
-  useEmployeeStatusFilter,
-} from '@/features/hr/lib/employee-status-filter';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
+import { employeeStatusFilterLabelAr, employeeStatusQuery, isEmployeeStatusFilterActive, useEmployeeStatusFilter } from '@/features/hr/lib/employee-status-filter';
 import { exportClock, exportDate, exportDateTime, exportText } from '@/features/hr/requests/lib/list-export-format';
 import { mapCorrectionRequest } from '@/features/hr/requests/lib/attendance-correction-store';
-import { TableDateCell, TableRowActions } from '@/components/ui/table-cells';
+import { TableDateCell } from '@/components/ui/table-cells';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { useSetPageTitle } from '@/components/layouts/page-title-context';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/shared-dialogs';
 import { AttendanceCorrectionRequestDialog } from '@/features/hr/requests/attendance-corrections/components/attendance-correction-request-dialog';
-import {
-  attendanceEventsApi,
-  type DailyBreakdownResponseDto,
-} from '@/features/hr/attendance/lib/api/attendance-events';
-import {
-  ActualRegistrationBlock,
-  PeriodCard,
-  StatChip,
-  WEEKDAY_AR,
-  defaultTimezoneOffsetMinutes,
-  resolveDayActualWithoutPeriods,
-  statusCfg,
-} from '@/features/hr/attendance/daily/components/daily-day-detail-dialog';
+import { attendanceEventsApi, type DailyBreakdownResponseDto } from '@/features/hr/attendance/lib/api/attendance-events';
+import { ActualRegistrationBlock, PeriodCard, StatChip, WEEKDAY_AR, defaultTimezoneOffsetMinutes, resolveDayActualWithoutPeriods, statusCfg } from '@/features/hr/attendance/daily/components/daily-day-detail-dialog';
 import { fmtFull, minutesToHHMM } from '@/features/hr/attendance/daily/utils/daily-attendance-format';
 import { useHRConfigurationStore } from '@/features/hr/requests/lib/configuration-store';
 import { useHREmployeeDirectoryStore } from '@/features/hr/requests/lib/employee-directory-store';
@@ -62,30 +31,15 @@ import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-comp
 import { useCurrentEmployee } from '@/features/hr/organization/employees/hooks/useCurrentEmployee';
 import { checkRequestApprovalAccess } from '@/features/hr/requests/lib/request-approval-access';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
-import {
-  buildRequestCorrectionDecisionPayload,
-  getRequestApprovalUiState,
-  isEmployeeInRequestApproverStates,
-  isRequestFullyApproved,
-} from '@/features/hr/requests/lib/request-approver-states';
+import { buildRequestCorrectionDecisionPayload, getRequestApprovalUiState, isEmployeeInRequestApproverStates, isRequestFullyApproved } from '@/features/hr/requests/lib/request-approver-states';
 import { RequestApproverStatesPanel } from '@/features/hr/requests/components/request-approver-states-panel';
 import { RequestApprovalActionCell, RequestApprovalActionButtons } from '@/features/hr/requests/components/request-approval-actions';
 import { RequestApproversInline } from '@/features/hr/requests/components/request-approvers-inline';
-import {
-  CorrectionTimesComparisonCell,
-  CorrectionTimesComparisonDetail,
-} from '@/features/hr/requests/components/correction-period-times';
-import {
-  useAttendanceCorrectionRequestsStore,
-  attendanceCorrectionStatusLabelAr,
-} from '@/features/hr/requests/lib/attendance-correction-store';
+import { CorrectionTimesComparisonCell, CorrectionTimesComparisonDetail } from '@/features/hr/requests/components/correction-period-times';
+import { useAttendanceCorrectionRequestsStore, attendanceCorrectionStatusLabelAr } from '@/features/hr/requests/lib/attendance-correction-store';
 import type { AttendanceCorrectionRequest } from '@/features/hr/requests/lib/attendance-correction-store';
 import { cn } from '@/shared/utils';
-import {
-  hrFiltersKey,
-  usePersistedEmpIdSet,
-  usePersistedFilterState,
-} from '@/features/hr/lib/use-persisted-filter-state';
+import { hrFiltersKey, usePersistedEmpIdSet, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
 
 import { AR_CORRECTION_REQUEST_STATUS_LABELS } from '@/shared/i18n/ar';
 
@@ -101,18 +55,6 @@ const CORRECTION_STATUS_TONE: Record<AttendanceCorrectionRequest['status'], Work
   cancelled: 'muted',
 };
 
-const EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الموظف', kind: 'name' },
-  { label: 'القسم', kind: 'text' },
-  { label: 'نوع الطلب', kind: 'text' },
-  { label: 'الحالة السابقة', kind: 'status' },
-  { label: 'حالة الطلب', kind: 'status' },
-  { label: 'السبب', kind: 'text', weight: 1.4 },
-  { label: 'أوقات التصحيح', kind: 'text', weight: 1.4 },
-  { label: 'تاريخ التصحيح', kind: 'date' },
-  { label: 'تاريخ التقديم', kind: 'date' },
-  { label: 'ملاحظات القرار', kind: 'text' },
-];
 
 /** «قبل: 8:00 ص - 4:00 م / بعد: …» — same before/after pairs as the times cell. */
 function correctionTimesExportText(r: AttendanceCorrectionRequest): string {
@@ -431,48 +373,9 @@ export function AttendanceCorrectionRequestsClient() {
     return count;
   }, [appliedDept, selectedEmpIds.size, dateBounds.from, dateBounds.to, statusFilter, employeeStatus]);
 
-  const getExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    if (!companyId) return [];
-    const { items } = await fetchAllPaginatedItems(async (page, limit) => {
-      const res = await correctionRequestsApi.list(buildListQuery(page, limit));
-      return { items: res.items.map((r) => mapCorrectionRequest(r, res.approvalAssignments)), pagination: res.pagination };
-    });
-    return items.map((r) => [
-      exportText(r.employeeNameAr),
-      exportText(r.departmentNameAr),
-      r.subtypeNameAr ? `${r.requestTypeNameAr} — ${r.subtypeNameAr}` : exportText(r.requestTypeNameAr),
-      exportText(r.previousStatusAr),
-      attendanceCorrectionStatusLabelAr(r.status),
-      exportText(r.reasonAr),
-      correctionTimesExportText(r),
-      exportDate(r.workDate),
-      exportDateTime(r.submittedAt),
-      exportText(r.decisionNotesAr),
-    ]);
-  });
 
   useSetPageTitle({ titleAr: 'تصحيح الحضور', descriptionAr: 'طلبات تصحيح أوقات الحضور والانصراف', iconName: 'CalendarClock' });
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <RegisterExportMenu
-          title="سجل طلبات تصحيح الحضور"
-          fileName="attendance-correction-requests"
-          columns={EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={[`حالة الموظفين: ${employeeStatusFilterLabelAr(employeeStatus)}`]}
-          landscape
-        />
-        <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0" onClick={openNew}>
-          <Plus className="h-3.5 w-3.5" />
-          طلب تصحيح حضور
-        </Button>
-      </div>
-    ),
-    [activeFilterCount, employeeStatus],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -660,16 +563,60 @@ export function AttendanceCorrectionRequestsClient() {
     [cancel, currentEmployeeId, handleApprove, handleReject, reloadList],
   );
 
+  const tools = useListTools<AttendanceCorrectionRequest>({
+    section: 'hr',
+    page: 'attendance-corrections',
+    columns,
+    rows: sorted,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      emp: {
+        kind: 'name',
+        text: (r) => exportText(r.employeeNameAr),
+        group: (r) => r.employeeNameAr || null,
+        alsoExport: [{ label: 'القسم', text: (r) => exportText(r.departmentNameAr) }],
+      },
+      requestType: {
+        text: (r) => (r.subtypeNameAr ? `${r.requestTypeNameAr} — ${r.subtypeNameAr}` : exportText(r.requestTypeNameAr)),
+        group: (r) => r.requestTypeNameAr || null,
+      },
+      prevStatus: { text: (r) => exportText(r.previousStatusAr), group: (r) => r.previousStatusAr || null },
+      status: { kind: 'status', text: (r) => attendanceCorrectionStatusLabelAr(r.status), group: (r) => attendanceCorrectionStatusLabelAr(r.status) },
+      reason: { text: (r) => exportText(r.reasonAr), sortable: false },
+      times: { text: correctionTimesExportText, sortable: false },
+      workDate: { kind: 'date', text: (r) => exportDate(r.workDate), sort: (r) => r.workDate ?? '', group: (r) => (r.workDate ? r.workDate.slice(0, 7) : null) },
+      submittedAt: { kind: 'date', text: (r) => exportDateTime(r.submittedAt), sort: (r) => r.submittedAt ?? '' },
+      decisionNotes: { text: (r) => exportText(r.decisionNotesAr), sortable: false },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('سجل طلبات تصحيح الحضور', 'attendance-correction-requests', [`حالة الموظفين: ${employeeStatusFilterLabelAr(employeeStatus)}`])}
+        <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0" onClick={openNew}>
+          <Plus className="h-3.5 w-3.5" />
+          طلب تصحيح حضور
+        </Button>
+      </div>
+    ),
+    [activeFilterCount, employeeStatus, tools.depsKey],
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
       <div className="flex min-h-0 flex-1 flex-col">
         {!listLoading && sorted.length === 0 && pagination.total === 0 ? (
           <EmptyState title="لا توجد طلبات ضمن الفلاتر" />
         ) : (
+          <ListToolsTable tools={tools} keyExtractor={(r) => r.id} onRowClick={(r) => setDetailRow(r)}>
           <DirectoryPagedViews
-            items={sorted}
-            serverPagination={pagination}
-            loading={listLoading}
+            items={tools.rows}
+            serverPagination={tools.pagination(pagination)}
+            loading={listLoading || tools.loading}
           >
             {(pageItems) => (
               viewMode === 'cards' ? (
@@ -757,7 +704,8 @@ export function AttendanceCorrectionRequestsClient() {
                   variant="directory"
                   alwaysShowTable
                   tableClassName="min-w-[1200px]"
-                  columns={columns}
+                  columns={tools.columns}
+                  {...tools.tableSort}
                   data={pageItems}
                   keyExtractor={(r) => r.id}
                   emptyText="لا توجد طلبات"
@@ -766,6 +714,7 @@ export function AttendanceCorrectionRequestsClient() {
               )
             )}
           </DirectoryPagedViews>
+          </ListToolsTable>
         )}
       </div>
 

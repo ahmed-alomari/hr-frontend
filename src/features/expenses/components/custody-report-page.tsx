@@ -1,7 +1,10 @@
 'use client';
 
+import { hrFiltersKey, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
+import { useExpensesStore } from '../data/store';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
@@ -29,10 +32,12 @@ export function CustodyReportPage() {
   const ledger = useLedger();
   const currency = useCurrency();
   const directory = useDirectory();
-  const [searchInput, setSearchInput] = React.useState('');
-  const [search, setSearch] = React.useState('');
-  const [holderId, setHolderId] = React.useState(ALL);
-  const [status, setStatus] = React.useState(ALL);
+  const companyId = useExpensesStore((s) => s.companyId);
+  const filterKey = (field: string) => hrFiltersKey('expenses', 'custody-report', companyId, field);
+  const [searchInput, setSearchInput] = usePersistedFilterState(filterKey('search'), '');
+  const [search, setSearch] = React.useState(() => searchInput.trim().toLowerCase());
+  const [holderId, setHolderId] = usePersistedFilterState(filterKey('holder'), ALL);
+  const [status, setStatus] = usePersistedFilterState(filterKey('status'), ALL);
 
   React.useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 300);
@@ -137,12 +142,14 @@ export function CustodyReportPage() {
     <div className="flex flex-col gap-5">
       <SetPageTitle titleAr="تقرير العهد" descriptionAr="التسليم والتغذية والإرجاع تحويلات — لا تُحسب مصروفات." iconName="Wallet" />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        <ReportSummaryCard label="مسلّم" value={<Money value={list.total.sums.issued ?? 0} />} hint={`${rows.length} عهدة`} />
-        <ReportSummaryCard label="مصروف" value={<Money value={list.total.sums.spent ?? 0} />} />
-        <ReportSummaryCard label="مرتجع" value={<Money value={list.total.sums.returned ?? 0} />} />
-        <ReportSummaryCard label="الرصيد" value={<Money value={list.total.sums.actual ?? 0} />} />
-      </div>
+      <PhoneStatsFold summary={<>الرصيد <Money value={list.total.sums.actual ?? 0} /></>}>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+          <ReportSummaryCard label="مسلّم" value={<Money value={list.total.sums.issued ?? 0} />} hint={`${rows.length} عهدة`} />
+          <ReportSummaryCard label="مصروف" value={<Money value={list.total.sums.spent ?? 0} />} />
+          <ReportSummaryCard label="مرتجع" value={<Money value={list.total.sums.returned ?? 0} />} />
+          <ReportSummaryCard label="الرصيد" value={<Money value={list.total.sums.actual ?? 0} />} />
+        </div>
+      </PhoneStatsFold>
 
       <LocalListTable
         list={list}

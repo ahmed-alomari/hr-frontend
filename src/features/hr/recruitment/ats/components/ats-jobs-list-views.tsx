@@ -1,5 +1,13 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
+import { recruitmentGlobalRoutes } from '@/features/hr/recruitment/lib/recruitment-routes';
+import type { ListToolsModel } from '@/components/ui/list-tools';
+import type { ColumnDef } from '@/components/ui/data-table';
+import { DirectoryPagedViews } from '@/components/ui/paged-list';
+import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import {
   Briefcase, Plus, Pencil, Trash2, Share2, Power, Eye, ArrowUpRight, Users,
@@ -17,9 +25,66 @@ import { JOB_TYPE_AR } from '@/features/hr/recruitment/ats/constants/ats-jobs-li
 import { ConfirmationModal, EmptyState } from '@/components/ui/shared-dialogs';
 import type { AtsJobsListModel } from '@/features/hr/recruitment/ats/hooks/useAtsJobsListModel';
 
-type Props = { model: AtsJobsListModel };
+type Props = { model: AtsJobsListModel; tools: ListToolsModel<AtsJob> };
 
-export function AtsJobsListViews({ model }: Props) {
+/** Columns, sort, grouping, export and the page header: stays mounted while the list loads. */
+export function useAtsJobsListTools(model: AtsJobsListModel) {
+  const { filtered, applicants, openCreateJob, activeFilterCount, exportSubtitleLines } = model;
+  const statusOf = (job: AtsJob) =>
+    [job.isActive ? 'نشطة' : 'متوقفة', job.isArchived ? 'مؤرشف' : null].filter(Boolean).join(' — ');
+  const applicantsOf = (job: AtsJob) => applicants.filter((a) => a.jobId === job.id).length;
+  const typeOf = (job: AtsJob) => JOB_TYPE_AR[job.type] ?? job.type;
+  const columns: ColumnDef<AtsJob>[] = [
+    { key: 'title', title: 'المسمى', render: (job) => job.title },
+    { key: 'department', title: 'القسم', render: (job) => job.department || '—' },
+    { key: 'location', title: 'الموقع', render: (job) => job.location || '—' },
+    { key: 'type', title: 'النوع', render: typeOf },
+    { key: 'status', title: 'الحالة', render: statusOf },
+    { key: 'applicants', title: 'عدد المتقدمين', render: (job) => String(applicantsOf(job)) },
+  ];
+  const tools = useListTools<AtsJob>({
+    section: 'recruitment',
+    page: 'jobs',
+    columns,
+    rows: filtered,
+    resetKey: exportSubtitleLines.join('|'),
+    fields: {
+      title: { kind: 'name', text: (job) => job.title },
+      department: { text: (job) => job.department || '—', group: (job) => job.department || null },
+      location: { text: (job) => job.location || '—', group: (job) => job.location || null },
+      type: { kind: 'status', text: typeOf, group: typeOf },
+      status: { kind: 'status', text: statusOf, group: statusOf },
+      applicants: { text: (job) => String(applicantsOf(job)), sort: applicantsOf, sum: applicantsOf },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('سجل الوظائف', 'recruitment-jobs', exportSubtitleLines)}
+        <Button variant="luxe" size="sm" className="h-8 gap-2" onClick={openCreateJob}>
+          <Plus className="h-4 w-4" />
+          وظيفة جديدة
+        </Button>
+        <FoldedHeaderTool>
+          <Button variant="outline" size="sm" className="h-8 gap-2" asChild>
+            <a href={recruitmentGlobalRoutes.careers} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-3.5 w-3.5" />
+              بوابة التوظيف
+            </a>
+          </Button>
+        </FoldedHeaderTool>
+      </div>
+    ),
+    [activeFilterCount, openCreateJob, exportSubtitleLines, tools.depsKey],
+  );
+
+  return tools;
+}
+
+export function AtsJobsListViews({ model, tools }: Props) {
   const {
     router,
     filtered,
@@ -99,8 +164,11 @@ export function AtsJobsListViews({ model }: Props) {
           </CardContent>
         </Card>
       ) : (
+        <ListToolsTable tools={tools} keyExtractor={(job) => job.id} onRowClick={(job) => router.push(recruitmentJobRoutes(job.id, job.slug).hub)}>
+        <DirectoryPagedViews items={tools.rows} resetDeps={[tools.depsKey]}>
+          {(pageItems) => (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((job) => (
+          {pageItems.map((job) => (
             <AtsJobCard
               key={job.id}
               job={job}
@@ -113,6 +181,9 @@ export function AtsJobsListViews({ model }: Props) {
             />
           ))}
         </div>
+          )}
+        </DirectoryPagedViews>
+        </ListToolsTable>
       )}
     </div>
   );

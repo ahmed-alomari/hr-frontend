@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
@@ -392,14 +393,16 @@ export function ProductsListPage() {
           <span className="hidden sm:inline">مسح</span>
         </button>
         {canImport ? (
-          <Link
-            href={`${productsBasePath}/import`}
-            aria-label="استيراد المنتجات"
-            className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground sm:px-3"
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden sm:inline">استيراد</span>
-          </Link>
+          <FoldedHeaderTool>
+            <Link
+              href={`${productsBasePath}/import`}
+              aria-label="استيراد المنتجات"
+              className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground sm:px-3"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" />
+              <span className="hidden sm:inline">استيراد</span>
+            </Link>
+          </FoldedHeaderTool>
         ) : null}
         <FilterToggleButton activeFilterCount={activeFilterCount} />
         <ListColumnsPicker model={columnVisibility} />

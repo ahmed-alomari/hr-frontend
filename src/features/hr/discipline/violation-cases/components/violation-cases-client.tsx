@@ -1,20 +1,11 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import {
-  Trash2, CalendarDays, Edit3,
-  FileDown, FileSpreadsheet, Plus, AlertTriangle, Scale, Search, Loader2,
-} from 'lucide-react';
-import {
-  EntityActionCard,
-  EntityActionCardChip,
-  EntityActionCardGrid,
-  EntityActionCardGridSkeleton,
-  type WorkflowStatusTone,
-} from '@/components/ui/entity-action-card';
+import { Trash2, CalendarDays, Edit3, Plus, AlertTriangle, Scale, Search } from 'lucide-react';
+import { EntityActionCard, EntityActionCardChip, EntityActionCardGrid, EntityActionCardGridSkeleton, type WorkflowStatusTone } from '@/components/ui/entity-action-card';
 import { toast } from 'sonner';
-import { cn, formatDisplayDate, formatDisplayDateTime } from '@/shared/utils';
+import { cn, formatDisplayDateTime } from '@/shared/utils';
 import { AR_VIOLATION_RECORD_STATUS_LABELS } from '@/shared/i18n/ar';
 import { STATUS_PILL, VIOLATION_RECORD_STATUS_PILL } from '@/shared/status-pill-classes';
 import { Button } from '@/components/ui/button';
@@ -22,42 +13,18 @@ import { ForbiddenState } from '@/components/shared/forbidden-state';
 import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
-import {
-  Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
-  dialogFormFooterClass,
-} from '@/components/ui/dialog';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import {
-  ConfirmationModal, HRSettingsFormDrawer, FormField, EmptyState, SearchableDropdown,
-} from '@/components/ui/shared-dialogs';
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, dialogFormFooterClass } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ConfirmationModal, HRSettingsFormDrawer, FormField, EmptyState, SearchableDropdown } from '@/components/ui/shared-dialogs';
 import { useViolationCasesDirectoryModel } from '@/features/hr/discipline/violation-cases/hooks/useViolationCasesDirectoryModel';
 import type { ViolationCaseRecord } from '@/features/hr/discipline/violation-cases/hooks/useViolationCasesDirectoryModel';
-import { violationRecordsApi, type ViolationRecordStatus } from '@/features/hr/discipline/lib/api/violation-records';
-import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
-import {
-  INVESTIGATION_DEDUCTION_TYPE_LABELS,
-  INVESTIGATION_RECOMMENDATION_LABELS,
-  INVESTIGATION_RESULT_LABELS,
-} from '@/features/hr/discipline/lib/types';
-import {
-  ListFilterBar,
-  type ListFilterBarHandle,
-  type ListFilterInlineSelect,
-} from '@/components/ui/list-filter-bar';
+import { type ViolationRecordStatus } from '@/features/hr/discipline/lib/api/violation-records';
+import { INVESTIGATION_DEDUCTION_TYPE_LABELS, INVESTIGATION_RECOMMENDATION_LABELS, INVESTIGATION_RESULT_LABELS } from '@/features/hr/discipline/lib/types';
+import { ListFilterBar, type ListFilterBarHandle, type ListFilterInlineSelect } from '@/components/ui/list-filter-bar';
 import { useDisciplineDateFilterState } from '@/features/hr/discipline/lib/use-discipline-date-filter-state';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { PdfPreviewExportDialog } from '@/components/pdf/pdf-preview-export-dialog';
 import { PdfPreviewDownloadButton } from '@/components/pdf/pdf-preview-download-button';
-import { ViolationCasesRegisterPrintHtml } from '@/components/pdf/print/violation-cases-register-print-html';
 import { DisciplineLetterPrintHtml } from '@/components/pdf/print/discipline-letter-print-html';
-import { downloadXlsxFromAoA, type XlsxCell } from '@/shared/export/download-xlsx';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
@@ -68,18 +35,9 @@ import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import { useAuthStore } from '@/features/auth/lib/auth-store';
 import { useCurrentEmployee } from '@/features/hr/organization/employees/hooks/useCurrentEmployee';
 import { checkViolationApprovalAccess } from '@/features/hr/discipline/lib/violation-approval-access';
-import {
-  applyViolationApproverDecision,
-  buildViolationDecisionPayload,
-  getViolationApprovalUiState,
-  isEmployeeInViolationApproverStates,
-  isViolationFullyApproved,
-} from '@/features/hr/discipline/lib/violation-approver-states';
+import { applyViolationApproverDecision, buildViolationDecisionPayload, getViolationApprovalUiState, isEmployeeInViolationApproverStates, isViolationFullyApproved } from '@/features/hr/discipline/lib/violation-approver-states';
 import { ViolationApproverStatesPanel } from '@/features/hr/discipline/violation-cases/components/violation-approver-states-panel';
-import {
-  ViolationApprovalActionButtons,
-  ViolationApprovalActionCell,
-} from '@/features/hr/discipline/violation-cases/components/violation-approval-actions';
+import { ViolationApprovalActionButtons, ViolationApprovalActionCell } from '@/features/hr/discipline/violation-cases/components/violation-approval-actions';
 import { RequestApproversInline } from '@/features/hr/requests/components/request-approvers-inline';
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
 import { RelatedEmployeeAttachments } from '@/features/hr/organization/employees/components/related-employee-attachments';
@@ -341,7 +299,6 @@ export function ViolationCasesClient() {
   const { dateBounds, dateMeta, onDateBoundsChange, onDateFilterMetaChange } = useDisciplineDateFilterState();
   const filterToolbarRef = React.useRef<ListFilterBarHandle>(null);
 
-  const [pdfOpen, setPdfOpen] = React.useState(false);
   const [casePrintOpen, setCasePrintOpen] = React.useState(false);
   const [casePrintRecord, setCasePrintRecord] = React.useState<ViolationCaseRecord | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -414,115 +371,6 @@ export function ViolationCasesClient() {
     + (violationTypeFilter !== 'all' ? 1 : 0)
     + (dateRangeActive ? 1 : 0);
 
-  type ViolationExportRow = {
-    caseNumber: string; employeeNameAr: string; typeNameAr: string;
-    date: string; statusAr: string; description: string;
-  };
-  // Exports cover every record matching the current filters (same query as the list), not just the visible page.
-  const [violationPdfRows, setViolationPdfRows] = React.useState<ViolationExportRow[]>([]);
-  const [exporting, setExporting] = React.useState(false);
-  const exportCompanyId = hook.companyId ?? companyId;
-
-  const fetchAllForExport = React.useCallback(async (): Promise<ViolationExportRow[] | null> => {
-    setExporting(true);
-    try {
-      const empIds = [...selectedEmpIds];
-      const { items: all } = await fetchAllPaginatedItems((page, limit) =>
-        violationRecordsApi.getAll({
-          ...(exportCompanyId ? { companyId: exportCompanyId } : {}),
-          page,
-          limit,
-          ...(empIds.length > 0 ? { employeeIds: empIds } : {}),
-          ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
-          ...(violationTypeFilter !== 'all' ? { violationTypeId: violationTypeFilter } : {}),
-          ...(dateBounds.from ? { violationDateFrom: dateBounds.from } : {}),
-          ...(dateBounds.to ? { violationDateTo: dateBounds.to } : {}),
-        }),
-      );
-      const empNames = new Map(employees.map((e) => [e.id, e.nameAr]));
-      const typeNames = new Map(violationTypes.map((t) => [t.id, t.nameAr]));
-      return all.map((r) => ({
-        caseNumber: r.recordNumber,
-        employeeNameAr: empNames.get(r.employeeId) ?? r.employeeId,
-        typeNameAr: r.violationType?.nameAr ?? typeNames.get(r.violationTypeId) ?? r.violationTypeId,
-        date: r.violationDate,
-        statusAr: STATUS_LABELS[r.status ?? 'pending'],
-        description: r.description,
-      }));
-    } catch (err) {
-      const { displayMessage } = handleApiError(err, 'violation-records.export');
-      toast.error(displayMessage || 'تعذّر تحميل المخالفات للتصدير.');
-      return null;
-    } finally {
-      setExporting(false);
-    }
-  }, [exportCompanyId, selectedEmpIds, statusFilter, violationTypeFilter, dateBounds.from, dateBounds.to, employees, violationTypes]);
-
-  const handleExportPdf = useLatestCallback(async () => {
-    if (exporting) return;
-    const all = await fetchAllForExport();
-    if (!all) return;
-    if (all.length === 0) { toast.error('لا توجد مخالفات للتصدير ضمن الفلاتر الحالية.'); return; }
-    setViolationPdfRows(all);
-    setPdfOpen(true);
-  });
-
-  const handleExportExcel = useLatestCallback(async () => {
-    if (exporting) return;
-    const all = await fetchAllForExport();
-    if (!all) return;
-    if (all.length === 0) { toast.error('لا توجد مخالفات للتصدير ضمن الفلاتر الحالية.'); return; }
-    const rows: XlsxCell[][] = [
-      ['رقم القضية', 'الموظف', 'نوع المخالفة', 'التاريخ', 'الحالة', 'الوصف'],
-      ...all.map((c) => [c.caseNumber, c.employeeNameAr, c.typeNameAr, c.date, c.statusAr, c.description]),
-    ];
-    await downloadXlsxFromAoA('violation-cases.xlsx', 'المخالفات', rows);
-    toast.success('تم تنزيل ملف Excel.');
-  });
-
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" variant="outline" size="sm" className="h-8 w-8 shrink-0" aria-label="تصدير المخالفات" disabled={exporting} aria-busy={exporting}>
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportPdf()}>
-              <FileDown className="h-4 w-4" />
-              PDF
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportExcel()}>
-              <FileSpreadsheet className="h-4 w-4" />
-              Excel
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
-          onClick={() => { setDraft(CREATE_EMPTY); setFormError(null); setCreateOpen(true); }}>
-          <Plus className="h-3.5 w-3.5" />
-          مخالفة جديدة
-        </Button>
-      </div>
-    ),
-    [activeFilterCount, exporting, handleExportPdf, handleExportExcel],
-  );
-
-  const printable = React.useMemo(
-    () =>
-      violationPdfRows.length === 0 ? null : (
-        <ViolationCasesRegisterPrintHtml
-          companyNameAr={companyNameAr}
-          companyNameEn={companyNameEn}
-          titleAr="سجل مخالفات الموظفين"
-          rows={violationPdfRows}
-        />
-      ),
-    [violationPdfRows, companyNameAr, companyNameEn],
-  );
 
   const casePrintable = React.useMemo(
     () =>
@@ -857,6 +705,40 @@ export function ViolationCasesClient() {
     },
   ], [violationTypes, handleApprove, openRejectDialog, currentEmployeeId]);
 
+  const tools = useListTools<ViolationCaseRecord>({
+    section: 'hr',
+    page: 'discipline-violation-cases',
+    columns,
+    rows: items,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      caseNumber: { kind: 'code', text: (c) => c.caseNumber || '—' },
+      employee: { kind: 'name', text: (c) => c.employeeNameAr || '—', group: (c) => c.employeeNameAr || null },
+      type: { text: (c) => c.typeNameAr || '—', group: (c) => c.typeNameAr || null },
+      date: { kind: 'date', text: (c) => c.date || '—', group: (c) => (c.date ? c.date.slice(0, 7) : null) },
+      description: { text: (c) => c.description || '—', sortable: false },
+      status: { kind: 'status', text: (c) => STATUS_LABELS[c.status] ?? c.status, group: (c) => STATUS_LABELS[c.status] ?? c.status },
+      decisionNotes: { text: (c) => c.decisionNotes || '—', sortable: false },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('سجل المخالفات', 'violation-cases')}
+        <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
+          onClick={() => { setDraft(CREATE_EMPTY); setFormError(null); setCreateOpen(true); }}>
+          <Plus className="h-3.5 w-3.5" />
+          مخالفة جديدة
+        </Button>
+      </div>
+    ),
+    [activeFilterCount, tools.depsKey],
+  );
+
   useEntityFilterSlot(
     () => (
       <ListFilterBar
@@ -914,7 +796,6 @@ export function ViolationCasesClient() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <PdfPreviewExportDialog open={pdfOpen} onOpenChange={setPdfOpen} title="معاينة تصدير سجل المخالفات" fileName="violation-cases.pdf" printable={printable} />
       <PdfPreviewExportDialog
         open={casePrintOpen}
         onOpenChange={(open) => {
@@ -941,10 +822,11 @@ export function ViolationCasesClient() {
           <Button variant="link" size="sm" className="mt-2 text-xs" onClick={() => filterToolbarRef.current?.resetStatusFilter()}>عرض الكل</Button>
         </div>
       ) : (
-        <DisciplinePaginatedList pagination={pagination}>
+        <ListToolsTable tools={tools} keyExtractor={(c) => c.id} onRowClick={(c) => setViewCase(c)}>
+        <DisciplinePaginatedList pagination={tools.pagination(pagination)}>
           {viewMode === 'cards' ? (
           <EntityActionCardGrid>
-            {items.map((c) => {
+            {tools.rows.map((c) => {
             const isPending = c.status === 'pending';
             const isCurrentUserApprover = isEmployeeInViolationApproverStates(c.approverStates, currentEmployeeId);
             const approvalUi = getViolationApprovalUiState(c.approverStates, currentEmployeeId);
@@ -1058,13 +940,16 @@ export function ViolationCasesClient() {
             variant="directory"
             alwaysShowTable
             tableClassName="min-w-[1200px]"
-            columns={columns}
-            data={items}
+            columns={tools.columns}
+            {...tools.tableSort}
+            data={tools.rows}
+            loading={tools.loading}
             keyExtractor={(c) => c.id}
             onRowClick={(c) => setViewCase(c)}
           />
           )}
         </DisciplinePaginatedList>
+        </ListToolsTable>
       )}
       </DisciplineListViewport>
 

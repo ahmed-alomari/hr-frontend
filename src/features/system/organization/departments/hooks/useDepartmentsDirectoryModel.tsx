@@ -1,26 +1,16 @@
 'use client';
 
 import * as React from 'react';
-import { Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useSetPageTitle } from '@/components/layouts/page-title-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
-import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
-import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
-import { Can } from '@/components/shared/can';
 import { usePagePermissions } from '@/features/auth/permissions';
 import { useFilterPermission } from '@/features/auth/permissions/use-filter-permission';
-import {
-  DEPARTMENTS_FILTER_PERMISSIONS,
-  DEPARTMENTS_PAGE_PERMISSIONS,
-} from '@/features/system/organization/departments/permissions';
+import { DEPARTMENTS_FILTER_PERMISSIONS, DEPARTMENTS_PAGE_PERMISSIONS } from '@/features/system/organization/departments/permissions';
 import { branchesApi, type BranchResponseDto } from '@/features/hr/organization/lib/api/branches';
 import { loadFilterOptions } from '@/features/hr/lib/load-filter-options';
 import { useServerDirectoryPagination } from '@/components/ui/paged-list';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
 import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
 import type { DeptTreeNode } from '@/features/hr/requests/lib/hierarchy-utils';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import { resolveDirectoryLoadFailure } from '@/features/hr/lib/api/directory-load-error';
@@ -30,32 +20,10 @@ import type { CreateDepartmentDto, UpdateDepartmentDto } from '@/features/hr/org
 import { buildDepartmentForest, flattenDepartmentsTree, getDescendantDepartmentIds } from '@/features/hr/requests/lib/hierarchy-utils';
 import type { HRDepartmentEntity } from '@/features/hr/requests/lib/types';
 import { generateEntityCode } from '@/features/hr/requests/lib/types';
-import {
-  DEPARTMENT_EMPTY_FORM,
-  type DepartmentDraftForm,
-  type DepartmentRecord,
-} from '@/features/system/organization/departments/constants/departments-directory';
-import {
-  createDepartment,
-  deleteDepartment,
-  loadDepartmentsDirectory,
-  updateDepartment,
-} from '@/features/system/organization/departments/services/departments.service';
-import {
-  ORGANIZATION_ARCHIVE_SCOPE_DEFAULT,
-  ORGANIZATION_ARCHIVE_SCOPE_OPTIONS,
-  organizationActiveListStatusQuery,
-  type OrganizationArchiveScope,
-} from '@/features/hr/organization/lib/archive-scope';
+import { DEPARTMENT_EMPTY_FORM, type DepartmentDraftForm, type DepartmentRecord } from '@/features/system/organization/departments/constants/departments-directory';
+import { createDepartment, deleteDepartment, loadDepartmentsDirectory, updateDepartment } from '@/features/system/organization/departments/services/departments.service';
+import { ORGANIZATION_ARCHIVE_SCOPE_DEFAULT, ORGANIZATION_ARCHIVE_SCOPE_OPTIONS, organizationActiveListStatusQuery, type OrganizationArchiveScope } from '@/features/hr/organization/lib/archive-scope';
 
-const DEPARTMENT_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'القسم', kind: 'name' },
-  { label: 'القسم الأب', kind: 'text' },
-  { label: 'الشركة', kind: 'text' },
-  { label: 'المدير', kind: 'code' },
-  { label: 'عدد الأقسام الفرعية', kind: 'number' },
-  { label: 'الوصف', kind: 'text', weight: 2 },
-];
 
 export function useDepartmentsDirectoryModel() {
   useSetPageTitle({ titleAr: 'الأقسام', descriptionAr: 'الهيكل التنظيمي وإدارة الأقسام', iconName: 'Building2' });
@@ -342,48 +310,12 @@ export function useDepartmentsDirectoryModel() {
 
   // The directory is bulk-loaded for the current branch/archive filters, so the
   // export uses the complete list in the same tree order as the grid.
-  const getExportRows = useLatestCallback((): string[][] => {
-    const byId = new Map(departments.map((d) => [d.id, d]));
-    return flattenDepartmentsTree(buildDepartmentForest(departments)).map(({ dept }) => {
-      const record = byId.get(dept.id) ?? (dept as DepartmentRecord);
-      const parent = dept.parentId ? byId.get(dept.parentId) : undefined;
-      return [
-        dept.nameAr,
-        parent?.nameAr ?? '—',
-        companyLabel(record.companyId),
-        record.managerEmployeeId ? `${record.managerEmployeeId.slice(0, 8)}…` : '—',
-        String(departments.filter((d) => d.parentId === dept.id).length),
-        record.description?.trim() || '—',
-      ];
-    });
-  });
 
   const exportSubtitleLines = React.useMemo(() => {
     const branch = branchSelectOptions.find((o) => o.value === branchFilter)?.label ?? 'كل الفروع';
     const scope = ORGANIZATION_ARCHIVE_SCOPE_OPTIONS.find((o) => o.value === archiveScope)?.label ?? '';
     return [`الفرع: ${branch} — العرض: ${scope}`];
   }, [archiveScope, branchFilter, branchSelectOptions]);
-
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton />
-        <RegisterExportMenu
-          title="سجل الأقسام"
-          fileName="departments"
-          columns={DEPARTMENT_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={exportSubtitleLines}
-        />
-        <Can when={perms.canCreate}>
-          <Button variant="luxe" size="sm" className="h-8 shrink-0 gap-2" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> قسم جديد
-          </Button>
-        </Can>
-      </div>
-    ),
-    [openCreate, perms.canCreate, getExportRows, exportSubtitleLines],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -415,6 +347,7 @@ export function useDepartmentsDirectoryModel() {
   );
 
   return {
+    exportSubtitleLines,
     perms,
     accessDenied,
     departments,

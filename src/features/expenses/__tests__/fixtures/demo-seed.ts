@@ -93,6 +93,8 @@ export function homeGroup(policy: Partial<GroupPolicy> = {}): ExpenseGroup {
 export const DEFAULT_SETTINGS: ExpensesSettings = {
   mode: 'simple',
   fallbackCurrency: 'YER',
+  visibility: 'own',
+  fullViewerIds: [],
 };
 
 function addDays(date: string, days: number): string {
@@ -310,6 +312,6 @@ export function buildDemoData(currencyCode: string, today: string): ExpensesData
     custodyMoves,
     advances,
     settlements,
-    settings: { mode: 'advanced', fallbackCurrency: currency.code },
+    settings: { visibility: 'all', fullViewerIds: [], mode: 'advanced', fallbackCurrency: currency.code },
   };
 }

@@ -27,12 +27,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/shared/utils';
-import { resolvePosInvoiceStyle, type PosDiscount, type PosSale, type PosSaleLine } from '@/features/pos/domain/types';
+import { resolvePosInvoiceStyle, type PosDiscount, type PosRegister, type PosSale, type PosSaleLine } from '@/features/pos/domain/types';
 import { posRoutes } from '@/features/pos/constants/routes';
-import { usePosContext } from '@/features/pos/hooks/use-pos-context';
-import { discountPercentOf, paidAmount, priceLines, round2 } from '@/features/pos/lib/calc';
+import { PosDataScope, usePosContext } from '@/features/pos/hooks/use-pos-context';
+import { discountPercentOf, highestDiscountPercent, paidAmount, priceLines, round2 } from '@/features/pos/lib/calc';
 import { formatDateTime, formatMoney, parseAmount } from '@/features/pos/lib/format';
-import { newId } from '@/features/pos/lib/pos-store';
+import { newId, readPairedDevice, type PosDiscountApproval } from '@/features/pos/lib/pos-store';
 import { variantHeadline } from '@/features/pos/lib/variant-label';
 import { saleToPrintable, sessionToPrintable } from '@/features/pos/lib/receipt';
 import { summarizeSession } from '@/features/pos/lib/session-summary';
@@ -40,6 +40,7 @@ import { CloseSessionDialog } from '@/features/pos/components/shared/close-sessi
 import { PosGate, PrintPreviewDialog } from '@/features/pos/components/shared/pos-shared';
 import {
   ApprovalDialog,
+  type ApprovalRequest,
   CartPanel,
   CustomerDialog,
   LineEditDialog,
@@ -52,6 +53,15 @@ import { ProductPanel, type PickedItem } from '@/features/pos/components/registe
 
 const EMPTY_CART: CartState = { lines: [], orderDiscount: null, customer: { kind: 'walk_in' } };
 const REGISTER_KEY = 'pos.register.current';
+
+/** The server's approval lasts ten minutes: this screen stops trusting it a little earlier. */
+const approvalUntil = () => Date.now() + 9 * 60_000;
+const approvalCovers = (approval: { until: number; maxPercent: number } | null, percent: number) =>
+  !!approval && approval.until > Date.now() && approval.maxPercent + 1e-6 >= percent;
+
+/** Its assigned users, and the company's super admin. The server decides; this only guides. */
+const mayWorkRegister = (register: PosRegister, userId: string, isSuperAdmin: boolean) =>
+  isSuperAdmin || (register.assignedUsers ?? []).some((u) => u.id === userId);
 
 function describeLines(lines: Array<{ name: string; variantName: string | null; quantity: number }>): string {
   return lines
@@ -103,11 +113,16 @@ function ExitLinks() {
 
 function RegisterPicker({ onPick }: { onPick: (id: string) => void }) {
   const { data } = usePosContext();
-  const active = data.registers.filter((r) => r.isActive);
+  const { userId, isSuperAdmin } = usePosContext();
+  const active = data.registers.filter((r) => r.isActive && mayWorkRegister(r, userId, isSuperAdmin));
   return (
     <div className="m-auto flex w-full max-w-lg flex-col gap-3 p-6">
       <h1 className="text-lg font-bold">اختر نقطة البيع</h1>
-      {active.length === 0 ? (
+      {active.length === 0 && data.registers.some((r) => r.isActive) ? (
+        <p className="text-sm text-muted-foreground">
+          لا توجد نقطة بيع مسندة إليك. يسندك صاحب الشركة إليها من «نقاط البيع والأجهزة».
+        </p>
+      ) : active.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           لا نقاط بيع نشطة. <Link className="text-primary underline" href={posRoutes.registers}>أنشئ نقطة بيع</Link>.
         </p>
@@ -333,7 +348,9 @@ function Register() {
   const [xOpen, setXOpen] = React.useState(false);
   const [collectOpen, setCollectOpen] = React.useState(false);
   const [receiptSaleId, setReceiptSaleId] = React.useState<string | null>(null);
-  const [approval, setApproval] = React.useState<{ title: string; detail: string; onApprove: (s: string) => void } | null>(null);
+  const [approval, setApproval] = React.useState<ApprovalRequest | null>(null);
+  // The supervisor's approval of this cart's discount, until it is committed.
+  const [cartApproval, setCartApproval] = React.useState<(PosDiscountApproval & { until: number }) | null>(null);
   const [zSessionId, setZSessionId] = React.useState<string | null>(null);
   // Phones show the products or the cart, one at a time (side by side from md).
   const [phoneView, setPhoneView] = React.useState<'products' | 'cart'>('products');
@@ -346,6 +363,42 @@ function Register() {
   };
 
   if (!register) return <RegisterPicker onPick={pickRegister} />;
+  // Who opened a shift can finish it, even if taken off the register since.
+  if (
+    !mayWorkRegister(register, userId, ctx.isSuperAdmin) &&
+    session?.cashierId !== userId &&
+    !(session && can('pos.session.close-others'))
+  ) {
+    return (
+      <div className="mx-auto flex max-w-md flex-col gap-3 p-6 text-center">
+        <ShieldAlert className="mx-auto h-8 w-8 text-warning" />
+        <p className="text-sm">
+          لست مسندًا إلى نقطة البيع <b>{register.name}</b>. يسندك إليها صاحب الشركة من «نقاط البيع والأجهزة».
+        </p>
+        <Button variant="ghost" onClick={() => setRegisterId(null)}>نقطة بيع أخرى</Button>
+        <ExitLinks />
+      </div>
+    );
+  }
+  // A register with paired devices opens and sells only from them (the server decides).
+  const pairedDevices = data.devices.filter((d) => d.registerId === register.id && !d.revokedAt);
+  if (
+    !ctx.isSuperAdmin &&
+    pairedDevices.length > 0 &&
+    !pairedDevices.some((d) => d.id === readPairedDevice(companyId ?? '')) &&
+    session?.cashierId !== userId
+  ) {
+    return (
+      <div className="mx-auto flex max-w-md flex-col gap-3 p-6 text-center">
+        <ShieldAlert className="mx-auto h-8 w-8 text-warning" />
+        <p className="text-sm">
+          نقطة البيع <b>{register.name}</b> تعمل من أجهزتها المقترنة فقط، وهذا المتصفح ليس منها. يقرنه المدير من «نقاط البيع والأجهزة».
+        </p>
+        <Button variant="ghost" onClick={() => setRegisterId(null)}>نقطة بيع أخرى</Button>
+        <ExitLinks />
+      </div>
+    );
+  }
   if (!session) {
     return (
       <>
@@ -435,12 +488,24 @@ function Register() {
       toast.error(`أعلى خصم مسموح ${settings.discounts.cashierMaxPercent}%`);
       return;
     }
+    askApproval(percent, `${label}: ${percent.toFixed(1)}%`, apply);
+  };
+
+  /** Runs `then` once the cart's approval covers `percent`, asking the supervisor if it does not. */
+  const askApproval = (percent: number, label: string, then: (approval: PosDiscountApproval) => void) => {
+    if (approvalCovers(cartApproval, percent)) {
+      then(cartApproval!);
+      return;
+    }
+    // One approval covers the whole cart: it asks for its highest discount so far.
+    const covering = Math.max(percent, approvalCovers(cartApproval, 0) ? cartApproval!.maxPercent : 0);
     setApproval({
       title: 'موافقة مشرف على الخصم',
-      detail: `${label}: ${percent.toFixed(1)}% يتجاوز حد الكاشير ${settings.discounts.cashierMaxPercent}%.`,
-      onApprove: (supervisor) => {
-        actions?.logAudit(userName, 'discount_over_limit', `${label} ${percent.toFixed(1)}% بموافقة ${supervisor}`);
-        apply();
+      detail: `${label} يتجاوز حد الكاشير ${settings.discounts.cashierMaxPercent}%.`,
+      percent: covering,
+      onApproved: (given) => {
+        setCartApproval({ ...given, until: approvalUntil() });
+        then(given);
       },
     });
   };
@@ -461,9 +526,23 @@ function Register() {
       return;
     }
     if (cart.lines.length === 0) return;
+    // A discount above the limit (this cart, or one resumed or reloaded) needs its approval first.
+    const highest = highestDiscountPercent(priced.lines, cart.orderDiscount);
+    if (highest > settings.discounts.cashierMaxPercent + 1e-9 && settings.discounts.supervisorApprovalAbove) {
+      if (!approvalCovers(cartApproval, highest)) {
+        askApproval(highest, `الخصم ${highest.toFixed(1)}%`, (given) => void commit(given.token));
+        return;
+      }
+    }
+    await commit(highest > settings.discounts.cashierMaxPercent + 1e-9 ? (cartApproval?.token ?? null) : null);
+  };
+
+  const commit = async (discountApproval: string | null) => {
+    if (!actions || committing.current) return;
     // Commit: prices and snapshot fixed in the "server"; stock reserved there when linked.
     committing.current = true;
     const id = await actions.commitSale({
+      discountApproval,
       registerId: register.id,
       sessionId: session.id,
       cashierName: userName,
@@ -477,6 +556,7 @@ function Register() {
     });
     if (!id) return;
     setCart(EMPTY_CART);
+    setCartApproval(null);
     setSaleId(id);
     setPayOpen(true);
   };
@@ -798,8 +878,10 @@ function Register() {
 
 export function PosRegisterScreen() {
   return (
+    <PosDataScope days={0}>
     <PosGate permission="pos.sell">
       <Register />
     </PosGate>
+    </PosDataScope>
   );
 }

@@ -2,7 +2,9 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Boxes, CreditCard, PackageX, Percent, Printer, Save, Undo2, Wallet } from 'lucide-react';
+import { Boxes, CreditCard, PackageX, Percent, Printer, Save, Undo2, Wallet,
+  FolderTree,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { Button } from '@/components/ui/button';
@@ -22,11 +24,15 @@ import {
   type PosStockMode,
   type PosStockTiming,
 } from '@/features/pos/domain/types';
-import { usePosContext } from '@/features/pos/hooks/use-pos-context';
+import { PosDataScope, usePosContext } from '@/features/pos/hooks/use-pos-context';
 import { usePosStockLink } from '@/features/pos/lib/pos-stock-link-api';
 import { parseAmount } from '@/features/pos/lib/format';
 import { PosGate } from '@/features/pos/components/shared/pos-shared';
+import { useQuery } from '@tanstack/react-query';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { PosMenuCategoriesCard } from '@/features/pos/components/admin/pos-menu-categories';
+import { PosMenuCategoriesReport } from '@/features/pos/components/admin/pos-menu-categories-report';
+import { fetchPosUserChoices } from '@/features/pos/lib/pos-store';
 
 function Card({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -90,11 +96,12 @@ const STOCK_TIMINGS: ReadonlyArray<{ id: PosStockTiming; title: string; descript
   },
 ];
 
-type SettingsTab = 'stock' | 'pricing' | 'payment' | 'returns' | 'shifts' | 'print';
+type SettingsTab = 'stock' | 'categories' | 'pricing' | 'payment' | 'returns' | 'shifts' | 'print';
 
 /** The tabs, and the settings each one edits (for its unsaved mark). */
 const TABS: ReadonlyArray<{ id: SettingsTab; label: string; icon: typeof Boxes; keys: ReadonlyArray<keyof PosSettings> }> = [
   { id: 'stock', label: 'المنتجات والمخزون', icon: Boxes, keys: ['onlyPosAvailableProducts', 'stockTiming'] },
+  { id: 'categories', label: 'فئات نقاط البيع', icon: FolderTree, keys: [] },
   { id: 'pricing', label: 'الأسعار والخصومات', icon: Percent, keys: ['discounts'] },
   { id: 'payment', label: 'الدفع', icon: CreditCard, keys: ['paymentMethods'] },
   { id: 'returns', label: 'المرتجعات', icon: Undo2, keys: ['returns'] },
@@ -110,6 +117,12 @@ function Settings() {
 
   const canEdit = can('pos.settings.manage');
   const link = usePosStockLink(companyId);
+  const userChoices = useQuery({
+    queryKey: ['pos', 'user-choices', companyId],
+    queryFn: () => fetchPosUserChoices(companyId!),
+    enabled: !!companyId && canEdit,
+    staleTime: 60_000,
+  });
   const linked = data.settings.stockMode === 'inventory';
   const openSessions = data.sessions.filter((s) => s.status === 'open').length;
   const unsettledSales = data.sales.filter(
@@ -283,7 +296,11 @@ function Settings() {
               onChange={(v) => setDraft((d) => ({ ...d, onlyPosAvailableProducts: v }))}
             />
           </Card>
+        </TabsContent>
+
+        <TabsContent value="categories" className="space-y-4">
           <PosMenuCategoriesCard />
+          <PosMenuCategoriesReport />
         </TabsContent>
 
         <TabsContent value="pricing" className="grid gap-4 lg:grid-cols-2">
@@ -315,6 +332,29 @@ function Settings() {
               checked={draft.discounts.supervisorApprovalAbove}
               onChange={(v) => set('discounts', { supervisorApprovalAbove: v })}
             />
+            {draft.discounts.supervisorApprovalAbove ? (
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">مشرفو الموافقة</p>
+                <MultiSelect
+                  options={(userChoices.data ?? []).map((u) => ({ value: u.id, label: u.name }))}
+                  value={(draft.discounts.supervisors ?? []).map((s) => s.id)}
+                  onChange={(ids) =>
+                    set('discounts', {
+                      supervisors: ids.map((id) => ({
+                        id,
+                        name: userChoices.data?.find((u) => u.id === id)?.name ?? '',
+                      })),
+                    })
+                  }
+                  placeholder={userChoices.isError ? 'تعذّر تحميل الموظفين' : 'اختر المشرفين'}
+                  disabled={userChoices.isError}
+                  emptyMessage="لا موظفين"
+                />
+                <p className="text-xs text-muted-foreground">
+                  يختار الكاشير أحدهم، ويكتب المشرف كلمة مروره على الجهاز. بلا مشرفين يُرفض كل خصم فوق الحد.
+                </p>
+              </div>
+            ) : null}
             <Toggle
               label="السماح بتغيير سعر الصنف"
               hint="لمن يملك صلاحية «تغيير سعر الصنف» فقط، ويُسجَّل."
@@ -441,7 +481,7 @@ function Settings() {
         </TabsContent>
       </Tabs>
 
-      {canEdit && tab !== 'print' ? (
+      {canEdit && tab !== 'print' && tab !== 'categories' ? (
         <div className="sticky bottom-3 flex justify-end">
           <Button onClick={save} disabled={!dirty}>
             <Save className="h-4 w-4" />
@@ -455,8 +495,10 @@ function Settings() {
 
 export function PosSettingsPage() {
   return (
-    <PosGate permission="pos.settings.manage">
-      <Settings />
-    </PosGate>
+    <PosDataScope days={0}>
+      <PosGate permission="pos.settings.manage">
+        <Settings />
+      </PosGate>
+    </PosDataScope>
   );
 }

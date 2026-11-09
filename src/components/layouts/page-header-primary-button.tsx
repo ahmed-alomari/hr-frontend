@@ -29,7 +29,7 @@ export function PageHeaderPrimaryButton({
       size="sm"
       aria-label={label}
       aria-busy={loading || undefined}
-      className={cn('h-8 shrink-0 gap-1.5 px-2 sm:px-3', className)}
+      className={cn('h-8 shrink-0 gap-1.5 px-2 max-md:order-1 sm:px-3', className)}
       disabled={disabled || loading}
       {...props}
     >

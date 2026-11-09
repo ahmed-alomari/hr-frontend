@@ -4,10 +4,6 @@ import * as React from 'react';
 import { toast } from 'sonner';
 import { useSetPageTitle } from '@/components/layouts/page-title-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
-import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
-import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
-import { PageHeaderPrimaryButton } from '@/components/layouts/page-header-primary-button';
-import { Plus } from 'lucide-react';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import { useServerDirectoryPagination } from '@/components/ui/paged-list';
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
@@ -15,45 +11,20 @@ import { useCurrentEmployee } from '@/features/hr/organization/employees/hooks/u
 import { useAuthStore } from '@/features/auth/lib/auth-store';
 import { companyTimezoneOffsetMinutes } from '@/features/auth/lib/company-timezone';
 import { usePagePermissions } from '@/features/auth/permissions';
-import {
-  OVERTIME_REQUESTS_PAGE_PERMISSIONS,
-} from '@/features/hr/requests/overtime-requests/permissions';
+import { OVERTIME_REQUESTS_PAGE_PERMISSIONS } from '@/features/hr/requests/overtime-requests/permissions';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import { resolveDirectoryLoadFailure } from '@/features/hr/lib/api/directory-load-error';
-import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import {
-  employeeStatusFilterLabelAr,
-  employeeStatusQuery,
-  isEmployeeStatusFilterActive,
-  useEmployeeStatusFilter,
-} from '@/features/hr/lib/employee-status-filter';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
-import { exportDate, exportDuration, exportText } from '@/features/hr/requests/lib/list-export-format';
+import { employeeStatusQuery, isEmployeeStatusFilterActive, useEmployeeStatusFilter } from '@/features/hr/lib/employee-status-filter';
 import { overtimeRequestsApi } from '@/features/hr/requests/lib/api/overtime-requests';
 import type { OvertimeRequestStatusDto } from '@/features/hr/requests/lib/api/overtime-requests';
 import type { ApiRequestType } from '@/features/hr/requests/lib/api/request-types';
-import {
-  loadOvertimeRequestType,
-  OVERTIME_REQUEST_TYPE_MISSING_MESSAGE,
-} from '@/features/hr/requests/lib/load-overtime-request-type';
+import { loadOvertimeRequestType, OVERTIME_REQUEST_TYPE_MISSING_MESSAGE } from '@/features/hr/requests/lib/load-overtime-request-type';
 import { useHREmployeeDirectoryStore } from '@/features/hr/requests/lib/employee-directory-store';
-import {
-  attendanceEventsApi,
-  type DailyBreakdownResponseDto,
-} from '@/features/hr/attendance/lib/api/attendance-events';
-import {
-  mapOvertimeRequestListItem,
-  type OvertimeRequestRecord,
-} from '@/features/hr/requests/overtime-requests/services/overtime-requests.service';
+import { attendanceEventsApi, type DailyBreakdownResponseDto } from '@/features/hr/attendance/lib/api/attendance-events';
+import { mapOvertimeRequestListItem, type OvertimeRequestRecord } from '@/features/hr/requests/overtime-requests/services/overtime-requests.service';
 import { getRequestApprovalUiState } from '@/features/hr/requests/lib/request-approver-states';
 import type { ApprovalUiState } from '@/features/hr/requests/components/request-approval-actions';
-import {
-  hrFiltersKey,
-  usePersistedEmpIdSet,
-  usePersistedFilterState,
-} from '@/features/hr/lib/use-persisted-filter-state';
+import { hrFiltersKey, usePersistedEmpIdSet, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
 
 export type OvertimeStatusFilter = 'all' | OvertimeRequestStatusDto;
 export type OvertimeViewMode = 'cards' | 'list';
@@ -72,15 +43,6 @@ export const OVERTIME_STATUS_ORDER: OvertimeRequestStatusDto[] = [
   'cancelled',
 ];
 
-const OVERTIME_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الموظف', kind: 'name' },
-  { label: 'تاريخ العمل الإضافي', kind: 'date' },
-  { label: 'المدة المطلوبة', kind: 'number' },
-  { label: 'المدة المعتمدة', kind: 'number' },
-  { label: 'السبب', kind: 'text', weight: 1.6 },
-  { label: 'الحالة', kind: 'status' },
-  { label: 'ملاحظات القرار', kind: 'text', weight: 1.3 },
-];
 
 export function useOvertimeRequestsDirectoryModel() {
   useSetPageTitle({
@@ -375,49 +337,6 @@ export function useOvertimeRequestsDirectoryModel() {
     (selectedEmpIds.size > 0 ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0) + (dateBounds.from || dateBounds.to ? 1 : 0)
     + (isEmployeeStatusFilterActive(employeeStatus) ? 1 : 0);
 
-  const getExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    if (!companyId) return [];
-    const { items: all } = await fetchAllPaginatedItems(async (page, limit) => {
-      const res = await overtimeRequestsApi.list(buildListQuery(page, limit));
-      return {
-        items: res.items.map((item) => mapOvertimeRequestListItem(item, res.approvalAssignments)),
-        pagination: res.pagination,
-      };
-    });
-    return all.map((x) => [
-      exportText(x.employeeNameAr),
-      exportDate(x.workDate),
-      exportDuration(x.requestedMinutes),
-      exportDuration(x.approvedMinutes),
-      exportText(x.reasonAr),
-      OVERTIME_STATUS_LABELS[x.status] ?? x.status,
-      exportText(x.decisionNotesAr),
-    ]);
-  });
-
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <RegisterExportMenu
-          title="سجل طلبات العمل الإضافي"
-          fileName="overtime-requests"
-          columns={OVERTIME_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={[`حالة الموظفين: ${employeeStatusFilterLabelAr(employeeStatus)}`]}
-          landscape
-        />
-        <PageHeaderPrimaryButton
-          icon={Plus}
-          label="طلب عمل إضافي"
-          onClick={() => { setEditTarget(null); setDrawerOpen(true); }}
-        >
-          طلب عمل إضافي
-        </PageHeaderPrimaryButton>
-      </div>
-    ),
-    [activeFilterCount, employeeStatus],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -464,6 +383,8 @@ export function useOvertimeRequestsDirectoryModel() {
   );
 
   return {
+    activeFilterCount,
+    employeeStatus,
     perms,
     accessDenied,
     listError,

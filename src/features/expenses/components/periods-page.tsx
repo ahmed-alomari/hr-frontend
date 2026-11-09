@@ -3,17 +3,24 @@
 import * as React from 'react';
 import { Lock, LockOpen } from 'lucide-react';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
+import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { PageHeaderPrimaryButton } from '@/components/layouts/page-header-primary-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
 import { Input } from '@/components/ui/input';
+import { ListFilterBar } from '@/components/ui/list-filter-bar';
+import { LocalListTable, LocalListToolbar, useLocalList, type LocalListField } from '@/components/ui/local-list';
+import { hrFiltersKey, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
+import { useExpensesStore } from '../data/store';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { allTxns } from '../domain/ledger';
 import { addDays, lockedThrough, nextPeriodStart, pendingInPeriod, periodLabel, periodSummary } from '../domain/periods';
 import type { ExpensesData, PeriodClosing } from '../domain/types';
-import { EmptyState, Field, FormDialog, LoadingBlock, Money, PartyName, ReasonDialog, ResponsiveTable, Section, useRunCommand } from './common';
-import { todayIso, useCurrency, useExpensesData, useExpensesPermissions } from './expenses-provider';
+import { EmptyState, Field, FormDialog, LoadingBlock, Money, PartyName, ReasonDialog, Section, useRunCommand } from './common';
+import { todayIso, useCurrency, useDirectory, useExpensesData, useExpensesPermissions } from './expenses-provider';
 
 type Preset = 'month' | 'half' | 'months' | 'custom';
 
@@ -130,24 +137,79 @@ function CloseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: 
 export function PeriodsPage() {
   const data = useExpensesData();
   const perms = useExpensesPermissions();
+  const currency = useCurrency();
+  const directory = useDirectory();
   const run = useRunCommand();
   const [closing, setClosing] = React.useState(false);
   const [reopen, setReopen] = React.useState<PeriodClosing | null>(null);
 
+  const companyId = useExpensesStore((s) => s.companyId);
+  const filterKey = (field: string) => hrFiltersKey('expenses', 'periods', companyId, field);
+  const [search, setSearch] = usePersistedFilterState(filterKey('search'), '');
+  const [status, setStatus] = usePersistedFilterState(filterKey('status'), 'all');
+  const closings = React.useMemo(
+    () => [...(data?.closings ?? [])].sort((a, b) => b.to.localeCompare(a.to) || b.closedAt.localeCompare(a.closedAt)),
+    [data?.closings],
+  );
+  const latestClosed = closings.find((c) => c.status === 'closed');
+  const rows = React.useMemo(() => {
+    const q = search.trim();
+    return closings.filter((c) => (status === 'all' || c.status === status) && (!q || c.label.includes(q)));
+  }, [closings, search, status]);
+  const statusLabel = (s: PeriodClosing['status']) => (s === 'closed' ? 'مقفلة' : 'أُعيد فتحها');
+  const fields = React.useMemo<LocalListField<PeriodClosing>[]>(() => [
+    { key: 'label', label: 'الفترة', kind: 'name', text: (c) => c.label, cell: (c) => <span className="font-medium">{c.label}</span> },
+    { key: 'from', label: 'من', kind: 'date', text: (c) => c.from },
+    { key: 'to', label: 'إلى', kind: 'date', text: (c) => c.to },
+    { key: 'expenses', label: 'المصروفات', kind: 'number', text: (c) => (c.summary ? currency.format(c.summary.expensesTotal) : '—'), sortValue: (c) => c.summary?.expensesTotal ?? 0, cell: (c) => (c.summary ? <Money value={c.summary.expensesTotal} className="font-semibold" /> : '—') },
+    { key: 'cashOut', label: 'خروج النقد', kind: 'number', optional: true, text: (c) => (c.summary ? currency.format(c.summary.cashOut) : '—'), sortValue: (c) => c.summary?.cashOut ?? 0 },
+    { key: 'cashIn', label: 'دخول النقد', kind: 'number', optional: true, text: (c) => (c.summary ? currency.format(c.summary.cashIn) : '—'), sortValue: (c) => c.summary?.cashIn ?? 0 },
+    { key: 'status', label: 'الحالة', kind: 'status', text: (c) => statusLabel(c.status), cell: (c) => <Badge variant={c.status === 'closed' ? 'success' : 'subtle'}>{statusLabel(c.status)}</Badge>, groupKey: (c) => c.status, groupLabel: (s) => statusLabel(s as PeriodClosing['status']) },
+    { key: 'closedBy', label: 'أقفلها', optional: true, text: (c) => `${directory.nameOf(c.closedBy)} ${c.closedAt.slice(0, 10)}`, groupKey: (c) => c.closedBy, groupLabel: (id) => directory.nameOf(id), cell: (c) => <span className="text-xs"><PartyName id={c.closedBy} link={false} /> {c.closedAt.slice(0, 10)}</span> },
+    { key: 'reason', label: 'سبب إعادة الفتح', optional: true, sortable: false, text: (c) => c.reopenReason ?? '—', cell: (c) => <span className="text-xs">{c.reopenReason ?? '—'}</span> },
+    { key: 'actions', label: '', sortable: false, screenOnly: true, text: () => '', cell: (c) => (c.id === latestClosed?.id && perms.periods ? <Button size="sm" variant="outline" onClick={() => setReopen(c)}><LockOpen className="me-1 h-3.5 w-3.5" />إعادة فتح</Button> : null) },
+  ], [currency, directory, latestClosed?.id, perms.periods]);
+  const list = useLocalList({ section: 'expenses', page: 'periods', fields, rows });
+  const filterCount = (search.trim() ? 1 : 0) + (status !== 'all' ? 1 : 0);
+
   usePageHeaderActions(
     () => (
-      <PageHeaderPrimaryButton icon={Lock} label="إقفال فترة" disabled={!perms.periods} onClick={() => setClosing(true)}>
-        إقفال فترة
-      </PageHeaderPrimaryButton>
+      <LocalListToolbar
+        list={list}
+        title="إقفال الفترات"
+        fileName="period-closings"
+        before={<FilterToggleButton activeFilterCount={filterCount} />}
+        primary={
+          <PageHeaderPrimaryButton icon={Lock} label="إقفال فترة" disabled={!perms.periods} onClick={() => setClosing(true)}>
+            إقفال فترة
+          </PageHeaderPrimaryButton>
+        }
+      />
     ),
-    [perms.periods],
+    [perms.periods, filterCount, list.rows, list.visibleFields, list.groups, list.sort.sortKey],
+  );
+
+  useEntityFilterSlot(
+    () => (
+      <ListFilterBar
+        showDateSection={false}
+        showStatusSection={false}
+        showEmployeePicker={false}
+        periodFilterActive={filterCount > 0}
+        onClearAll={() => {
+          setSearch('');
+          setStatus('all');
+        }}
+        leadingFilters={<EntityFilterSearchField value={search} onChange={setSearch} placeholder="بحث باسم الفترة" />}
+        inlineSelects={[{ id: 'status', value: status, onChange: setStatus, placeholder: 'كل الحالات', options: [{ value: 'all', label: 'كل الحالات' }, { value: 'closed', label: 'مقفلة' }, { value: 'reopened', label: 'أُعيد فتحها' }] }]}
+      />
+    ),
+    [search, status, filterCount],
   );
 
   if (!data) return <LoadingBlock />;
   const last = lockedThrough(data);
   const next = nextPeriodStart(data);
-  const rows = [...(data.closings ?? [])].sort((a, b) => b.to.localeCompare(a.to) || b.closedAt.localeCompare(a.closedAt));
-  const latestClosed = rows.find((c) => c.status === 'closed');
 
   return (
     <div className="space-y-4">
@@ -160,10 +222,10 @@ export function PeriodsPage() {
         )}
       </Section>
       <Section title="الفترات">
-        {rows.length === 0 ? <EmptyState text="لا فترات" action={perms.periods ? <Button size="sm" onClick={() => setClosing(true)}>إقفال أول فترة</Button> : undefined} /> : (
-          <ResponsiveTable
-            rows={rows}
-            rowKey={(c) => c.id}
+        <LocalListTable
+          list={list}
+          rowKey={(c) => c.id}
+          empty={<EmptyState text={filterCount > 0 ? 'لا نتائج لهذه الفلاتر' : 'لا فترات'} action={filterCount === 0 && perms.periods ? <Button size="sm" onClick={() => setClosing(true)}>إقفال فترة</Button> : undefined} />}
             card={(c) => (
               <div className="space-y-1.5">
                 <div className="flex items-start justify-between gap-2">
@@ -175,20 +237,7 @@ export function PeriodsPage() {
                 {c.id === latestClosed?.id && perms.periods ? <Button size="sm" variant="outline" onClick={() => setReopen(c)}><LockOpen className="me-1 h-3.5 w-3.5" />إعادة فتح</Button> : null}
               </div>
             )}
-            columns={[
-              { header: 'الفترة', cell: (c) => <span className="font-medium">{c.label}</span> },
-              { header: 'من', cell: (c) => c.from },
-              { header: 'إلى', cell: (c) => c.to },
-              { header: 'المصروفات', cell: (c) => (c.summary ? <Money value={c.summary.expensesTotal} className="font-semibold" /> : '—') },
-              { header: 'خروج النقد', cell: (c) => (c.summary ? <Money value={c.summary.cashOut} /> : '—') },
-              { header: 'دخول النقد', cell: (c) => (c.summary ? <Money value={c.summary.cashIn} /> : '—') },
-              { header: 'الحالة', cell: (c) => <Badge variant={c.status === 'closed' ? 'success' : 'subtle'}>{c.status === 'closed' ? 'مقفلة' : 'أُعيد فتحها'}</Badge> },
-              { header: 'أقفلها', cell: (c) => <span className="text-xs"><PartyName id={c.closedBy} link={false} /> {c.closedAt.slice(0, 10)}</span> },
-              { header: 'سبب إعادة الفتح', cell: (c) => <span className="text-xs">{c.reopenReason ?? '—'}</span> },
-              { header: '', cell: (c) => (c.id === latestClosed?.id && perms.periods ? <Button size="sm" variant="outline" onClick={() => setReopen(c)}><LockOpen className="me-1 h-3.5 w-3.5" />إعادة فتح</Button> : null) },
-            ]}
-          />
-        )}
+        />
       </Section>
       <CloseDialog open={closing} onOpenChange={setClosing} />
       <ReasonDialog

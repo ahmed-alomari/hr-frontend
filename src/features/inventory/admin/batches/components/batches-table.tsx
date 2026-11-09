@@ -1,5 +1,6 @@
 'use client';
 
+import type { ListToolsModel } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
@@ -76,10 +77,12 @@ type Props = {
   /** Hide inside a single product's context, where the column is redundant. */
   hideProduct?: boolean;
   onRowClick?(batch: InventoryBatch): void;
+  /** The screen's own columns and sort, from its list tools. */
+  columns?: ColumnDef<InventoryBatch>[];
+  tableSort?: ListToolsModel<InventoryBatch>['tableSort'];
 };
 
-export function BatchesTable({ rows, loading, emptyText, hideProduct, onRowClick }: Props) {
-  const columns = React.useMemo<ColumnDef<InventoryBatch>[]>(() => {
+export function batchColumns(hideProduct?: boolean): ColumnDef<InventoryBatch>[] {
     const all: (ColumnDef<InventoryBatch> | null)[] = [
       {
         key: 'occurredAt',
@@ -175,13 +178,17 @@ export function BatchesTable({ rows, loading, emptyText, hideProduct, onRowClick
       },
     ];
     return all.filter((column): column is ColumnDef<InventoryBatch> => column !== null);
-  }, [hideProduct]);
+}
+
+export function BatchesTable({ rows, loading, emptyText, hideProduct, onRowClick, columns: givenColumns, tableSort }: Props) {
+  const columns = React.useMemo(() => givenColumns ?? batchColumns(hideProduct), [givenColumns, hideProduct]);
 
   return (
     <DataTable
       variant="directory"
       className="inv-table-host"
       columns={columns}
+      {...tableSort}
       data={rows}
       keyExtractor={(row) => row.id}
       loading={loading}

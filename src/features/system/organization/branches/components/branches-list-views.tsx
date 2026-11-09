@@ -1,20 +1,17 @@
 'use client';
 
+import { Plus } from 'lucide-react';
+import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
+import { Can } from '@/components/shared/can';
+import { ListToolsTable, useListTools, type ListToolsModel } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { Building2, Eye, Pencil, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { TableRowActions } from '@/components/ui/table-cells';
-import {
-  DirectoryGrid,
-  DirectoryGridCard,
-  DirectoryGridCardFooter,
-  DirectoryGridCardHeader,
-  DirectoryGridCardMeta,
-  DirectoryGridCardMetaRow,
-  DirectoryGridCardTitle,
-} from '@/components/ui/directory-grid-card';
+import { DirectoryGrid, DirectoryGridCard, DirectoryGridCardFooter, DirectoryGridCardHeader, DirectoryGridCardMeta, DirectoryGridCardMetaRow, DirectoryGridCardTitle } from '@/components/ui/directory-grid-card';
 import { EmptyState } from '@/components/ui/shared-dialogs';
 import { DirectoryPagedViews } from '@/components/ui/paged-list';
 import type { BranchesDirectoryModel } from '@/features/system/organization/branches/hooks/useBranchesDirectoryModel';
@@ -28,8 +25,9 @@ function statusBadge(active: boolean) {
   );
 }
 
-export function BranchesListViews({ model }: { model: BranchesDirectoryModel }) {
-  const { filtered, layoutView, pagination, loading, setViewBranch, openEdit, setConfirmId, companyLabel, perms } = model;
+/** Columns, sort, grouping, export and the page header: stays mounted while the list loads. */
+export function useBranchesListTools(model: BranchesDirectoryModel) {
+  const { filtered, pagination, setViewBranch, openEdit, setConfirmId, companyLabel, perms, openCreate, archiveScopeLabel } = model;
 
   const columns = React.useMemo((): ColumnDef<BranchRow>[] => [
     {
@@ -106,11 +104,54 @@ export function BranchesListViews({ model }: { model: BranchesDirectoryModel }) 
     },
   ], [companyLabel, openEdit, perms.canDelete, perms.canUpdate, setConfirmId]);
 
+  const flagsOf = (b: BranchRow) =>
+    [b.isActive ? 'نشط' : 'غير نشط', b.isHeadquarters ? 'المقر الرئيسي' : null].filter(Boolean).join(' — ');
+  const tools = useListTools<BranchRow>({
+    section: 'organization',
+    page: 'branches',
+    columns,
+    rows: filtered,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      company: { text: (b) => companyLabel(b.companyId), group: (b) => companyLabel(b.companyId) },
+      name: { kind: 'name', text: (b) => b.name, alsoExport: [{ label: 'الرمز', text: (b) => b.code || '—' }] },
+      city: { text: (b) => b.city || '—', group: (b) => b.city || null },
+      manager: { kind: 'name', text: (b) => b.manager || '—', group: (b) => b.manager || null },
+      phone: { kind: 'code', text: (b) => b.phone ?? b.mobile ?? '—', sortable: false },
+      flags: { kind: 'status', text: flagsOf, group: flagsOf },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton />
+        {tools.buttons}
+        {tools.exportMenu('سجل الفروع', 'branches', [`العرض: ${archiveScopeLabel}`])}
+        <Can when={perms.canCreate}>
+          <Button variant="luxe" size="sm" className="h-8 gap-2" onClick={openCreate}>
+            <Plus className="h-4 w-4" /> فرع جديد
+          </Button>
+        </Can>
+      </div>
+    ),
+    [openCreate, perms.canCreate, archiveScopeLabel, tools.depsKey],
+  );
+
+  return tools;
+}
+
+export function BranchesListViews({ model, tools }: { model: BranchesDirectoryModel; tools: ListToolsModel<BranchRow> }) {
+  const { layoutView, pagination, loading, setViewBranch, openEdit, setConfirmId, companyLabel, perms } = model;
+
+
   return (
+    <ListToolsTable tools={tools} keyExtractor={(b) => b.id} onRowClick={(b) => setViewBranch(b)}>
     <DirectoryPagedViews
-      items={filtered}
-      serverPagination={pagination}
-      loading={loading}
+      items={tools.rows}
+      serverPagination={tools.pagination(pagination)}
+      loading={loading || tools.loading}
       empty={<EmptyState icon={Building2} title="لا توجد فروع" description="لا توجد فروع في القائمة." />}
     >
       {(pageItems) => layoutView === 'grid' ? (
@@ -164,12 +205,14 @@ export function BranchesListViews({ model }: { model: BranchesDirectoryModel }) 
         <DataTable
           variant="directory"
           className="sys-table-host"
-          columns={columns}
+          columns={tools.columns}
+          {...tools.tableSort}
           data={pageItems}
           keyExtractor={(b) => b.id}
           onRowClick={(b) => setViewBranch(b)}
         />
       )}
     </DirectoryPagedViews>
+    </ListToolsTable>
   );
 }

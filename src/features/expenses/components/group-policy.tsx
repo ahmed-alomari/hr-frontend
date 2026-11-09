@@ -1,8 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { ArrowDown, ArrowUp, CheckCircle2, Circle, MinusCircle, X, XCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { CheckCircle2, Circle, MinusCircle, XCircle } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/shared/utils';
@@ -10,7 +9,7 @@ import { useExpensesStore } from '../data/store';
 import { formatMoney, minorToInput, type Minor } from '../domain/money';
 import { APPROVAL_MODE_LABELS_AR, STAGE_MODE_LABELS_AR, approvalRequired, approvalStages, attachmentRequired, currentDeciders, defaultGroup, groupOf, groupStatusOf, OPEN_POLICY } from '../domain/policy';
 import type { AnyTxn, ApprovalStage, ApprovalStep, ExpenseGroup, ExpensesData, GroupPolicy, GroupRule } from '../domain/types';
-import { AmountInput, Field, PartyName } from './common';
+import { AmountInput, Field, PartyName, PickList } from './common';
 import { useCurrency, useExpensesData } from './expenses-provider';
 
 function OptionalAmount({ label, hint, value, onChange, disabled }: { label: string; hint?: string; value: Minor | null; onChange: (v: Minor | null) => void; disabled?: boolean }) {
@@ -61,94 +60,88 @@ function useApproverChoices() {
   return React.useMemo(() => live.filter((p) => p.userId), [live]);
 }
 
-const STAGE_OPTIONS: Array<{ value: ApprovalStage['mode']; label: string }> = [
+const APPROVAL_TYPES: Array<{ value: ApprovalStage['mode']; label: string }> = [
   { value: 'sequential', label: 'تسلسلي — واحد بعد الآخر' },
   { value: 'parallel', label: 'متوازٍ — في آنٍ واحد' },
   { value: 'any_one', label: 'موافقة أحد المعتمدين' },
-  { value: 'optional', label: 'اختياري — لا يوقف الاعتماد' },
 ];
+/** No longer offered; shown only for a group already saved with it. */
+const OPTIONAL_TYPE = { value: 'optional' as const, label: 'اختياري — لا يوقف الاعتماد' };
 
-/** Stages as the form edits them: saved stages, else the older manager and approver list. */
+const TYPE_HINTS: Record<ApprovalStage['mode'], string> = {
+  sequential: 'يعتمدون بالترتيب الظاهر، واحداً بعد الآخر.',
+  parallel: 'يعتمدون في آنٍ واحد، بأي ترتيب.',
+  any_one: 'تكفي موافقة واحد منهم.',
+  optional: 'لا يوقف العملية: الاعتماد يكمل بدونهم.',
+};
+
+/** Stages as saved, else the older manager and approver list. */
 function stagesOf(policy: GroupPolicy): ApprovalStage[] {
   if (policy.stages && policy.stages.length > 0) return policy.stages;
   return approvalStages(policy).map(({ mode, approverIds, requiredCount }) => ({ mode, approverIds, requiredCount }));
 }
 
-function StagesField({ policy, onChange, disabled }: { policy: GroupPolicy; onChange: (stages: ApprovalStage[]) => void; disabled?: boolean }) {
-  const users = useApproverChoices();
+/** The one list the form edits: one type for all of the group's approvers. */
+export function approvalListOf(policy: GroupPolicy): ApprovalStage {
   const stages = stagesOf(policy);
-  const commit = (next: ApprovalStage[]) => onChange(next);
-  const patch = (index: number, part: Partial<ApprovalStage>) => commit(stages.map((s, i) => (i === index ? { ...s, ...part } : s)));
+  const deciding = stages.filter((s) => s.mode !== 'optional');
+  const from = deciding.length > 0 ? deciding : stages;
+  return {
+    mode: from[0]?.mode ?? 'sequential',
+    approverIds: [...new Set(from.flatMap((s) => s.approverIds))],
+    requiredCount: from.length === 1 ? from[0]!.requiredCount : null,
+  };
+}
+
+function ApproversField({ policy, onChange, disabled }: { policy: GroupPolicy; onChange: (stages: ApprovalStage[]) => void; disabled?: boolean }) {
+  const users = useApproverChoices();
+  const list = approvalListOf(policy);
+  const savedStages = stagesOf(policy).filter((s) => s.approverIds.length > 0).length;
+  const commit = (part: Partial<ApprovalStage>) => onChange([{ ...list, ...part }]);
+  const types = list.mode === 'optional' ? [...APPROVAL_TYPES, OPTIONAL_TYPE] : APPROVAL_TYPES;
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">مراحل الموافقة <span className="font-normal text-muted-foreground">({stages.length})</span></p>
-        {!disabled ? (
-          <Button type="button" size="sm" variant="outline" onClick={() => commit([...stages, { mode: 'sequential', approverIds: [], requiredCount: null }])}>إضافة مرحلة</Button>
-        ) : null}
-      </div>
-      {stages.length === 0 ? <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">بلا مراحل: يعتمد من يملك صلاحية الاعتماد. لا يعتمد أحد عملية سجّلها بنفسه.</p> : null}
-      {stages.map((stage, index) => {
-        const taken = new Set(stages.flatMap((s) => s.approverIds));
-        const free = users.filter((u) => !taken.has(u.id));
-        return (
-          <div key={index} className="space-y-2 rounded-lg border border-border p-2">
-            <div className="flex items-center gap-2">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">{index + 1}</span>
-              <Select value={stage.mode} disabled={disabled} onValueChange={(v) => patch(index, { mode: v as ApprovalStage['mode'], requiredCount: v === 'parallel' ? stage.requiredCount : null })}>
+    <div className="space-y-3">
+      <Field label="نوع الموافقة" hint={TYPE_HINTS[list.mode]}>
+        <Select value={list.mode} disabled={disabled} onValueChange={(v) => commit({ mode: v as ApprovalStage['mode'], requiredCount: v === 'parallel' ? list.requiredCount : null })}>
+          <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+          <SelectContent>{types.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+        </Select>
+      </Field>
+      <Field label={`المعتمدون (${list.approverIds.length})`} hint={list.approverIds.length === 0 ? 'بلا معتمدين: يعتمد من يملك صلاحية الاعتماد. لا يعتمد أحد عملية سجّلها بنفسه.' : undefined}>
+        <PickList
+          options={users.map((u) => ({ id: u.id, name: u.name }))}
+          value={list.approverIds}
+          onChange={(approverIds) => commit({ approverIds })}
+          placeholder="اختر معتمِداً"
+          renderName={(id) => <PartyName id={id} link={false} />}
+          ordered={list.mode === 'sequential'}
+          disabled={disabled}
+        />
+      </Field>
+      {list.mode === 'parallel' && list.approverIds.length > 1 ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Field label="كم موافقة تكفي">
+            <Select value={list.requiredCount == null ? 'all' : 'count'} disabled={disabled} onValueChange={(v) => commit({ requiredCount: v === 'all' ? null : 1 })}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">جميعهم</SelectItem>
+                <SelectItem value="count">عدد محدد</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          {list.requiredCount != null ? (
+            <Field label="عدد المعتمدين">
+              <Select value={String(Math.min(list.requiredCount, list.approverIds.length))} disabled={disabled} onValueChange={(v) => commit({ requiredCount: Number(v) })}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>{STAGE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  {list.approverIds.map((_, n) => <SelectItem key={n + 1} value={String(n + 1)}>{n + 1}</SelectItem>)}
+                </SelectContent>
               </Select>
-              {!disabled ? <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label="حذف المرحلة" onClick={() => commit(stages.filter((_, i) => i !== index))}><X className="h-4 w-4" /></Button> : null}
-            </div>
-            <div className="space-y-1">
-              {stage.approverIds.map((id, i) => (
-                <div key={id} className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-1">
-                  <span className="w-4 text-center text-xs text-muted-foreground">{i + 1}</span>
-                  <span className="min-w-0 flex-1 truncate text-sm"><PartyName id={id} link={false} /></span>
-                  {!disabled ? (
-                    <>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="أعلى" disabled={i === 0} onClick={() => { const ids = [...stage.approverIds]; const [x] = ids.splice(i, 1); ids.splice(i - 1, 0, x!); patch(index, { approverIds: ids }); }}><ArrowUp className="h-3.5 w-3.5" /></Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="أسفل" disabled={i === stage.approverIds.length - 1} onClick={() => { const ids = [...stage.approverIds]; const [x] = ids.splice(i, 1); ids.splice(i + 1, 0, x!); patch(index, { approverIds: ids }); }}><ArrowDown className="h-3.5 w-3.5" /></Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="إزالة" onClick={() => patch(index, { approverIds: stage.approverIds.filter((v) => v !== id) })}><X className="h-3.5 w-3.5" /></Button>
-                    </>
-                  ) : null}
-                </div>
-              ))}
-              {!disabled && free.length > 0 ? (
-                <Select value="" onValueChange={(id) => patch(index, { approverIds: [...stage.approverIds, id] })}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="إضافة معتمِد" /></SelectTrigger>
-                  <SelectContent>{free.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
-                </Select>
-              ) : null}
-            </div>
-            {stage.mode === 'parallel' && stage.approverIds.length > 1 ? (
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Field label="كم موافقة تكفي">
-                  <Select value={stage.requiredCount == null ? 'all' : 'count'} disabled={disabled} onValueChange={(v) => patch(index, { requiredCount: v === 'all' ? null : 1 })}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">جميعهم</SelectItem>
-                      <SelectItem value="count">عدد محدد</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                {stage.requiredCount != null ? (
-                  <Field label="عدد المعتمدين">
-                    <Select value={String(Math.min(stage.requiredCount, stage.approverIds.length))} disabled={disabled} onValueChange={(v) => patch(index, { requiredCount: Number(v) })}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {stage.approverIds.map((_, n) => <SelectItem key={n + 1} value={String(n + 1)}>{n + 1}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                ) : null}
-              </div>
-            ) : null}
-            <p className="text-[11px] text-muted-foreground">{stage.mode === 'optional' ? 'لا توقف العملية: الاعتماد يكمل بدونها.' : STAGE_MODE_LABELS_AR[stage.mode]}</p>
-          </div>
-        );
-      })}
+            </Field>
+          ) : null}
+        </div>
+      ) : null}
+      {savedStages > 1 ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">لهذه المجموعة {savedStages} مراحل محفوظة، وتبقى كما هي ما لم تعدّل هنا. عند أي تعديل تصير قائمة واحدة بنوع واحد.</p> : null}
     </div>
   );
 }
@@ -163,7 +156,7 @@ export function GroupPolicyFields({ value, onChange, disabled }: { value: GroupP
         <p className="text-sm font-semibold">الاعتماد</p>
         <RuleField kind="approval" rule={value.approval} amount={value.approvalAbove} disabled={disabled} onChange={(rule, amount) => set({ approval: rule, approvalAbove: amount })} />
         {approval ? (
-          <StagesField policy={value} disabled={disabled} onChange={(stages) => set({ stages, managerId: null, approverIds: [], approvalMode: 'sequential' })} />
+          <ApproversField policy={value} disabled={disabled} onChange={(stages) => set({ stages, managerId: null, approverIds: [], approvalMode: 'sequential' })} />
         ) : null}
       </div>
 

@@ -14,7 +14,7 @@ import type { ExpenseDraft } from '../domain/commands';
 import { buildBearing, custodyPayments, validateExpense } from '../domain/expense-builder';
 import { expenseEffects } from '../domain/ledger';
 import { minorToInput, sumMinor, toMinor, type Minor } from '../domain/money';
-import { approvalRequired, blocksSubmit, checkPolicies, groupStatusOf, policyOf } from '../domain/policy';
+import { approvalRequired, blocksSubmit, checkPolicies, groupCostCenterIds, groupOf, groupStatusOf, policyOf } from '../domain/policy';
 import { ORG } from '../domain/types';
 import type { AllocationLine, AttachmentMeta, Expense, PartyId, SplitMethod } from '../domain/types';
 import { AmountInput, Field, FormDialog, Money, PartyChecklist, PartyName, PartySelect } from './common';
@@ -182,10 +182,18 @@ export function ExpenseFormDialog({
   const submitLabel = policy.approval === 'none' ? 'حفظ' : !approvalRequired(policy, amount) ? 'حفظ (اعتماد تلقائي)' : 'إرسال للاعتماد';
   const pickable = openGroups(data).length > 1 || (group != null && groupStatusOf(group) !== 'active');
 
+  // The group's centers when it has some; a center already on the record stays listed.
+  const fileUnder = groupOf(data, groupId);
+  const groupCenters = fileUnder ? groupCostCenterIds(fileUnder) : [];
+  const centerChoices = (current: string | null) =>
+    data.costCenters.filter((c) => c.id === current || (!c.archived && (groupCenters.length === 0 || groupCenters.includes(c.id))));
+
   const pickGroup = (id: string | null) => {
     setGroupId(id);
     const g = id ? data.groups.find((x) => x.id === id) : undefined;
-    if (g?.costCenterId) setCostCenterId(g.costCenterId);
+    const centers = g ? groupCostCenterIds(g) : [];
+    if (centers.length === 1) setCostCenterId(centers[0]!);
+    else if (centers.length > 1) setCostCenterId((current) => (current && centers.includes(current) ? current : null));
     if (g && splitOn && parties.length === 0) setParties(g.memberIds);
   };
 
@@ -391,7 +399,7 @@ export function ExpenseFormDialog({
                   <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">بلا مركز</SelectItem>
-                    {data.costCenters.filter((c) => !c.archived).map((c) => <SelectItem key={c.id} value={c.id}>{c.code} — {c.name}</SelectItem>)}
+                    {centerChoices(costCenterId).map((c) => <SelectItem key={c.id} value={c.id}>{c.code} — {c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </Field>
@@ -411,7 +419,7 @@ export function ExpenseFormDialog({
                             <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">بلا مركز</SelectItem>
-                              {data.costCenters.map((c) => <SelectItem key={c.id} value={c.id}>{c.code} — {c.name}</SelectItem>)}
+                              {centerChoices(line.costCenterId).map((c) => <SelectItem key={c.id} value={c.id}>{c.code} — {c.name}</SelectItem>)}
                             </SelectContent>
                           </Select>
                         </div>

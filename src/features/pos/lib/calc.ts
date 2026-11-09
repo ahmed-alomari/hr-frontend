@@ -22,6 +22,21 @@ export function discountPercentOf(base: number, discount: PosDiscount | null): n
   return discount.type === 'percent' ? discount.value : (discount.value / base) * 100;
 }
 
+/** The highest discount of a cart, as the server measures it against the limit. */
+export function highestDiscountPercent(
+  lines: Array<Pick<PosSaleLine, 'unitPrice' | 'quantity' | 'discount'>>,
+  orderDiscount: PosDiscount | null,
+): number {
+  const gross = lines.map((l) => round2(l.unitPrice * l.quantity));
+  const lineDiscount = (base: number, discount: PosDiscount | null) => {
+    if (!discount || base <= 0) return 0;
+    const raw = discount.type === 'percent' ? (base * Math.min(discount.value, 100)) / 100 : discount.value;
+    return round2(Math.min(raw, base));
+  };
+  const net = round2(gross.reduce((sum, g, i) => sum + g - lineDiscount(g, lines[i].discount), 0));
+  return Math.max(0, ...lines.map((l, i) => discountPercentOf(gross[i], l.discount)), discountPercentOf(net, orderDiscount));
+}
+
 /**
  * Recomputes every line snapshot: line discount, its share of the sale
  * discount (spread by net value, remainder on the last line), tax, total.

@@ -1,5 +1,10 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
+import { fetchAllPaginatedItems } from '@/shared/api/client';
+import { partnersApi } from '@/features/contacts/admin/partners/lib/api/partners';
+import { PARTNER_STATUS_LABELS } from '@/features/contacts/domain/constants/labels';
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Building2, Eye, LayoutGrid, List, Mail, Pencil, Phone, Plus, Trash2 } from 'lucide-react';
@@ -206,6 +211,25 @@ export function PartnersListPage() {
     },
   ];
 
+  const rolesOf = (p: Partner) =>
+    [p.isCustomer && 'عميل', p.isVendor && 'مورد', p.isEmployee && 'موظف', p.isInternal && 'داخلي'].filter(Boolean).join('، ') || '—';
+  const tools = useListTools<Partner>({
+    section: 'contacts',
+    page: 'partners',
+    columns,
+    rows: data?.items ?? [],
+    fetchAll: async () =>
+      (await fetchAllPaginatedItems((p, limit) => partnersApi.getAll({ ...listQuery, page: p, limit }))).items,
+    resetKey: JSON.stringify({ ...listQuery, page: 0, limit: 0 }),
+    fields: {
+      name: { kind: 'name', text: (p) => p.displayName },
+      roles: { text: rolesOf, group: rolesOf },
+      mobile: { kind: 'code', text: (p) => p.mobile || p.phone || '—', sortable: false },
+      email: { text: (p) => p.email || '—' },
+      status: { kind: 'status', text: (p) => PARTNER_STATUS_LABELS[p.status], group: (p) => p.status, groupLabel: (k) => PARTNER_STATUS_LABELS[k as PartnerStatus] ?? k },
+    },
+  });
+
   const viewButtons: { mode: ViewMode; icon: typeof List; label: string }[] = [
     { mode: 'list', icon: List, label: 'قائمة' },
     { mode: 'cards', icon: LayoutGrid, label: 'بطاقات' },
@@ -215,22 +239,26 @@ export function PartnersListPage() {
     () => (
       <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
         <FilterToggleButton />
-        <div className="flex rounded-lg border border-border p-0.5">
-          {viewButtons.map(({ mode, icon: Icon, label }) => (
-            <Button
-              key={mode}
-              type="button"
-              size="sm"
-              variant="ghost"
-              className={cn('h-7 gap-1.5 px-2', view === mode && 'bg-muted')}
-              onClick={() => updateParams({ view: mode, page: 1 })}
-              aria-label={label}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{label}</span>
-            </Button>
-          ))}
-        </div>
+        {tools.buttons}
+        {tools.exportMenu('جهات الاتصال', 'contacts')}
+        <FoldedHeaderTool>
+          <div className="flex rounded-lg border border-border p-0.5">
+            {viewButtons.map(({ mode, icon: Icon, label }) => (
+              <Button
+                key={mode}
+                type="button"
+                size="sm"
+                variant="ghost"
+                className={cn('h-7 gap-1.5 px-2', view === mode && 'bg-muted')}
+                onClick={() => updateParams({ view: mode, page: 1 })}
+                aria-label={label}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{label}</span>
+              </Button>
+            ))}
+          </div>
+        </FoldedHeaderTool>
         <PageHeaderPrimaryButton
           icon={Plus}
           label="جهة اتصال جديدة"
@@ -239,7 +267,7 @@ export function PartnersListPage() {
         />
       </div>
     ),
-    [view, companyId],
+    [view, companyId, tools.depsKey],
   );
 
   useEntityFilterSlot(
@@ -301,19 +329,20 @@ export function PartnersListPage() {
       {isError ? <p className="text-sm text-destructive">تعذر تحميل جهات الاتصال.</p> : null}
 
       {view === 'list' ? (
+        <ListToolsTable tools={tools} keyExtractor={(p) => p.id} onRowClick={(p) => openPartner(p)}>
         <DirectoryPagedViews
-          items={data?.items ?? []}
+          items={tools.rows}
           loading={isLoading}
           serverPagination={
             data
-              ? {
+              ? tools.pagination({
                   page,
                   pageSize,
                   total: data.pagination.total,
                   totalPages: Math.max(1, Math.ceil(data.pagination.total / pageSize)),
                   setPage: (nextPage) => updateParams({ page: nextPage }),
                   setPageSize: (size) => updateParams({ pageSize: size, page: 1 }),
-                }
+                })
               : undefined
           }
         >
@@ -321,7 +350,8 @@ export function PartnersListPage() {
             <DataTable
               variant="directory"
               className="ctc-table-host"
-              columns={columns}
+              columns={tools.columns}
+              {...tools.tableSort}
               data={rowsPage}
               keyExtractor={(row) => row.id}
               loading={isLoading}
@@ -388,6 +418,7 @@ export function PartnersListPage() {
             />
           )}
         </DirectoryPagedViews>
+        </ListToolsTable>
       ) : null}
 
       {view === 'cards' ? (

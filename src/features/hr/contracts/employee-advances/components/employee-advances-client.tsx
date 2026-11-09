@@ -1,18 +1,11 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import { companyCurrencyCode } from '@/features/auth/lib/company-currency';
 import { currencyNameAr } from '@/shared/currencies';
 import * as React from 'react';
 import { Plus, Banknote, Send, CalendarDays } from 'lucide-react';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import {
-  employeeStatusFilterLabelAr,
-  employeeStatusQuery,
-  isEmployeeStatusFilterActive,
-  useEmployeeStatusFilter,
-} from '@/features/hr/lib/employee-status-filter';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
+import { employeeStatusFilterLabelAr, employeeStatusQuery, isEmployeeStatusFilterActive, useEmployeeStatusFilter } from '@/features/hr/lib/employee-status-filter';
 import { exportDate, exportMoney, exportText } from '@/features/hr/requests/lib/list-export-format';
 import { toast } from 'sonner';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
@@ -22,62 +15,31 @@ import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { useAuthStore } from '@/features/auth/lib/auth-store';
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
-import {
-  hrFiltersKey,
-  usePersistedEmpIdSet,
-  usePersistedFilterState,
-} from '@/features/hr/lib/use-persisted-filter-state';
+import { hrFiltersKey, usePersistedEmpIdSet, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
 import { useCurrentEmployee } from '@/features/hr/organization/employees/hooks/useCurrentEmployee';
 import { checkRequestApprovalAccess } from '@/features/hr/requests/lib/request-approval-access';
-import {
-  buildEmployeeAdvanceDecisionPayload,
-  getRequestApprovalUiState,
-  isRequestFullyApproved,
-} from '@/features/hr/requests/lib/request-approver-states';
+import { buildEmployeeAdvanceDecisionPayload, getRequestApprovalUiState, isRequestFullyApproved } from '@/features/hr/requests/lib/request-approver-states';
 import { RequestApproverStatesPanel } from '@/features/hr/requests/components/request-approver-states-panel';
 import { RequestApproversInline } from '@/features/hr/requests/components/request-approvers-inline';
 import { RequestApprovalActionCell, RequestApprovalActionButtons } from '@/features/hr/requests/components/request-approval-actions';
-import {
-  HRSettingsFormDrawer, FormField, ConfirmationModal, EmptyState, SearchableDropdown, MinimalDropdown,
-} from '@/components/ui/shared-dialogs';
+import { HRSettingsFormDrawer, FormField, ConfirmationModal, EmptyState, SearchableDropdown, MinimalDropdown } from '@/components/ui/shared-dialogs';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import { duplicateAdvanceNumberMessage, isDuplicateAdvanceNumberError } from '@/features/hr/contracts/lib/employee-advance-errors';
 import { employeeAdvancesApi } from '@/features/hr/contracts/lib/api/employee-advances';
 import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
 import type { RequestApprovalAssignmentCatalogDto } from '@/features/hr/requests/types/api/overtime-requests';
-import {
-  useHREmployeeAdvancesStore,
-  mapEmployeeAdvanceFromApi,
-  ADVANCE_STATUS_LABELS,
-  ADVANCE_STATUS_FILTER_ORDER,
-  ADVANCE_KIND_LABELS,
-  REPAYMENT_MODE_LABELS,
-  EDITABLE_ADVANCE_STATUSES,
-  DELETABLE_ADVANCE_STATUSES,
-  advanceReasonText,
-  type HREmployeeAdvance,
-  type HREmployeeAdvanceKind,
-  type HREmployeeAdvanceRepaymentMode,
-  type HREmployeeAdvanceStatus,
-} from '@/features/hr/contracts/lib/employee-advances-store';
+import { useHREmployeeAdvancesStore, mapEmployeeAdvanceFromApi, ADVANCE_STATUS_LABELS, ADVANCE_STATUS_FILTER_ORDER, ADVANCE_KIND_LABELS, REPAYMENT_MODE_LABELS, EDITABLE_ADVANCE_STATUSES, DELETABLE_ADVANCE_STATUSES, advanceReasonText, type HREmployeeAdvance, type HREmployeeAdvanceKind, type HREmployeeAdvanceRepaymentMode, type HREmployeeAdvanceStatus } from '@/features/hr/contracts/lib/employee-advances-store';
 import { DirectoryPagedViews, useServerDirectoryPagination } from '@/components/ui/paged-list';
 import { useHREmployeeDirectoryStore } from '@/features/hr/requests/lib/employee-directory-store';
 import { cn, formatNumber } from '@/shared/utils';
 import { STATUS_PILL } from '@/shared/status-pill-classes';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
-import {
-  EntityActionCard,
-  EntityActionCardChip,
-  EntityActionCardGrid,
-  type WorkflowStatusTone,
-} from '@/components/ui/entity-action-card';
+import { EntityActionCard, EntityActionCardChip, EntityActionCardGrid, type WorkflowStatusTone } from '@/components/ui/entity-action-card';
 import { TableDateCell, TableRowActions } from '@/components/ui/table-cells';
 import { SarAmount } from '@/components/ui/sar-amount';
 
@@ -250,19 +212,6 @@ function advanceInstallmentExportText(x: HREmployeeAdvance): string {
   return '—';
 }
 
-const ADVANCE_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الموظف', kind: 'name' },
-  { label: 'رقم السلفة', kind: 'code' },
-  { label: 'الفرع', kind: 'text' },
-  { label: 'التاريخ', kind: 'date' },
-  { label: 'المبلغ', kind: 'number' },
-  { label: 'النوع', kind: 'status' },
-  { label: 'السبب', kind: 'text', weight: 1.4 },
-  { label: 'الحالة', kind: 'status' },
-  { label: 'القسط', kind: 'text', weight: 1.3 },
-  { label: 'المسدد', kind: 'number' },
-  { label: 'المتبقي', kind: 'number' },
-];
 
 function AdvancePaidTableCell({ x }: { x: HREmployeeAdvance }) {
   if (!advanceHasRepaymentProgress(x)) return <span className="text-xs text-muted-foreground">—</span>;
@@ -638,50 +587,6 @@ export function EmployeeAdvancesClient() {
     patch({ employeeId: id, employeeNameAr: emp?.nameAr ?? '' });
   };
 
-  const getExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    if (!companyId) return [];
-    let exportRows = sorted;
-    if (pagination.total > sorted.length) {
-      try {
-        const res = bulkMode
-          ? await loadBulk()
-          : await (async () => {
-              const catalogsById = new Map<string, RequestApprovalAssignmentCatalogDto>();
-              const fetched = await fetchAllPaginatedItems<HREmployeeAdvance>(async (page, limit) => {
-                const full = await employeeAdvancesApi.list(buildListQuery(page, limit));
-                full.approvalAssignments.forEach((a) => catalogsById.set(a.id, a));
-                const catalog = [...catalogsById.values()];
-                return {
-                  items: full.items.map((item) => mapAdvanceRow(item, catalog)),
-                  pagination: full.pagination,
-                };
-              });
-              return {
-                items: sortAdvances(fetched.items),
-                total: fetched.total,
-              };
-            })();
-        exportRows = res.items;
-      } catch (e) {
-        throw new Error(handleApiError(e, 'employee-advances/export').displayMessage);
-      }
-    }
-    return exportRows.map((x) => [
-      exportText(x.employeeNameAr),
-      exportText(x.advanceNumber),
-      exportText(x.branchNameAr),
-      exportDate(x.advanceDate),
-      exportMoney(x.amount, x.currency),
-      ADVANCE_KIND_LABELS[x.advanceKind] ?? '—',
-      exportText(advanceReasonText(x)),
-      ADVANCE_STATUS_LABELS[x.status] ?? x.status,
-      advanceInstallmentExportText(x),
-      advanceHasRepaymentProgress(x)
-        ? `${formatNumber(x.totalRepaidAmount)} / ${exportMoney(x.amount, x.currency)}`
-        : '—',
-      x.remainingAmount > 0 ? exportMoney(x.remainingAmount, x.currency) : '—',
-    ]);
-  });
 
   const activeFilterCount = (selectedEmpIds.size > 0 ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0)
     + (dateBounds.from || dateBounds.to ? 1 : 0)
@@ -835,6 +740,39 @@ export function EmployeeAdvancesClient() {
     submitForApproval,
   ]);
 
+  const openAdvanceRow = (x: HREmployeeAdvance) => {
+    if (canOpenAdvanceDetail(x.status)) openAdvanceDetail(x);
+    else if (isEditable(x.status) && x.status !== 'pending_approval') openEdit(x.id);
+  };
+  const tools = useListTools<HREmployeeAdvance>({
+    section: 'hr',
+    page: 'employee-advances',
+    columns,
+    rows: sorted,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      employee: {
+        kind: 'name',
+        text: (x) => exportText(x.employeeNameAr),
+        group: (x) => x.employeeNameAr || null,
+        alsoExport: [
+          { label: 'رقم السلفة', text: (x) => exportText(x.advanceNumber) },
+          { label: 'الفرع', text: (x) => exportText(x.branchNameAr) },
+        ],
+      },
+      advanceDate: { kind: 'date', text: (x) => exportDate(x.advanceDate), sort: (x) => x.advanceDate ?? '', group: (x) => (x.advanceDate ? x.advanceDate.slice(0, 7) : null) },
+      amount: { text: (x) => exportMoney(x.amount, x.currency), sort: (x) => Number(x.amount) || 0, sum: (x) => Number(x.amount) || 0, formatSum: formatNumber },
+      kind: { text: (x) => ADVANCE_KIND_LABELS[x.advanceKind] ?? x.advanceKind, group: (x) => ADVANCE_KIND_LABELS[x.advanceKind] ?? x.advanceKind },
+      reasonAr: { text: (x) => exportText(advanceReasonText(x)), sortable: false },
+      status: { kind: 'status', text: (x) => ADVANCE_STATUS_LABELS[x.status] ?? x.status, group: (x) => ADVANCE_STATUS_LABELS[x.status] ?? x.status },
+      installment: { text: advanceInstallmentExportText, sortable: false },
+      paid: { text: (x) => `${formatNumber(x.totalRepaidAmount)} / ${exportMoney(x.amount, x.currency)}`, sort: (x) => Number(x.totalRepaidAmount) || 0, sum: (x) => Number(x.totalRepaidAmount) || 0, formatSum: formatNumber },
+      remaining: { text: (x) => (x.remainingAmount > 0 ? exportMoney(x.remainingAmount, x.currency) : '—'), sort: (x) => Number(x.remainingAmount) || 0, sum: (x) => Number(x.remainingAmount) || 0, formatSum: formatNumber },
+      decisionNotes: { text: (x) => exportText(x.decisionNotes), sortable: false },
+    },
+  });
+
   const statusFilterLabels = React.useMemo(
     () => Object.fromEntries(
       ADVANCE_STATUS_FILTER_ORDER.map((key) => [key, ADVANCE_STATUS_LABELS[key]]),
@@ -846,21 +784,15 @@ export function EmployeeAdvancesClient() {
     () => (
       <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
         <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <RegisterExportMenu
-          title="سجل السلف"
-          fileName="employee-advances"
-          columns={ADVANCE_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={[`حالة الموظفين: ${employeeStatusFilterLabelAr(employeeStatus)}`]}
-          landscape
-        />
+        {tools.buttons}
+        {tools.exportMenu('سجل السلف', 'employee-advances', [`حالة الموظفين: ${employeeStatusFilterLabelAr(employeeStatus)}`])}
         <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0" onClick={openCreate}>
           <Plus className="h-3.5 w-3.5" />
           سلفة جديدة
         </Button>
       </div>
     ),
-    [activeFilterCount, employeeStatus],
+    [activeFilterCount, employeeStatus, tools.depsKey],
   );
 
   useEntityFilterSlot(
@@ -914,24 +846,23 @@ export function EmployeeAdvancesClient() {
         {!listLoading && sorted.length === 0 && pagination.total === 0 ? (
           <EmptyState icon={Banknote} title="لا توجد سلف" description="أضف سلفة جديدة لموظف للبدء." />
         ) : (
+          <ListToolsTable tools={tools} keyExtractor={(x) => x.id} onRowClick={openAdvanceRow}>
           <DirectoryPagedViews
-            items={sorted}
-            serverPagination={pagination}
-            loading={listLoading}
+            items={tools.rows}
+            serverPagination={tools.pagination(pagination)}
+            loading={listLoading || tools.loading}
           >
             {(pageItems) => viewMode === 'list' ? (
               <DataTable
                 variant="directory"
                 alwaysShowTable
                 tableClassName="min-w-[1280px]"
-                columns={columns}
+                columns={tools.columns}
+                {...tools.tableSort}
                 data={pageItems}
                 keyExtractor={(x) => x.id}
                 emptyText="لا توجد سلف"
-                onRowClick={(x) => {
-                  if (canOpenAdvanceDetail(x.status)) openAdvanceDetail(x);
-                  else if (isEditable(x.status) && x.status !== 'pending_approval') openEdit(x.id);
-                }}
+                onRowClick={openAdvanceRow}
               />
             ) : (
               <EntityActionCardGrid>
@@ -1031,6 +962,7 @@ export function EmployeeAdvancesClient() {
               </EntityActionCardGrid>
             )}
           </DirectoryPagedViews>
+          </ListToolsTable>
         )}
       </div>
 

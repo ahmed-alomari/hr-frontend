@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { FileDown, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -40,26 +41,30 @@ export function ShareBar({ value, max, total }: { value: number; max: number; to
   );
 }
 
-export function ReportExportMenu({ onExcel, onCsv, label = 'تصدير التقرير' }: { onExcel: () => void; onCsv?: () => void; label?: string }) {
+export function ReportExportMenu({ onExcel, onCsv, label = 'تصدير التقرير' }: { onExcel?: () => void; onCsv?: () => void; label?: string }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="h-8 w-8 shrink-0" aria-label={label}>
-          <FileDown className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuItem onSelect={onExcel}>
-          <FileSpreadsheet className="h-4 w-4" />
-          Excel
-        </DropdownMenuItem>
-        {onCsv ? (
-          <DropdownMenuItem onSelect={onCsv}>
+    <FoldedHeaderTool>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="outline" size="sm" className="h-8 w-8 shrink-0" aria-label={label}>
             <FileDown className="h-4 w-4" />
-            CSV (العمليات)
-          </DropdownMenuItem>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {onExcel ? (
+            <DropdownMenuItem onSelect={onExcel}>
+              <FileSpreadsheet className="h-4 w-4" />
+              Excel
+            </DropdownMenuItem>
+          ) : null}
+          {onCsv ? (
+            <DropdownMenuItem onSelect={onCsv}>
+              <FileDown className="h-4 w-4" />
+              CSV (العمليات)
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </FoldedHeaderTool>
   );
 }

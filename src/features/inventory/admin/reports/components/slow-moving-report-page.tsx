@@ -1,5 +1,8 @@
 'use client';
 
+import { ListGroupMenu } from '@/components/ui/list-group';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
@@ -9,20 +12,8 @@ import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { getInventoryCompanyId } from '@/features/inventory/lib/company-id';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
 import { useAllCategories } from '@/features/catalog/categories/hooks/use-categories';
-import {
-  inventoryReportsApi,
-  type SlowMovingQuery,
-  type SlowMovingRow,
-} from '@/features/inventory/admin/reports/lib/api/inventory-reports';
-import {
-  ReportStat,
-  ValueHiddenNote,
-  currencyLine,
-  formatQty,
-  formatReportMoney,
-  itemLabel,
-  moneyCell,
-} from '@/features/inventory/admin/reports/lib/report-shared';
+import { inventoryReportsApi, type SlowMovingQuery, type SlowMovingRow } from '@/features/inventory/admin/reports/lib/api/inventory-reports';
+import { ReportStat, ValueHiddenNote, currencyLine, formatQty, formatReportMoney, itemLabel, moneyCell } from '@/features/inventory/admin/reports/lib/report-shared';
 import { formatDisplayDate } from '@/shared/utils';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-list';
@@ -32,12 +23,6 @@ import { ListColumnsPicker, useColumnVisibility, type ListColumnOption } from '@
 import { ListSavedViews, listStateKeys } from '@/components/ui/list-saved-views';
 import { ListSortMenu, listSortQuery, useListSort, type ListSortOption } from '@/components/ui/list-sort';
 import type { ListTotals } from '@/components/ui/list-group';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import {
-  registerExportRows,
-  visibleExportColumns,
-  type RegisterExportColumn,
-} from '@/components/pdf/lib/register-export-rows';
 import { fetchAllPaginatedItems } from '@/shared/api/client';
 import { hrFiltersKey, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
 
@@ -188,30 +173,6 @@ export function SlowMovingReportPage() {
   ];
   const visibleColumns = columns.filter((column) => isShown(column.key));
 
-  const exportColumns = visibleExportColumns<SlowMovingRow>(
-    [
-      { label: 'الصنف', kind: 'name', value: (r) => itemLabel(r) },
-      { label: 'SKU', kind: 'code', value: (r) => r.sku ?? '' },
-      { label: 'الفئة', kind: 'text', key: 'category', value: (r) => r.categoryName ?? '' },
-      { label: 'آخر صرف', kind: 'text', key: 'lastOut', value: lastOutLabel },
-      { label: 'أيام الركود', kind: 'number', key: 'idleDays', value: (r) => String(r.idleDays) },
-      {
-        label: 'الرصيد',
-        kind: 'number',
-        key: 'onHand',
-        value: (r) => formatQty(r.onHand),
-        total: (t) => formatQty(t.sums.onHand),
-      },
-      {
-        label: 'القيمة المجمّدة',
-        kind: 'number',
-        key: 'value',
-        value: (r) => moneyCell(r.value),
-        total: (t) => moneyCell(t.sums.value),
-      },
-    ] satisfies RegisterExportColumn<SlowMovingRow>[],
-    isShown,
-  );
 
   const warehouseLabel = warehouseId !== 'all' ? warehouses.find((w) => w.id === warehouseId)?.nameAr : null;
   const categoryLabel = categoryId !== 'all' ? categories.find((c) => c.id === categoryId)?.nameAr : null;
@@ -225,12 +186,24 @@ export function SlowMovingReportPage() {
   ].filter((line): line is string => Boolean(line));
   const activeFilterCount = (warehouseId !== 'all' ? 1 : 0) + (categoryId !== 'all' ? 1 : 0) + 1;
 
-  const getExportRows = async () => {
-    const { items } = await fetchAllPaginatedItems((p, l) =>
-      inventoryReportsApi.slowMoving({ ...filters, page: p, limit: l }),
-    );
-    return registerExportRows({ columns: exportColumns, rows: items, total: totals });
-  };
+  const groupingPage = 'slow-moving-grouping';
+  const tools = useListTools<SlowMovingRow>({
+    section: 'inventory',
+    page: groupingPage,
+    columns: visibleColumns,
+    rows,
+    fetchAll: async () =>
+      (await fetchAllPaginatedItems((p, l) => inventoryReportsApi.slowMoving({ ...filters, page: p, limit: l }))).items,
+    resetKey: JSON.stringify(filters),
+    fields: {
+      product: { kind: 'name', sortable: false, text: (r) => itemLabel(r), alsoExport: [{ label: 'SKU', text: (r) => r.sku ?? '' }] },
+      category: { sortable: false, text: (r) => r.categoryName ?? '', group: (r) => r.categoryName ?? null },
+      lastOut: { sortable: false, text: lastOutLabel },
+      idleDays: { kind: 'number', sortable: false, text: (r) => String(r.idleDays) },
+      onHand: { kind: 'number', sortable: false, text: (r) => formatQty(r.onHand), sum: (r) => r.onHand, formatSum: formatQty },
+      value: { kind: 'number', sortable: false, text: (r) => moneyCell(r.value), sum: (r) => r.value ?? 0, formatSum: moneyCell },
+    },
+  });
 
   usePageHeaderActions(
     () => (
@@ -238,16 +211,9 @@ export function SlowMovingReportPage() {
         <FilterToggleButton activeFilterCount={activeFilterCount} />
         <ListColumnsPicker model={columnVisibility} />
         <ListSortMenu model={sort} />
-        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
-        <RegisterExportMenu
-          title="الأصناف الراكدة"
-          fileName="inventory-slow-moving"
-          columns={exportColumns}
-          getRows={getExportRows}
-          subtitleLines={filterSummary}
-          pinnedColumnCount={1}
-          emptyMessage="لا توجد أصناف راكدة ضمن الفلاتر الحالية."
-        />
+        <ListSavedViews storageKey={stateKeys.views} prefixes={[...stateKeys.prefixes, ...listStateKeys('inventory', groupingPage, companyId).prefixes]} />
+        <ListGroupMenu model={tools.group} />
+        {tools.exportMenu('الأصناف الراكدة', 'inventory-slow-moving', filterSummary)}
       </div>
     ),
     [
@@ -257,7 +223,7 @@ export function SlowMovingReportPage() {
       columnVisibility.hiddenKey,
       JSON.stringify(filters),
       JSON.stringify(totals),
-      exportColumns.length,
+      tools.depsKey,
       filterSummary.join('|'),
       stateKeys.views,
     ],
@@ -341,11 +307,13 @@ export function SlowMovingReportPage() {
         iconName="CalendarClock"
       />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3">
-        <ReportStat label="أصناف راكدة" value={total.toLocaleString('en-US')} />
-        <ReportStat label="إجمالي الرصيد" value={formatQty(data?.totals.onHand ?? 0)} />
-        {valueVisible ? <ReportStat label="القيمة المجمّدة" value={money(data?.totals.value ?? 0)} /> : null}
-      </div>
+      <PhoneStatsFold summary={<>راكدة {total.toLocaleString('en-US')}</>}>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3">
+          <ReportStat label="أصناف راكدة" value={total.toLocaleString('en-US')} />
+          <ReportStat label="إجمالي الرصيد" value={formatQty(data?.totals.onHand ?? 0)} />
+          {valueVisible ? <ReportStat label="القيمة المجمّدة" value={money(data?.totals.value ?? 0)} /> : null}
+        </div>
+      </PhoneStatsFold>
 
       <ValueHiddenNote header={data} />
 
@@ -358,10 +326,11 @@ export function SlowMovingReportPage() {
         </div>
       ) : null}
 
+      <ListToolsTable tools={tools} keyExtractor={(row) => row.key}>
       <DirectoryPagedViews
         items={rows}
         loading={isLoading}
-        serverPagination={{
+        serverPagination={tools.pagination({
           page,
           pageSize,
           total,
@@ -371,7 +340,7 @@ export function SlowMovingReportPage() {
             setPageSize(size);
             setPage(1);
           },
-        }}
+        })}
       >
         {(rowsPage) => (
           <DataTable
@@ -390,6 +359,7 @@ export function SlowMovingReportPage() {
           />
         )}
       </DirectoryPagedViews>
+      </ListToolsTable>
     </div>
   );
 }

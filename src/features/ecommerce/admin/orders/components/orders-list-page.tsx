@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
@@ -509,22 +510,24 @@ export function OrdersListPage() {
           </>
         ) : null}
         <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
-        <div className="flex rounded-lg border border-border p-0.5">
-          {viewButtons.map(({ mode, icon: Icon, label }) => (
-            <Button
-              key={mode}
-              type="button"
-              size="sm"
-              variant="ghost"
-              className={cn('h-7 gap-1.5 px-2', view === mode && 'bg-muted')}
-              onClick={() => updateParams({ view: mode, page: 1, status: mode === 'kanban' ? 'all' : status ?? 'all' })}
-              aria-label={label}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{label}</span>
-            </Button>
-          ))}
-        </div>
+        <FoldedHeaderTool>
+          <div className="flex rounded-lg border border-border p-0.5">
+            {viewButtons.map(({ mode, icon: Icon, label }) => (
+              <Button
+                key={mode}
+                type="button"
+                size="sm"
+                variant="ghost"
+                className={cn('h-7 gap-1.5 px-2', view === mode && 'bg-muted')}
+                onClick={() => updateParams({ view: mode, page: 1, status: mode === 'kanban' ? 'all' : status ?? 'all' })}
+                aria-label={label}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{label}</span>
+              </Button>
+            ))}
+          </div>
+        </FoldedHeaderTool>
         <RegisterExportMenu
           title="سجل الطلبات"
           fileName="store-orders"

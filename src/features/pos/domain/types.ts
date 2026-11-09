@@ -52,6 +52,8 @@ export type PosSettings = {
     cashierMaxPercent: number;
     /** Above the limit: a supervisor confirms on the same device. */
     supervisorApprovalAbove: boolean;
+    /** Who may confirm: chosen in the settings, each signs with his password. */
+    supervisors: Array<{ id: string; name: string }>;
     allowPriceOverride: boolean;
   };
   returns: {
@@ -89,6 +91,8 @@ export type PosRegister = {
   invoiceStyle?: PosInvoiceStyle | null;
   nextSequence: number;
   createdAt: string;
+  /** Who may work this register. Nobody assigned: only the company's super admin. */
+  assignedUsers?: Array<{ id: string; name: string }>;
 };
 
 /** A browser paired with a register. */
@@ -160,6 +164,11 @@ export type PosSaleLine = {
    */
   unitCost?: number | null;
   costSource?: 'purchase_price' | 'inventory' | null;
+  /** What inventory charged for this line: the unit cost is its rounding. */
+  costTotal?: number | null;
+  /** The product's selling group in the register, fixed at the sale. */
+  menuCategoryId?: string | null;
+  menuCategoryName?: string | null;
   /** The item's category when sold. */
   categoryId?: string | null;
   categoryName?: string | null;
@@ -382,7 +391,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   stockTiming: 'reserve_on_commit',
   onlyPosAvailableProducts: false,
   tax: { enabled: false, rate: 0, pricesIncludeTax: true },
-  discounts: { cashierMaxPercent: 10, supervisorApprovalAbove: true, allowPriceOverride: false },
+  discounts: { cashierMaxPercent: 10, supervisorApprovalAbove: true, supervisors: [], allowPriceOverride: false },
   returns: { windowDays: 7, refundToOtherMethodNeedsApproval: true },
   shifts: {
     blindCount: true,

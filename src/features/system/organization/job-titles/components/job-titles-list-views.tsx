@@ -1,25 +1,25 @@
 'use client';
 
+import { Plus } from 'lucide-react';
+import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
+import { Can } from '@/components/shared/can';
+import { ListToolsTable, useListTools, type ListToolsModel } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { Briefcase, Eye, Pencil, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { TableRowActions } from '@/components/ui/table-cells';
-import {
-  DirectoryGrid,
-  DirectoryGridCard,
-  DirectoryGridCardFooter,
-  DirectoryGridCardHeader,
-  DirectoryGridCardTitle,
-} from '@/components/ui/directory-grid-card';
+import { DirectoryGrid, DirectoryGridCard, DirectoryGridCardFooter, DirectoryGridCardHeader, DirectoryGridCardTitle } from '@/components/ui/directory-grid-card';
 import { EmptyState } from '@/components/ui/shared-dialogs';
 import { DirectoryPagedViews } from '@/components/ui/paged-list';
 import type { JobTitlesDirectoryModel } from '@/features/system/organization/job-titles/hooks/useJobTitlesDirectoryModel';
 import type { JobTitleTemplateRecord } from '@/features/system/organization/job-titles/services/job-titles.service';
 
-export function JobTitlesListViews({ model }: { model: JobTitlesDirectoryModel }) {
-  const { templates, layoutView, pagination, loading, setViewRow, openEdit, setConfirmId, companyLabel, perms } = model;
+/** Columns, sort, grouping, export and the page header: stays mounted while the list loads. */
+export function useJobTitlesListTools(model: JobTitlesDirectoryModel) {
+  const { templates, pagination, openEdit, setConfirmId, companyLabel, perms, openCreate, archiveScopeLabel } = model;
 
   const columns = React.useMemo((): ColumnDef<JobTitleTemplateRecord>[] => [
     {
@@ -81,11 +81,51 @@ export function JobTitlesListViews({ model }: { model: JobTitlesDirectoryModel }
     },
   ], [companyLabel, openEdit, perms.canDelete, perms.canUpdate, setConfirmId]);
 
+  const statusOf = (row: JobTitleTemplateRecord) => (row.isActive ? 'نشط' : 'غير نشط');
+  const tools = useListTools<JobTitleTemplateRecord>({
+    section: 'organization',
+    page: 'job-titles',
+    columns,
+    rows: templates,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      company: { text: (row) => companyLabel(row.companyId), group: (row) => companyLabel(row.companyId) },
+      titleAr: { kind: 'name', text: (row) => row.titleAr },
+      description: { text: (row) => row.descriptionAr?.trim() || '—', sortable: false },
+      status: { kind: 'status', text: statusOf, group: statusOf },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton />
+        {tools.buttons}
+        {tools.exportMenu('سجل المسميات الوظيفية', 'job-titles', [`العرض: ${archiveScopeLabel}`])}
+        <Can when={perms.canCreate}>
+          <Button variant="luxe" size="sm" className="h-8 gap-2" onClick={openCreate}>
+            <Plus className="h-4 w-4" /> قالب جديد
+          </Button>
+        </Can>
+      </div>
+    ),
+    [openCreate, perms.canCreate, archiveScopeLabel, tools.depsKey],
+  );
+
+  return tools;
+}
+
+export function JobTitlesListViews({ model, tools }: { model: JobTitlesDirectoryModel; tools: ListToolsModel<JobTitleTemplateRecord> }) {
+  const { layoutView, pagination, loading, setViewRow, openEdit, setConfirmId, companyLabel, perms } = model;
+
+
   return (
+    <ListToolsTable tools={tools} keyExtractor={(row) => row.id} onRowClick={(row) => setViewRow(row)}>
     <DirectoryPagedViews
-      items={templates}
-      serverPagination={pagination}
-      loading={loading}
+      items={tools.rows}
+      serverPagination={tools.pagination(pagination)}
+      loading={loading || tools.loading}
       empty={<EmptyState icon={Briefcase} title="لا توجد قوالب" description="أضف مسميات وظيفية شائعة في شركتك." />}
     >
       {(pageItems) => layoutView === 'grid' ? (
@@ -121,12 +161,14 @@ export function JobTitlesListViews({ model }: { model: JobTitlesDirectoryModel }
         <DataTable
           variant="directory"
           className="sys-table-host"
-          columns={columns}
+          columns={tools.columns}
+          {...tools.tableSort}
           data={pageItems}
           keyExtractor={(row) => row.id}
           onRowClick={(row) => setViewRow(row)}
         />
       )}
     </DirectoryPagedViews>
+    </ListToolsTable>
   );
 }

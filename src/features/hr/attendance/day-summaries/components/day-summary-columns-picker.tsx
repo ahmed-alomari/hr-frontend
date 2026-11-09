@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { Check, Columns3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -85,64 +86,66 @@ export function DaySummaryColumnsPicker({
   const groups = ['times', 'metrics', 'actions'] as const;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 gap-2"
-          aria-label="إظهار أعمدة كشف الحضور"
-        >
-          <Columns3 className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">الأعمدة</span>
-          <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
-            {visibleCount}
-          </span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        className="w-[min(22rem,calc(100vw-2rem))] border-border p-0"
-        dir="rtl"
-      >
-        <div className="border-b border-border/60 px-4 py-3">
-          <p className="text-sm font-semibold">أعمدة كشف الحضور</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            اختر الحقول التي تظهر في الجدول — يُحفظ اختيارك تلقائياً
-          </p>
-        </div>
-        <div className="max-h-[min(24rem,60vh)] space-y-4 overflow-y-auto p-4">
-          {groups.map((group) => {
-            const options = DAY_SUMMARY_COLUMN_OPTIONS.filter((col) => col.group === group);
-            return (
-              <section key={group} className="space-y-2">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                  {GROUP_LABELS[group]}
-                </p>
-                <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
-                  {options.map((col) => (
-                    <ColumnIconToggle
-                      key={col.key}
-                      label={col.label}
-                      shortLabel={col.shortLabel}
-                      icon={col.icon}
-                      active={visibility[col.key]}
-                      onClick={() => onToggle(col.key)}
-                    />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-        <div className="flex items-center justify-between border-t border-border/60 px-4 py-2.5">
-          <span className="text-xs text-muted-foreground">{visibleCount} عمود مفعّل</span>
-          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onReset}>
-            إعادة الافتراضي
+    <FoldedHeaderTool>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-2"
+            aria-label="إظهار أعمدة كشف الحضور"
+          >
+            <Columns3 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">الأعمدة</span>
+            <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+              {visibleCount}
+            </span>
           </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          className="w-[min(22rem,calc(100vw-2rem))] border-border p-0"
+          dir="rtl"
+        >
+          <div className="border-b border-border/60 px-4 py-3">
+            <p className="text-sm font-semibold">أعمدة كشف الحضور</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              اختر الحقول التي تظهر في الجدول — يُحفظ اختيارك تلقائياً
+            </p>
+          </div>
+          <div className="max-h-[min(24rem,60vh)] space-y-4 overflow-y-auto p-4">
+            {groups.map((group) => {
+              const options = DAY_SUMMARY_COLUMN_OPTIONS.filter((col) => col.group === group);
+              return (
+                <section key={group} className="space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                    {GROUP_LABELS[group]}
+                  </p>
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+                    {options.map((col) => (
+                      <ColumnIconToggle
+                        key={col.key}
+                        label={col.label}
+                        shortLabel={col.shortLabel}
+                        icon={col.icon}
+                        active={visibility[col.key]}
+                        onClick={() => onToggle(col.key)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between border-t border-border/60 px-4 py-2.5">
+            <span className="text-xs text-muted-foreground">{visibleCount} عمود مفعّل</span>
+            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onReset}>
+              إعادة الافتراضي
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+    </FoldedHeaderTool>
   );
 }

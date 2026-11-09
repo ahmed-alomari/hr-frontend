@@ -1,21 +1,18 @@
 'use client';
 
+import type { ColumnDef } from '@/components/ui/data-table';
+import type { DepartmentsDirectoryModel } from '@/features/system/organization/departments/hooks/useDepartmentsDirectoryModel';
+import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
+import { Can } from '@/components/shared/can';
+import { useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
-import { Pencil, Trash2, ChevronRight, Building2, Network } from 'lucide-react';
+import { Pencil, Plus, Trash2, Building2, Network } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ActiveBadge } from '@/components/ui/shared-dialogs';
 import type { HRDepartmentEntity } from '@/features/hr/requests/lib/types';
-import {
-  DirectoryGrid,
-  DirectoryGridCard,
-  DirectoryGridCardDecoration,
-  DirectoryGridCardEyebrow,
-  DirectoryGridCardFooter,
-  DirectoryGridCardHeading,
-  DirectoryGridCardIconWrap,
-  DirectoryGridCardMetaChips,
-} from '@/components/ui/directory-grid-card';
+import { DirectoryGrid, DirectoryGridCard, DirectoryGridCardDecoration, DirectoryGridCardEyebrow, DirectoryGridCardFooter, DirectoryGridCardHeading, DirectoryGridCardIconWrap, DirectoryGridCardMetaChips } from '@/components/ui/directory-grid-card';
 import type { DepartmentRecord } from '@/features/system/organization/departments/constants/departments-directory';
 
 type FlatNode = { dept: HRDepartmentEntity; depth: number };
@@ -30,6 +27,87 @@ type DepartmentsListGridProps = {
   onEdit: (dept: HRDepartmentEntity) => void;
   onDelete: (id: string) => void;
 };
+
+/** Columns, sort, grouping, export and the page header. */
+export function useDepartmentsListTools(model: DepartmentsDirectoryModel) {
+  const { departments, filtered, pagination, companyLabel, branchLabel, perms, openCreate, openEdit, confirmDelete, exportSubtitleLines } = model;
+  type Row = (typeof filtered)[number];
+  const recordOf = (n: Row) => n.dept as DepartmentRecord;
+  const parentOf = (n: Row) => departments.find((d) => d.id === n.dept.parentId)?.nameAr ?? '—';
+  const branchOf = (n: Row) => branchLabel(recordOf(n).branchId) ?? '—';
+  const companyOf = (n: Row) => companyLabel(recordOf(n).companyId);
+  const subCount = (n: Row) => departments.filter((d) => d.parentId === n.dept.id).length;
+  const managerOf = (n: Row) => {
+    const id = recordOf(n).managerEmployeeId;
+    return id ? `${id.slice(0, 8)}…` : '—';
+  };
+  const statusOf = (n: Row) => (n.dept.isActive ? 'نشط' : 'غير نشط');
+  const columns: ColumnDef<Row>[] = [
+    { key: 'name', title: 'القسم', render: (n) => n.dept.nameAr },
+    { key: 'parent', title: 'القسم الأب', render: parentOf },
+    { key: 'company', title: 'الشركة', render: companyOf },
+    { key: 'branch', title: 'الفرع', render: branchOf },
+    { key: 'manager', title: 'المدير', render: managerOf },
+    { key: 'children', title: 'الأقسام الفرعية', render: (n) => String(subCount(n)) },
+    { key: 'description', title: 'الوصف', render: (n) => recordOf(n).description?.trim() || '—' },
+    { key: 'status', title: 'الحالة', render: (n) => <ActiveBadge active={n.dept.isActive} /> },
+    {
+      key: 'actions',
+      title: '',
+      isActions: true,
+      render: (n) => (
+        <div className="flex items-center gap-1">
+          {perms.canUpdate ? (
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); openEdit(n.dept); }} aria-label="تعديل">
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
+          {perms.canDelete ? (
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); confirmDelete(n.dept.id); }} aria-label="حذف">
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
+        </div>
+      ),
+    },
+  ];
+  const tools = useListTools<Row>({
+    section: 'organization',
+    page: 'departments',
+    columns,
+    rows: filtered,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      name: { kind: 'name', text: (n) => n.dept.nameAr },
+      parent: { text: parentOf, group: parentOf },
+      company: { text: companyOf, group: companyOf },
+      branch: { text: branchOf, group: branchOf },
+      manager: { kind: 'code', text: managerOf, sortable: false },
+      children: { text: (n) => String(subCount(n)), sort: subCount },
+      description: { text: (n) => recordOf(n).description?.trim() || '—', sortable: false },
+      status: { kind: 'status', text: statusOf, group: statusOf },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton />
+        {tools.buttons}
+        {tools.exportMenu('سجل الأقسام', 'departments', exportSubtitleLines)}
+        <Can when={perms.canCreate}>
+          <Button variant="luxe" size="sm" className="h-8 shrink-0 gap-2" onClick={openCreate}>
+            <Plus className="h-4 w-4" /> قسم جديد
+          </Button>
+        </Can>
+      </div>
+    ),
+    [openCreate, perms.canCreate, exportSubtitleLines, tools.depsKey],
+  );
+
+  return tools;
+}
 
 export function DepartmentsListGrid({
   departments,

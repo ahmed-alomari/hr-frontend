@@ -308,7 +308,7 @@ export const ListFilterBar = React.forwardRef<ListFilterBarHandle, ListFilterBar
         onChange={(v) => (v ? onStatusFilterChange(v) : resetStatusFilter())}
         allowClear
         placeholder="اختر الحالة"
-        className="h-8 w-[9.25rem] max-w-[9.25rem] text-xs"
+        className="h-8 w-[9.25rem] min-w-[6.5rem] max-w-[9.25rem] text-xs max-sm:h-9"
         options={statusOrder.map((s) => ({ value: s, label: statusLabels[s] ?? s }))}
       />
     ) : null;
@@ -318,6 +318,7 @@ export const ListFilterBar = React.forwardRef<ListFilterBarHandle, ListFilterBar
         value={period}
         onChange={applyPeriod}
         allowEmpty={optionalDateRange}
+        triggerClassName="max-sm:h-9"
       />
     ) : null;
 
@@ -366,7 +367,7 @@ export const ListFilterBar = React.forwardRef<ListFilterBarHandle, ListFilterBar
                 if (open) sel.onOpen?.();
               }}
               className={cn(
-                'h-8 w-[9rem] max-w-[9rem] text-xs max-sm:h-10 max-sm:w-auto max-sm:min-w-[7rem] max-sm:max-w-none max-sm:flex-1',
+                'h-8 w-[9rem] min-w-[6.5rem] max-w-[9rem] text-xs max-sm:h-9 max-sm:w-[8.25rem] max-sm:max-w-[8.25rem]',
                 sel.className,
               )}
               options={sel.options
@@ -459,7 +460,7 @@ export const ListFilterBar = React.forwardRef<ListFilterBarHandle, ListFilterBar
             variant="outline"
             size="sm"
             className={cn(
-              'relative h-8 gap-1.5 px-3 text-xs shrink-0',
+              'relative h-8 gap-1.5 px-3 text-xs shrink-0 max-sm:h-9',
               activeMoreCount > 0 && 'border-primary/50 bg-primary/5 text-primary hover:bg-primary/10',
             )}
           >
@@ -529,7 +530,13 @@ export const ListFilterBar = React.forwardRef<ListFilterBarHandle, ListFilterBar
 
     return (
       <div className="rounded-xl border border-border/60 bg-card/80 px-3 py-2.5 shadow-sm backdrop-blur-sm overflow-visible sm:px-4">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2">
+        {/*
+          One row at any width, each filter only as wide as it needs. Wide screens
+          narrow the lists to fit; what still does not fit, and all of it on phones,
+          scrolls sideways. The padding keeps the date's clear button and focus
+          rings from being cut.
+        */}
+        <div className="-mx-1.5 -my-1.5 flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto overscroll-x-contain px-1.5 py-1.5 [scrollbar-width:thin] max-md:[scrollbar-width:none] max-md:[&>*]:shrink-0">
           {leadingFilters}
           {leadingFilters ? (
             <>

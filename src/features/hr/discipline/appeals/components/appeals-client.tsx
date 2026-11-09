@@ -1,61 +1,33 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import { Trash2, CalendarDays, FileDown, FileSpreadsheet, Plus, CheckCircle2, XCircle, Clock, Ban, Pencil, Loader2 } from 'lucide-react';
-import {
-  EntityActionCard,
-  EntityActionCardChip,
-  EntityActionCardGrid,
-  EntityActionCardGridSkeleton,
-  type WorkflowStatusTone,
-} from '@/components/ui/entity-action-card';
+import { Trash2, CalendarDays, Plus, CheckCircle2, XCircle, Clock, Ban, Pencil } from 'lucide-react';
+import { EntityActionCard, EntityActionCardChip, EntityActionCardGrid, EntityActionCardGridSkeleton, type WorkflowStatusTone } from '@/components/ui/entity-action-card';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { TableDateCell, TableRowActions, TableRowDetailDialog } from '@/components/ui/table-cells';
 import { RelatedEmployeeAttachments } from '@/features/hr/organization/employees/components/related-employee-attachments';
 import { Input } from '@/components/ui/input';
-import {
-  ConfirmationModal, HRSettingsFormDrawer, FormField,
-  EmptyState, MinimalDropdown, SearchableDropdown,
-} from '@/components/ui/shared-dialogs';
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
+import { ConfirmationModal, HRSettingsFormDrawer, FormField, EmptyState, MinimalDropdown, SearchableDropdown } from '@/components/ui/shared-dialogs';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
-import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
-import { disciplineAppealsApi, type AppealStatusDto } from '@/features/hr/discipline/lib/api/discipline-appeals';
 import { ForbiddenState } from '@/components/shared/forbidden-state';
 import { useDisciplineAppealsDirectoryModel, type AppealRecord } from '@/features/hr/discipline/appeals/hooks/useDisciplineAppealsDirectoryModel';
-import {
-  canDeleteAppealRecord,
-  canMutateAppealRecord,
-  DECISION_STATUS_LABELS,
-} from '@/features/hr/discipline/appeals/services/discipline-appeals.service';
+import { canDeleteAppealRecord, canMutateAppealRecord, DECISION_STATUS_LABELS } from '@/features/hr/discipline/appeals/services/discipline-appeals.service';
 import type { HRAppealChannel, HRAppealStatus } from '@/features/hr/discipline/lib/types';
 import { APPEAL_CHANNEL_LABELS, APPEAL_STATUS_LABELS, APPEAL_STATUS_FILTER_ORDER } from '@/features/hr/discipline/lib/types';
 import type { AppealChannelDto, ProcessDisciplineAppealDecisionDto } from '@/features/hr/discipline/lib/api/discipline-appeals';
-import {
-  ListFilterBar,
-  type ListFilterBarHandle,
-} from '@/components/ui/list-filter-bar';
+import { ListFilterBar, type ListFilterBarHandle } from '@/components/ui/list-filter-bar';
 import { useDisciplineDateFilterState } from '@/features/hr/discipline/lib/use-discipline-date-filter-state';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { cn } from '@/shared/utils';
 import { APPEAL_STATUS_PILL } from '@/shared/status-pill-classes';
 import { useDefaultCompany } from '@/features/hr/organization/hooks/useActiveCompany';
 import { PdfPreviewExportDialog } from '@/components/pdf/pdf-preview-export-dialog';
 import { PdfPreviewDownloadButton } from '@/components/pdf/pdf-preview-download-button';
-import { GenericRegisterPrintHtml } from '@/components/pdf/print/generic-register-print-html';
 import { DisciplineLetterPrintHtml } from '@/components/pdf/print/discipline-letter-print-html';
-import { downloadXlsxFromAoA, type XlsxCell } from '@/shared/export/download-xlsx';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
@@ -114,7 +86,6 @@ export function AppealsClient() {
   const [saving, setSaving] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
-  const [pdfOpen, setPdfOpen] = React.useState(false);
   const [detailRow, setDetailRow] = React.useState<AppealRecord | null>(null);
   const [letterOpen, setLetterOpen] = React.useState(false);
   const [decisionTarget, setDecisionTarget] = React.useState<{ appeal: AppealRecord; status: DecisionStatus } | null>(null);
@@ -150,113 +121,6 @@ export function AppealsClient() {
   const activeFilterCount = (selectedEmpIds.size > 0 ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0) + (dateRangeActive ? 1 : 0);
 
   // Exports cover every appeal matching the current filters (same query as the list), not just the visible page.
-  const [appealsPdfRows, setAppealsPdfRows] = React.useState<string[][]>([]);
-  const [exporting, setExporting] = React.useState(false);
-
-  const fetchAllForExport = React.useCallback(async (): Promise<string[][] | null> => {
-    setExporting(true);
-    try {
-      const empIds = [...selectedEmpIds];
-      const { items: all } = await fetchAllPaginatedItems((page, limit) =>
-        disciplineAppealsApi.getAll({
-          ...(companyId ? { companyId } : {}),
-          page,
-          limit,
-          ...(empIds.length > 0 ? { subjectEmployeeIds: empIds } : {}),
-          ...(statusFilter !== 'all' ? { status: statusFilter as AppealStatusDto } : {}),
-          ...(dateBounds.from ? { dateFrom: dateBounds.from } : {}),
-          ...(dateBounds.to ? { dateTo: dateBounds.to } : {}),
-        }),
-      );
-      const empNames = new Map(employees.map((e) => [e.id, e.nameAr]));
-      return all.map((a) => {
-        const channel = (a.channel ?? 'system') as keyof typeof APPEAL_CHANNEL_LABELS;
-        const status = a.status as keyof typeof APPEAL_STATUS_LABELS;
-        return [
-          a.linkedViolationRecordNumber,
-          empNames.get(a.subjectEmployeeId) ?? a.subjectEmployeeId,
-          a.appealDate,
-          APPEAL_CHANNEL_LABELS[channel] ?? String(channel),
-          APPEAL_STATUS_LABELS[status] ?? String(status),
-          a.groundsAr,
-        ];
-      });
-    } catch (err) {
-      const { displayMessage } = handleApiError(err, 'discipline-appeals.export');
-      toast.error(displayMessage || 'تعذّر تحميل التظلمات للتصدير.');
-      return null;
-    } finally {
-      setExporting(false);
-    }
-  }, [companyId, selectedEmpIds, statusFilter, dateBounds.from, dateBounds.to, employees]);
-
-  const handleExportAppealsPdf = useLatestCallback(async () => {
-    if (exporting) return;
-    const all = await fetchAllForExport();
-    if (!all) return;
-    if (all.length === 0) { toast.error('لا توجد تظلمات للتصدير ضمن الفلاتر الحالية.'); return; }
-    setAppealsPdfRows(all);
-    setPdfOpen(true);
-  });
-
-  const handleExportAppealsExcel = useLatestCallback(async () => {
-    if (exporting) return;
-    const all = await fetchAllForExport();
-    if (!all) return;
-    if (all.length === 0) { toast.error('لا توجد تظلمات للتصدير ضمن الفلاتر الحالية.'); return; }
-    const rows: XlsxCell[][] = [
-      ['رقم القضية', 'الموظف', 'التاريخ', 'القناة', 'الحالة', 'أسباب التظلم'],
-      ...all,
-    ];
-    await downloadXlsxFromAoA('discipline-appeals.xlsx', 'التظلمات', rows);
-    toast.success('تم تنزيل ملف Excel.');
-  });
-
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" variant="outline" size="sm" className="h-8 w-8 shrink-0" aria-label="تصدير التظلمات" disabled={exporting} aria-busy={exporting}>
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportAppealsPdf()}>
-              <FileDown className="h-4 w-4" />
-              PDF
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportAppealsExcel()}>
-              <FileSpreadsheet className="h-4 w-4" />
-              Excel
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
-          onClick={() => setDrawerOpen(true)}>
-          <Plus className="h-3.5 w-3.5" />
-          إضافة تظلم
-        </Button>
-      </div>
-    ),
-    [activeFilterCount, exporting, handleExportAppealsPdf, handleExportAppealsExcel],
-  );
-
-  const printable = React.useMemo(
-    () =>
-      appealsPdfRows.length === 0 ? null : (
-        <GenericRegisterPrintHtml
-          companyNameAr={companyNameAr}
-          companyNameEn={companyNameEn}
-          titleAr="سجل التظلمات"
-          headers={['رقم القضية', 'الموظف', 'التاريخ', 'القناة', 'الحالة', 'أسباب التظلم']}
-          rows={appealsPdfRows}
-          landscape
-        />
-      ),
-    [appealsPdfRows, companyNameAr, companyNameEn],
-  );
 
   const letterPrintable = React.useMemo(
     () =>
@@ -511,6 +375,39 @@ export function AppealsClient() {
     },
   ], []);
 
+  const tools = useListTools<AppealRecord>({
+    section: 'hr',
+    page: 'discipline-appeals',
+    columns,
+    rows: items,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      caseNumber: { kind: 'code', text: (a) => a.caseNumber || '—' },
+      employee: { kind: 'name', text: (a) => a.employeeNameAr || '—', group: (a) => a.employeeNameAr || null },
+      date: { kind: 'date', text: (a) => a.date || '—', group: (a) => (a.date ? a.date.slice(0, 7) : null) },
+      channel: { text: (a) => APPEAL_CHANNEL_LABELS[a.channel] ?? a.channel, group: (a) => APPEAL_CHANNEL_LABELS[a.channel] ?? a.channel },
+      grounds: { text: (a) => a.grounds ?? '—', sortable: false },
+      status: { kind: 'status', text: (a) => APPEAL_STATUS_LABELS[a.status] ?? a.status, group: (a) => APPEAL_STATUS_LABELS[a.status] ?? a.status },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('سجل التظلمات', 'discipline-appeals')}
+        <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
+          onClick={() => setDrawerOpen(true)}>
+          <Plus className="h-3.5 w-3.5" />
+          إضافة تظلم
+        </Button>
+      </div>
+    ),
+    [activeFilterCount, tools.depsKey],
+  );
+
   useEntityFilterSlot(
     () => (
       <ListFilterBar
@@ -556,7 +453,6 @@ export function AppealsClient() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <PdfPreviewExportDialog open={pdfOpen} onOpenChange={setPdfOpen} title="معاينة تصدير التظلمات" fileName="discipline-appeals.pdf" printable={printable} orientation="landscape" />
       <PdfPreviewExportDialog
         open={letterOpen}
         onOpenChange={setLetterOpen}
@@ -579,10 +475,11 @@ export function AppealsClient() {
           ) : null}
         </div>
       ) : (
-        <DisciplinePaginatedList pagination={pagination}>
+        <ListToolsTable tools={tools} keyExtractor={(a) => a.id} onRowClick={(a) => setDetailRow(a)}>
+        <DisciplinePaginatedList pagination={tools.pagination(pagination)}>
           {viewMode === 'cards' ? (
           <EntityActionCardGrid>
-            {items.map((a) => (
+            {tools.rows.map((a) => (
             <EntityActionCard
               key={a.id}
               reference={a.caseNumber}
@@ -623,13 +520,16 @@ export function AppealsClient() {
             variant="directory"
             alwaysShowTable
             tableClassName="min-w-[800px]"
-            columns={columns}
-            data={items}
+            columns={tools.columns}
+            {...tools.tableSort}
+            data={tools.rows}
+            loading={tools.loading}
             keyExtractor={(a) => a.id}
             onRowClick={(a) => setDetailRow(a)}
           />
           )}
         </DisciplinePaginatedList>
+        </ListToolsTable>
       )}
       </DisciplineListViewport>
 

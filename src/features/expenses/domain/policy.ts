@@ -119,6 +119,12 @@ export function policyOf(data: ExpensesData, groupId: string | null | undefined)
   return groupOf(data, groupId)?.policy ?? OPEN_POLICY;
 }
 
+/** A group's cost centers; a group saved with one center has that one. */
+export function groupCostCenterIds(group: Pick<ExpenseGroup, 'costCenterId' | 'costCenterIds'>): string[] {
+  if (group.costCenterIds) return group.costCenterIds;
+  return group.costCenterId ? [group.costCenterId] : [];
+}
+
 /** The group of a custody move is its custody's. */
 export function txnGroupId(data: ExpensesData, txn: AnyTxn): string | null {
   if (txn.kind === 'custody_move') {

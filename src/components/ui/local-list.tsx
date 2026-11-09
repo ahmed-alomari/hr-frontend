@@ -15,12 +15,13 @@ import {
 } from '@/components/ui/list-group';
 import { ListSavedViews, listStateKeys } from '@/components/ui/list-saved-views';
 import { ListSortMenu, useListSort } from '@/components/ui/list-sort';
+import { DEFAULT_PAGE_SIZE, StickyPagination } from '@/components/ui/sticky-pagination';
 import { useAuthStore } from '@/features/auth/lib/auth-store';
-import { hrFiltersKey } from '@/features/hr/lib/use-persisted-filter-state';
+import { hrFiltersKey, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
 import { cn } from '@/shared/utils';
 
 /**
- * One field of a list whose rows are all in the browser (AGENTS.md §5): its
+ * One field of a list whose rows are all in the browser (AGENTS.md §8): its
  * column on screen, its text for sorting, grouping and the PDF / Excel, and
  * optionally a sum for subtotals and the grand total.
  */
@@ -132,13 +133,14 @@ export function useLocalList<T>({
     [fields, columns],
   );
 
-  return { keys, sort, group, columns, fields, visibleFields, rows: sorted, total, groups, groupField };
+  const pageSizeKey = hrFiltersKey(section, page, companyId, 'pageSize');
+  return { keys, pageSizeKey, sort, group, columns, fields, visibleFields, rows: sorted, total, groups, groupField };
 }
 
 export type LocalListModel<T> = ReturnType<typeof useLocalList<T>>;
 
 /**
- * The header tools of the list, in the order of AGENTS.md §5: columns, sort,
+ * The header tools of the list, in the order of AGENTS.md §8: columns, sort,
  * grouping, saved views, then PDF / Excel of what the screen shows.
  */
 export function LocalListToolbar<T>({
@@ -169,7 +171,7 @@ export function LocalListToolbar<T>({
   }));
   const lines = [...subtitleLines, list.sort.label, list.group.label].filter((x): x is string => Boolean(x));
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
       {before}
       <ListColumnsPicker model={list.columns} />
       <ListSortMenu model={list.sort} />
@@ -216,9 +218,27 @@ function SumsLine<T>({ list, totals, className }: { list: LocalListModel<T>; tot
   );
 }
 
+/** One page of rows, each under its group's heading with the group's full subtotals. */
+function pageOfSections<S extends { rows: readonly unknown[] }>(sections: readonly S[], start: number, size: number): S[] {
+  const out: S[] = [];
+  let skip = start;
+  let left = size;
+  for (const section of sections) {
+    if (left === 0) break;
+    const dropped = Math.min(skip, section.rows.length);
+    skip -= dropped;
+    const rows = section.rows.slice(dropped, dropped + left);
+    left -= rows.length;
+    if (rows.length > 0) out.push({ ...section, rows });
+  }
+  return out;
+}
+
 /**
- * The list on screen: cards on phones, a table from md up; when grouped,
- * each group's heading with its count and subtotals, then the grand total.
+ * The list on screen: cards on phones, a table from md up (`cardsOnly`: cards
+ * at every width, for rows a table cannot hold); when grouped, each group's
+ * heading with its count and subtotals, then the grand total. Pages through
+ * the rows: totals, group subtotals and the export always cover every row.
  */
 export function LocalListTable<T>({
   list,
@@ -226,17 +246,32 @@ export function LocalListTable<T>({
   card,
   onRowClick,
   empty,
+  cardsOnly = false,
+  cardsClassName,
 }: {
   list: LocalListModel<T>;
   rowKey: (row: T) => string;
   card: (row: T) => React.ReactNode;
   onRowClick?: (row: T) => void;
   empty?: React.ReactNode;
+  cardsOnly?: boolean;
+  cardsClassName?: string;
 }) {
-  if (list.rows.length === 0) return <>{empty ?? null}</>;
-  const sections: Array<{ key: string; title: string | null; totals: ListTotals | null; rows: T[] }> = list.groups
+  const rowCount = list.rows.length;
+  const [pageSize, setPageSize] = usePersistedFilterState<number>(list.pageSizeKey, DEFAULT_PAGE_SIZE);
+  const [page, setPage] = React.useState(1);
+  const totalPages = Math.max(1, Math.ceil(rowCount / pageSize));
+  // A filter, tab, sort or grouping starts over; a refresh of the same rows stays.
+  React.useEffect(() => {
+    setPage(1);
+  }, [rowCount, list.sort.sortKey, list.group.groupBy, pageSize]);
+  const shownPage = Math.min(page, totalPages);
+
+  if (rowCount === 0) return <>{empty ?? null}</>;
+  const allSections: Array<{ key: string; title: string | null; totals: ListTotals | null; rows: T[] }> = list.groups
     ? list.groups.map((g) => ({ key: listGroupValue(g.key), title: `${list.groupField!.label}: ${list.group.labelOf(g)}`, totals: g, rows: g.rows }))
     : [{ key: 'all', title: null, totals: null, rows: list.rows }];
+  const sections = pageOfSections(allSections, (shownPage - 1) * pageSize, pageSize);
   const hasSums = list.visibleFields.some((f) => f.sum);
   const clickable = (row: T) =>
     onRowClick
@@ -250,7 +285,7 @@ export function LocalListTable<T>({
 
   return (
     <div className="space-y-2">
-      <div className="space-y-3 md:hidden">
+      <div className={cn('space-y-3', !cardsOnly && 'md:hidden')}>
         {sections.map((s) => (
           <div key={s.key} className="space-y-2">
             {s.title ? (
@@ -259,15 +294,17 @@ export function LocalListTable<T>({
                 {s.totals ? <SumsLine list={list} totals={s.totals} className="mt-0.5 text-muted-foreground" /> : null}
               </div>
             ) : null}
-            {s.rows.map((row) => (
-              <div key={rowKey(row)} {...clickable(row)} className={cn('rounded-xl border border-border bg-card p-3', onRowClick && 'cursor-pointer active:bg-muted/50')}>
-                {card(row)}
-              </div>
-            ))}
+            <div className={cn('space-y-2', cardsClassName && `space-y-0 ${cardsClassName}`)}>
+              {s.rows.map((row) => (
+                <div key={rowKey(row)} {...clickable(row)} className={cn(!cardsClassName && 'rounded-xl border border-border bg-card p-3', cardsClassName && 'min-w-0', onRowClick && 'cursor-pointer active:bg-muted/50')}>
+                  {card(row)}
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>
-      <div className="hidden overflow-x-auto rounded-xl border border-border md:block">
+      {cardsOnly ? null : <div className="hidden overflow-x-auto rounded-xl border border-border md:block">
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-xs text-muted-foreground">
             <tr>
@@ -309,12 +346,22 @@ export function LocalListTable<T>({
             </tfoot>
           ) : null}
         </table>
-      </div>
+      </div>}
       {hasSums ? (
-        <div className="rounded-lg bg-muted/60 px-3 py-2 text-xs md:hidden">
+        <div className={cn('rounded-lg bg-muted/60 px-3 py-2 text-xs', !cardsOnly && 'md:hidden')}>
           <SumsLine list={list} totals={list.total} />
         </div>
       ) : null}
+      <div className="flex justify-center pt-1">
+        <StickyPagination
+          page={shownPage}
+          pageSize={pageSize}
+          total={rowCount}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      </div>
     </div>
   );
 }

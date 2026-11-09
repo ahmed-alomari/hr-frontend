@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { Check, Columns3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -59,51 +60,53 @@ export function ListColumnsPicker({ model }: { model: ColumnVisibilityModel }) {
   const visibleCount = options.length - hidden.size;
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={cn('relative h-8 w-8 shrink-0', hidden.size > 0 && 'border-primary/40 text-primary')}
-          aria-label="الأعمدة"
-          title="الأعمدة"
-        >
-          <Columns3 className="h-4 w-4" />
-          {hidden.size > 0 ? <span className="absolute -top-1 -end-1 h-2 w-2 rounded-full bg-primary" /> : null}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-60 p-0" dir="rtl">
-        <div className="border-b border-border/60 px-3 py-2.5">
-          <p className="text-sm font-semibold">الأعمدة</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">تظهر في الجدول وفي التصدير</p>
-        </div>
-        <div className="max-h-72 space-y-0.5 overflow-y-auto p-2">
-          {options.map((o) => {
-            const isHidden = hidden.has(o.key);
-            return (
-              <button
-                key={o.key}
-                type="button"
-                onClick={() => toggle(o.key)}
-                className={cn(
-                  'flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-start text-sm transition-colors',
-                  isHidden ? 'text-muted-foreground hover:bg-muted/50' : 'bg-primary/5 text-foreground hover:bg-primary/10',
-                )}
-              >
-                <span>{o.label}</span>
-                {!isHidden ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex items-center justify-between border-t border-border/60 px-3 py-2">
-          <span className="text-xs text-muted-foreground">{visibleCount} من {options.length}</span>
-          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={reset}>
-            إظهار الكل
+    <FoldedHeaderTool>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn('relative h-8 w-8 shrink-0', hidden.size > 0 && 'border-primary/40 text-primary')}
+            aria-label="الأعمدة"
+            title="الأعمدة"
+          >
+            <Columns3 className="h-4 w-4" />
+            {hidden.size > 0 ? <span className="absolute -top-1 -end-1 h-2 w-2 rounded-full bg-primary" /> : null}
           </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-60 p-0" dir="rtl">
+          <div className="border-b border-border/60 px-3 py-2.5">
+            <p className="text-sm font-semibold">الأعمدة</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">تظهر في الجدول وفي التصدير</p>
+          </div>
+          <div className="max-h-72 space-y-0.5 overflow-y-auto p-2">
+            {options.map((o) => {
+              const isHidden = hidden.has(o.key);
+              return (
+                <button
+                  key={o.key}
+                  type="button"
+                  onClick={() => toggle(o.key)}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-start text-sm transition-colors',
+                    isHidden ? 'text-muted-foreground hover:bg-muted/50' : 'bg-primary/5 text-foreground hover:bg-primary/10',
+                  )}
+                >
+                  <span>{o.label}</span>
+                  {!isHidden ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between border-t border-border/60 px-3 py-2">
+            <span className="text-xs text-muted-foreground">{visibleCount} من {options.length}</span>
+            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={reset}>
+              إظهار الكل
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+    </FoldedHeaderTool>
   );
 }

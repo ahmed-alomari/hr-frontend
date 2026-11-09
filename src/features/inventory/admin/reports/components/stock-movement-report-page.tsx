@@ -1,5 +1,8 @@
 'use client';
 
+import { ListGroupMenu } from '@/components/ui/list-group';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
@@ -11,23 +14,8 @@ import { getInventoryCompanyId } from '@/features/inventory/lib/company-id';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
 import { useAllCategories } from '@/features/catalog/categories/hooks/use-categories';
 import { inventoryAdminRoutes } from '@/features/inventory/admin/constants/routes';
-import {
-  inventoryReportsApi,
-  type StockMovementQuery,
-  type StockMovementRow,
-} from '@/features/inventory/admin/reports/lib/api/inventory-reports';
-import {
-  ReportStat,
-  ValueHiddenNote,
-  currencyLine,
-  currentMonthRange,
-  formatQty,
-  formatReportMoney,
-  itemLabel,
-  moneyCell,
-  periodLabel,
-  todayIso,
-} from '@/features/inventory/admin/reports/lib/report-shared';
+import { inventoryReportsApi, type StockMovementQuery, type StockMovementRow } from '@/features/inventory/admin/reports/lib/api/inventory-reports';
+import { ReportStat, ValueHiddenNote, currencyLine, currentMonthRange, formatQty, formatReportMoney, itemLabel, moneyCell, periodLabel, todayIso } from '@/features/inventory/admin/reports/lib/report-shared';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-list';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
@@ -38,12 +26,6 @@ import { ListColumnsPicker, useColumnVisibility, type ListColumnOption } from '@
 import { ListSavedViews, listStateKeys } from '@/components/ui/list-saved-views';
 import { ListSortMenu, listSortQuery, useListSort, type ListSortOption } from '@/components/ui/list-sort';
 import type { ListTotals } from '@/components/ui/list-group';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import {
-  registerExportRows,
-  visibleExportColumns,
-  type RegisterExportColumn,
-} from '@/components/pdf/lib/register-export-rows';
 import { fetchAllPaginatedItems } from '@/shared/api/client';
 import { hrFiltersKey, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
 
@@ -292,52 +274,6 @@ export function StockMovementReportPage({ mode }: { mode: Mode }) {
   ];
   const visibleColumns = columns.filter((column) => isShown(column.key));
 
-  const exportColumnsAll: RegisterExportColumn<StockMovementRow>[] = [
-    { label: 'الصنف', kind: 'name', value: (r) => itemLabel(r) },
-    { label: 'SKU', kind: 'code', value: (r) => r.sku ?? '' },
-    { label: 'الفئة', kind: 'text', key: 'category', value: (r) => r.categoryName ?? '' },
-    ...(valuation
-      ? ([
-          {
-            label: 'الكمية',
-            kind: 'number',
-            key: 'closingQty',
-            value: (r) => formatQty(r.closingQty),
-            total: (t) => formatQty(t.sums.closingQty),
-          },
-          { label: 'متوسط التكلفة', kind: 'number', key: 'unitCost', value: (r) => moneyCell(unitCost(r)) },
-          {
-            label: 'القيمة',
-            kind: 'number',
-            key: 'closingValue',
-            value: (r) => moneyCell(r.closingValue),
-            total: (t) => moneyCell(t.sums.closingValue),
-          },
-        ] satisfies RegisterExportColumn<StockMovementRow>[])
-      : ([
-          ['openingQty', 'أول المدة'],
-          ['openingValue', 'قيمة أول المدة'],
-          ['inQty', 'الوارد'],
-          ['inValue', 'قيمة الوارد'],
-          ['outQty', 'الصادر'],
-          ['outValue', 'قيمة الصادر'],
-          ['closingQty', 'آخر المدة'],
-          ['closingValue', 'قيمة آخر المدة'],
-        ] as const).map(
-          ([key, label]): RegisterExportColumn<StockMovementRow> => {
-            const isValue = VALUE_KEYS.has(key);
-            const format = (v: number | null | undefined) => (isValue ? moneyCell(v) : formatQty(v));
-            return {
-              label,
-              kind: 'number',
-              key,
-              value: (r) => format(r[key]),
-              total: (t) => format(t.sums[key]),
-            };
-          },
-        )),
-  ];
-  const exportColumns = visibleExportColumns(exportColumnsAll, isShown);
 
   const warehouseLabel = warehouseId !== 'all' ? warehouses.find((w) => w.id === warehouseId)?.nameAr : null;
   const categoryLabel = categoryId !== 'all' ? categories.find((c) => c.id === categoryId)?.nameAr : null;
@@ -352,12 +288,29 @@ export function StockMovementReportPage({ mode }: { mode: Mode }) {
   const activeFilterCount =
     (warehouseId !== 'all' ? 1 : 0) + (categoryId !== 'all' ? 1 : 0) + (valuation ? (asOf ? 1 : 0) : 1);
 
-  const getExportRows = async () => {
-    const { items } = await fetchAllPaginatedItems((p, l) =>
-      inventoryReportsApi.stockMovement({ ...filters, page: p, limit: l }),
-    );
-    return registerExportRows({ columns: exportColumns, rows: items, total: totals });
-  };
+  const groupingPage = `${listPage}-grouping`;
+  const tools = useListTools<StockMovementRow>({
+    section: 'inventory',
+    page: groupingPage,
+    columns: visibleColumns,
+    rows,
+    fetchAll: async () =>
+      (await fetchAllPaginatedItems((p, l) => inventoryReportsApi.stockMovement({ ...filters, page: p, limit: l }))).items,
+    resetKey: JSON.stringify(filters),
+    fields: {
+      product: { kind: 'name', sortable: false, text: (r) => itemLabel(r), alsoExport: [{ label: 'SKU', text: (r) => r.sku ?? '' }] },
+      category: { sortable: false, text: (r) => r.categoryName ?? '', group: (r) => r.categoryName ?? null },
+      unitCost: { kind: 'number', sortable: false, text: (r) => moneyCell(unitCost(r)) },
+      openingQty: { kind: 'number', sortable: false, text: (r) => formatQty(r.openingQty), sum: (r) => r.openingQty ?? 0, formatSum: formatQty },
+      openingValue: { kind: 'number', sortable: false, text: (r) => moneyCell(r.openingValue), sum: (r) => r.openingValue ?? 0, formatSum: moneyCell },
+      inQty: { kind: 'number', sortable: false, text: (r) => formatQty(r.inQty), sum: (r) => r.inQty ?? 0, formatSum: formatQty },
+      inValue: { kind: 'number', sortable: false, text: (r) => moneyCell(r.inValue), sum: (r) => r.inValue ?? 0, formatSum: moneyCell },
+      outQty: { kind: 'number', sortable: false, text: (r) => formatQty(r.outQty), sum: (r) => r.outQty ?? 0, formatSum: formatQty },
+      outValue: { kind: 'number', sortable: false, text: (r) => moneyCell(r.outValue), sum: (r) => r.outValue ?? 0, formatSum: moneyCell },
+      closingQty: { kind: 'number', sortable: false, text: (r) => formatQty(r.closingQty), sum: (r) => r.closingQty ?? 0, formatSum: formatQty },
+      closingValue: { kind: 'number', sortable: false, text: (r) => moneyCell(r.closingValue), sum: (r) => r.closingValue ?? 0, formatSum: moneyCell },
+    },
+  });
 
   const title = valuation ? 'تقييم المخزون' : 'حركة المخزون الدورية';
   usePageHeaderActions(
@@ -366,17 +319,9 @@ export function StockMovementReportPage({ mode }: { mode: Mode }) {
         <FilterToggleButton activeFilterCount={activeFilterCount} />
         <ListColumnsPicker model={columnVisibility} />
         <ListSortMenu model={sort} />
-        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
-        <RegisterExportMenu
-          title={title}
-          fileName={valuation ? 'inventory-valuation' : 'inventory-stock-movement'}
-          columns={exportColumns}
-          getRows={getExportRows}
-          subtitleLines={filterSummary}
-          landscape={!valuation}
-          pinnedColumnCount={1}
-          emptyMessage="لا توجد أصناف ضمن الفلاتر الحالية."
-        />
+        <ListSavedViews storageKey={stateKeys.views} prefixes={[...stateKeys.prefixes, ...listStateKeys('inventory', groupingPage, companyId).prefixes]} />
+        <ListGroupMenu model={tools.group} />
+        {tools.exportMenu(title, valuation ? 'inventory-valuation' : 'inventory-stock-movement', filterSummary)}
       </div>
     ),
     [
@@ -387,7 +332,7 @@ export function StockMovementReportPage({ mode }: { mode: Mode }) {
       columnVisibility.hiddenKey,
       JSON.stringify(filters),
       JSON.stringify(totals),
-      exportColumns.length,
+      tools.depsKey,
       filterSummary.join('|'),
       stateKeys.views,
     ],
@@ -511,42 +456,44 @@ export function StockMovementReportPage({ mode }: { mode: Mode }) {
         iconName={valuation ? 'Coins' : 'CalendarRange'}
       />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        {valuation ? (
-          <>
-            <ReportStat label="عدد الأصناف" value={total.toLocaleString('en-US')} />
-            <ReportStat label="إجمالي الكمية" value={formatQty(data?.totals.closingQty ?? 0)} />
-            {valueVisible ? (
-              <ReportStat label="قيمة المخزون" value={money(data?.totals.closingValue ?? 0)} />
-            ) : null}
-          </>
-        ) : (
-          <>
-            <ReportStat
-              label="أول المدة"
-              value={formatQty(data?.totals.openingQty ?? 0)}
-              hint={valueVisible ? money(data?.totals.openingValue ?? 0) : undefined}
-            />
-            <ReportStat
-              label="الوارد"
-              tone="in"
-              value={formatQty(data?.totals.inQty ?? 0)}
-              hint={valueVisible ? money(data?.totals.inValue ?? 0) : undefined}
-            />
-            <ReportStat
-              label="الصادر"
-              tone="out"
-              value={formatQty(data?.totals.outQty ?? 0)}
-              hint={valueVisible ? money(data?.totals.outValue ?? 0) : undefined}
-            />
-            <ReportStat
-              label="آخر المدة"
-              value={formatQty(data?.totals.closingQty ?? 0)}
-              hint={valueVisible ? money(data?.totals.closingValue ?? 0) : undefined}
-            />
-          </>
-        )}
-      </div>
+      <PhoneStatsFold>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+          {valuation ? (
+            <>
+              <ReportStat label="عدد الأصناف" value={total.toLocaleString('en-US')} />
+              <ReportStat label="إجمالي الكمية" value={formatQty(data?.totals.closingQty ?? 0)} />
+              {valueVisible ? (
+                <ReportStat label="قيمة المخزون" value={money(data?.totals.closingValue ?? 0)} />
+              ) : null}
+            </>
+          ) : (
+            <>
+              <ReportStat
+                label="أول المدة"
+                value={formatQty(data?.totals.openingQty ?? 0)}
+                hint={valueVisible ? money(data?.totals.openingValue ?? 0) : undefined}
+              />
+              <ReportStat
+                label="الوارد"
+                tone="in"
+                value={formatQty(data?.totals.inQty ?? 0)}
+                hint={valueVisible ? money(data?.totals.inValue ?? 0) : undefined}
+              />
+              <ReportStat
+                label="الصادر"
+                tone="out"
+                value={formatQty(data?.totals.outQty ?? 0)}
+                hint={valueVisible ? money(data?.totals.outValue ?? 0) : undefined}
+              />
+              <ReportStat
+                label="آخر المدة"
+                value={formatQty(data?.totals.closingQty ?? 0)}
+                hint={valueVisible ? money(data?.totals.closingValue ?? 0) : undefined}
+              />
+            </>
+          )}
+        </div>
+      </PhoneStatsFold>
 
       <ValueHiddenNote header={data} />
 
@@ -559,10 +506,11 @@ export function StockMovementReportPage({ mode }: { mode: Mode }) {
         </div>
       ) : null}
 
+      <ListToolsTable tools={tools} keyExtractor={(row) => row.key} onRowClick={openItemCard}>
       <DirectoryPagedViews
         items={rows}
         loading={isLoading}
-        serverPagination={{
+        serverPagination={tools.pagination({
           page,
           pageSize,
           total,
@@ -572,7 +520,7 @@ export function StockMovementReportPage({ mode }: { mode: Mode }) {
             setPageSize(size);
             setPage(1);
           },
-        }}
+        })}
       >
         {(rowsPage) => (
           <DataTable
@@ -592,6 +540,7 @@ export function StockMovementReportPage({ mode }: { mode: Mode }) {
           />
         )}
       </DirectoryPagedViews>
+      </ListToolsTable>
     </div>
   );
 }

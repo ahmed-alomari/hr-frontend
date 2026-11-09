@@ -3,11 +3,12 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { AlertTriangle, MonitorSmartphone, Play, Plus } from 'lucide-react';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { posRoutes } from '@/features/pos/constants/routes';
-import { usePosContext } from '@/features/pos/hooks/use-pos-context';
+import { PosDataScope, usePosContext } from '@/features/pos/hooks/use-pos-context';
 import { round2 } from '@/features/pos/lib/calc';
 import { formatDateTime, formatMoney } from '@/features/pos/lib/format';
 import { EmptyState, PosGate, StatTile } from '@/features/pos/components/shared/pos-shared';
@@ -44,12 +45,14 @@ function Overview() {
     <div className="space-y-4 sm:space-y-5">
       <SetPageTitle titleAr="نقاط البيع" iconName="ShoppingCart" />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile label="مبيعات اليوم" value={formatMoney(todayTotal, currency)} hint={`${today.length} مستند`} />
-        <StatTile label="مرتجعات اليوم" value={formatMoney(todayReturns, currency)} />
-        <StatTile label="ورديات مفتوحة" value={String(openSessions.length)} />
-        <StatTile label="متوسط الفاتورة" value={formatMoney(today.length ? todayTotal / today.length : 0, currency)} />
-      </div>
+      <PhoneStatsFold summary={<>اليوم {formatMoney(todayTotal, currency)}</>}>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatTile label="مبيعات اليوم" value={formatMoney(todayTotal, currency)} hint={`${today.length} مستند`} />
+          <StatTile label="مرتجعات اليوم" value={formatMoney(todayReturns, currency)} />
+          <StatTile label="ورديات مفتوحة" value={String(openSessions.length)} />
+          <StatTile label="متوسط الفاتورة" value={formatMoney(today.length ? todayTotal / today.length : 0, currency)} />
+        </div>
+      </PhoneStatsFold>
 
       {exceptions.length + awaiting.length + pendingRefunds.length > 0 ? (
         <div className="space-y-2 rounded-xl border border-warning/40 bg-warning/5 p-3">
@@ -151,8 +154,10 @@ function Overview() {
 
 export function PosOverviewPage() {
   return (
-    <PosGate>
-      <Overview />
-    </PosGate>
+    <PosDataScope days={2}>
+      <PosGate>
+        <Overview />
+      </PosGate>
+    </PosDataScope>
   );
 }
