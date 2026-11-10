@@ -278,7 +278,8 @@ export function useAttendanceEventsModel() {
 
   const handleCreate = React.useCallback(async (payload: Parameters<typeof attendanceEventsApi.create>[0]) => {
     try {
-      await attendanceEventsApi.create(payload);
+      const created = await attendanceEventsApi.createConfirmingExcluded(payload);
+      if (!created) return;
       toast.success('تم تسجيل الحدث');
       setCreateOpen(false);
       await reloadAll();

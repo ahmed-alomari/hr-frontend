@@ -178,6 +178,8 @@ export type CreateAttendanceEventDto = {
   periodSortOrder?: number | null;
   notes?: string | null;
   recordedBy?: string | null;
+  /** Manual entry: save even though the punch will not count (server code PunchWillBeExcluded). */
+  confirmExcluded?: boolean;
 };
 
 export type NextEventTypeLastPunch = {

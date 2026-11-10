@@ -133,7 +133,8 @@ export function DailyShiftCorrectionDialog({
         if (cancelled) return;
         setBreakdown(data);
         const raw = data.periods[periodIndex];
-        setPeriod(raw ? { ...buildCorrectionFormPeriod(raw, data, periodIndex), useShiftTimes: true } : null);
+        // Starts from the real punches; shift times only when HR switches to them.
+        setPeriod(raw ? { ...buildCorrectionFormPeriod(raw, data, periodIndex), useShiftTimes: false } : null);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -196,13 +197,12 @@ export function DailyShiftCorrectionDialog({
 
     setSubmitting(true);
     try {
+      // The new punch is saved first; the real one is voided only after, so a
+      // refused or failed save never leaves the day without its punch.
       if (checkInChanged) {
-        if (rawPeriod.actual.checkInEventId) {
-          await attendanceEventsApi.void(rawPeriod.actual.checkInEventId, reasonNote);
-        }
         const occurredAt = timePickerToIso(workDate, period.correctedCheckIn, timezoneOffsetMinutes);
         if (occurredAt) {
-          await attendanceEventsApi.create({
+          const created = await attendanceEventsApi.createConfirmingExcluded({
             companyId,
             employeeId,
             eventType: 'check_in',
@@ -213,18 +213,19 @@ export function DailyShiftCorrectionDialog({
             periodSortOrder,
             notes: reasonNote,
           });
+          if (!created) return;
+        }
+        if (rawPeriod.actual.checkInEventId) {
+          await attendanceEventsApi.void(rawPeriod.actual.checkInEventId, reasonNote);
         }
       }
 
       if (checkOutChanged) {
-        if (rawPeriod.actual.checkOutEventId) {
-          await attendanceEventsApi.void(rawPeriod.actual.checkOutEventId, reasonNote);
-        }
         const occurredAt = period.correctedCheckOut
           ? timePickerToIso(workDate, period.correctedCheckOut, timezoneOffsetMinutes)
           : null;
         if (occurredAt) {
-          await attendanceEventsApi.create({
+          const created = await attendanceEventsApi.createConfirmingExcluded({
             companyId,
             employeeId,
             eventType: 'check_out',
@@ -235,6 +236,10 @@ export function DailyShiftCorrectionDialog({
             periodSortOrder,
             notes: reasonNote,
           });
+          if (!created) return;
+        }
+        if (rawPeriod.actual.checkOutEventId) {
+          await attendanceEventsApi.void(rawPeriod.actual.checkOutEventId, reasonNote);
         }
       }
 

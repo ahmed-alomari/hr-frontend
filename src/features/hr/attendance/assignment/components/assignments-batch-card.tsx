@@ -6,6 +6,7 @@ import { shiftColorStyle } from '@/shared/shift-color';
 import { cn } from '@/shared/utils';
 import { Button } from '@/components/ui/button';
 import { ConfirmationModal } from '@/components/ui/shared-dialogs';
+import { hasShiftStarted } from '@/features/hr/attendance/lib/api/shift-assignments';
 
 type BatchRow = {
   id: string;
@@ -39,6 +40,8 @@ export function AssignmentsBatchCard({
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const { batchId, templateName, colorHex, effectiveFrom: ef, rows, activeAssignments, totalAssignments } = batch;
 
+  // A batch can be deleted only while none of its shifts has started.
+  const canDelete = rows.every((r) => !hasShiftStarted(r.effectiveFrom));
   const visibleNames = rows.slice(0, 3).map((r) => r.targetLabel);
   const remaining = rows.length - visibleNames.length;
 
@@ -115,15 +118,17 @@ export function AssignmentsBatchCard({
           >
             <Pencil className="h-3 w-3" /> تعديل
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            type="button"
-            className="h-7 gap-1 px-2 text-xs text-destructive hover:text-destructive"
-            onClick={() => setConfirmOpen(true)}
-          >
-            <Trash2 className="h-3 w-3" /> حذف الربط
-          </Button>
+          {canDelete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              className="h-7 gap-1 px-2 text-xs text-destructive hover:text-destructive"
+              onClick={() => setConfirmOpen(true)}
+            >
+              <Trash2 className="h-3 w-3" /> حذف الربط
+            </Button>
+          )}
         </div>
       </div>
 

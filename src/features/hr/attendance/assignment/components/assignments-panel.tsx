@@ -1,11 +1,18 @@
 'use client';
 
 import * as React from 'react';
-import { CalendarDays, Clock, Link2Off, Plus, Users } from 'lucide-react';
+import { CalendarDays, CalendarX, Clock, History, Plus, Repeat, Trash2, Users } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  addDaysIso,
+  hasShiftStarted,
+  ksaTodayIso,
+} from '@/features/hr/attendance/lib/api/shift-assignments';
+import type { ShiftRowAction } from '@/features/hr/attendance/assignment/hooks/useAssignmentsPanelModel';
 import { cn } from '@/shared/utils';
 import { shiftColorStyle } from '@/shared/shift-color';
 import { Badge } from '@/components/ui/badge';
@@ -42,51 +49,117 @@ const ASSIGNMENT_EXPORT_COLUMNS: RegisterColumn[] = [
 
 type AssignmentRow = {
   id: string;
+  templateId: string;
+  targetId: string;
   targetLabel: string;
   employeeCode: string;
   isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
 };
 
+function toRowAction(row: AssignmentRow): ShiftRowAction {
+  return {
+    assignmentId: row.id,
+    employeeId: row.targetId,
+    employeeName: row.targetLabel,
+    templateId: row.templateId,
+    effectiveFrom: row.effectiveFrom,
+  };
+}
+
+/**
+ * Per employee: a running shift is changed or ended by date; a future shift
+ * can be deleted; an ended shift is history and has no action.
+ */
 function AssignmentEmployeeRows({
   rows,
   onUnlink,
+  onChange,
+  onCorrect,
 }: {
   rows: AssignmentRow[];
-  onUnlink: (assignmentId: string, employeeName: string) => void;
+  onUnlink: (row: ShiftRowAction) => void;
+  onChange: (row: ShiftRowAction) => void;
+  onCorrect: (row: ShiftRowAction) => void;
 }) {
   if (rows.length === 0) {
     return <p className="py-6 text-center text-sm text-muted-foreground">لا يوجد موظفون مرتبطون</p>;
   }
+  const today = ksaTodayIso();
 
   return (
     <div className="space-y-1.5">
-      {rows.map((row) => (
-        <div
-          key={row.id}
-          className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/10 px-3 py-2.5"
-        >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-            {row.targetLabel.slice(0, 1)}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{row.targetLabel}</p>
-            <p className="font-mono text-[10px] text-muted-foreground" dir="ltr">{row.employeeCode}</p>
-          </div>
-          <Badge variant={row.isActive ? 'success' : 'secondary'} className="shrink-0 text-[10px]">
-            {row.isActive ? 'نشط' : 'غير نشط'}
-          </Badge>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 shrink-0 gap-1 px-2 text-xs text-destructive hover:text-destructive"
-            onClick={() => onUnlink(row.id, row.targetLabel)}
+      {rows.map((row) => {
+        const ended = !!row.effectiveTo && row.effectiveTo < today;
+        const started = hasShiftStarted(row.effectiveFrom, today);
+        return (
+          <div
+            key={row.id}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-border/60 bg-muted/10 px-3 py-2.5"
           >
-            <Link2Off className="h-3 w-3" />
-            إلغاء الربط
-          </Button>
-        </div>
-      ))}
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+              {row.targetLabel.slice(0, 1)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{row.targetLabel}</p>
+              <p className="text-[10px] text-muted-foreground">
+                <span className="font-mono" dir="ltr">{row.employeeCode}</span>
+                <span className="mx-1">·</span>
+                <span>من <span dir="ltr">{row.effectiveFrom}</span></span>
+                {row.effectiveTo && (
+                  <span> إلى <span dir="ltr">{row.effectiveTo}</span></span>
+                )}
+              </p>
+            </div>
+            <Badge
+              variant={ended || !row.isActive ? 'secondary' : started ? 'success' : 'outline'}
+              className="shrink-0 text-[10px]"
+            >
+              {!row.isActive ? 'غير نشط' : ended ? 'منتهٍ' : started ? 'جارٍ' : 'قادم'}
+            </Badge>
+            {row.isActive && started && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 shrink-0 gap-1 px-2 text-xs"
+                title="القالب كان خاطئاً من أول يوم: يُستبدل وتُعاد حسبة أيامه"
+                onClick={() => onCorrect(toRowAction(row))}
+              >
+                <History className="h-3 w-3" />
+                تصحيح القالب
+              </Button>
+            )}
+            {row.isActive && !ended && (
+              <div className="flex shrink-0 items-center gap-1">
+                {started && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-xs"
+                    onClick={() => onChange(toRowAction(row))}
+                  >
+                    <Repeat className="h-3 w-3" />
+                    تغيير الدوام
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs text-destructive hover:text-destructive"
+                  onClick={() => onUnlink(toRowAction(row))}
+                >
+                  {started ? <CalendarX className="h-3 w-3" /> : <Trash2 className="h-3 w-3" />}
+                  {started ? 'إنهاء الدوام' : 'حذف'}
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -106,9 +179,15 @@ export function AssignmentsPanel() {
   }, [model.editOpen, model.editBatch, model.setEditOpen]);
 
   const handleUnlink = React.useCallback(
-    (assignmentId: string, employeeName: string) => {
-      model.requestUnlink(assignmentId, employeeName);
-    },
+    (row: ShiftRowAction) => model.requestUnlink(row),
+    [model],
+  );
+  const handleChange = React.useCallback(
+    (row: ShiftRowAction) => model.requestChange(row),
+    [model],
+  );
+  const handleCorrect = React.useCallback(
+    (row: ShiftRowAction) => model.requestCorrect(row),
     [model],
   );
 
@@ -214,7 +293,7 @@ export function AssignmentsPanel() {
               </DialogHeader>
 
               <div className="max-h-[60vh] overflow-y-auto py-2">
-                <AssignmentEmployeeRows rows={viewBatch.rows} onUnlink={handleUnlink} />
+                <AssignmentEmployeeRows rows={viewBatch.rows} onUnlink={handleUnlink} onChange={handleChange} onCorrect={handleCorrect} />
               </div>
 
               <DialogFooter>
@@ -247,45 +326,44 @@ export function AssignmentsPanel() {
                   <div>
                     <DialogTitle className="font-display text-lg">تعديل الربط — {model.editBatch.templateName}</DialogTitle>
                     <DialogDescription className="text-xs">
-                      عدّل تاريخ التطبيق والحالة، أو ألغِ ربط موظفين من هذا القالب.
+                      غيّر دوام موظف من تاريخ، أو أنهِه بتاريخ. الأيام السابقة تبقى محسوبة على دوامها.
                     </DialogDescription>
                   </div>
                 </div>
               </DialogHeader>
 
               <div className="space-y-4 py-2">
-                <FormField label="تاريخ التطبيق" required>
-                  <DatePickerInput
-                    value={model.editEffectiveFrom}
-                    onChange={model.setEditEffectiveFrom}
-                  />
-                </FormField>
-
-                <label className="flex cursor-pointer items-center justify-between rounded-xl border-2 px-4 py-3 transition-all border-border hover:bg-muted/20">
-                  <span className="text-sm font-medium">مفعّل</span>
-                  <Checkbox
-                    checked={model.editIsActive}
-                    onCheckedChange={(v) => model.setEditIsActive(v === true)}
-                  />
-                </label>
+                {model.editableRows.length > 0 && (
+                  <FormField
+                    label={`تاريخ البدء (${model.editableRows.length} دوام لم يبدأ بعد)`}
+                    required
+                  >
+                    <DatePickerInput
+                      value={model.editEffectiveFrom}
+                      onChange={model.setEditEffectiveFrom}
+                      minDate={ksaTodayIso()}
+                    />
+                  </FormField>
+                )}
 
                 <div className="space-y-2">
                   <Label className="text-sm">الموظفون المرتبطون</Label>
                   <div className="max-h-[40vh] overflow-y-auto rounded-xl border border-border/60 p-2">
-                    <AssignmentEmployeeRows rows={model.editBatch.rows} onUnlink={handleUnlink} />
+                    <AssignmentEmployeeRows rows={model.editBatch.rows} onUnlink={handleUnlink} onChange={handleChange} onCorrect={handleCorrect} />
                   </div>
                 </div>
               </div>
 
               <DialogFooter className={dialogFormFooterClass}>
-                <Button
-                  variant="luxe"
-                  type="button"
-                  onClick={() => void model.submitEdit()}
-                  disabled={!model.editBatch.rows.length}
-                >
-                  حفظ التعديلات
-                </Button>
+                {model.editableRows.length > 0 && (
+                  <Button
+                    variant="luxe"
+                    type="button"
+                    onClick={() => void model.submitEdit()}
+                  >
+                    حفظ التعديلات
+                  </Button>
+                )}
                 <Button variant="outline" type="button" onClick={() => model.setEditOpen(false)}>إلغاء</Button>
               </DialogFooter>
             </>
@@ -293,19 +371,185 @@ export function AssignmentsPanel() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Future shift: delete ── */}
       <ConfirmationModal
-        open={!!model.unlinkTarget}
+        open={!!model.unlinkTarget && !model.unlinkTarget.started}
         onOpenChange={(open) => { if (!open && !model.unlinking) model.setUnlinkTarget(null); }}
-        title="إلغاء ربط الموظف"
+        title="حذف دوام لم يبدأ"
         description={
           model.unlinkTarget
-            ? `هل أنت متأكد من إلغاء ربط «${model.unlinkTarget.employeeName}» بهذا القالب؟ لا يمكن التراجع عن هذا الإجراء.`
+            ? `سيُحذف دوام «${model.unlinkTarget.employeeName}» الذي يبدأ في ${model.unlinkTarget.effectiveFrom}. لم يبدأ بعد، فلا يتأثر أي يوم محسوب.`
             : ''
         }
-        confirmLabel={model.unlinking ? 'جاري الإلغاء…' : 'إلغاء الربط'}
+        confirmLabel={model.unlinking ? 'جاري الحذف…' : 'حذف'}
         variant="destructive"
         onConfirm={() => void model.confirmUnlink()}
       />
+
+      {/* ── Started shift: end on a date ── */}
+      <Dialog
+        open={!!model.unlinkTarget && model.unlinkTarget.started}
+        onOpenChange={(open) => { if (!open && !model.unlinking) model.setUnlinkTarget(null); }}
+      >
+        <DialogContent className="max-w-sm border-border" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>إنهاء الدوام — {model.unlinkTarget?.employeeName}</DialogTitle>
+            <DialogDescription className="text-xs">
+              اختر آخر يوم في هذا الدوام. الأيام حتى هذا التاريخ تبقى محسوبة عليه، وبعده يصبح الموظف بلا دوام حتى يُسند له دوام جديد.
+              لنقله إلى دوام آخر استعمل «تغيير الدوام».
+            </DialogDescription>
+          </DialogHeader>
+          <FormField label="آخر يوم في الدوام" required>
+            <DatePickerInput
+              value={model.endDate}
+              onChange={model.setEndDate}
+              minDate={model.unlinkTarget?.effectiveFrom}
+            />
+          </FormField>
+          <DialogFooter className={dialogFormFooterClass}>
+            <Button
+              variant="destructive"
+              type="button"
+              disabled={!model.endDate || model.unlinking}
+              onClick={() => void model.confirmUnlink()}
+            >
+              {model.unlinking ? 'جاري الحفظ…' : 'إنهاء الدوام'}
+            </Button>
+            <Button variant="outline" type="button" onClick={() => model.setUnlinkTarget(null)}>إلغاء</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Retroactive template correction ── */}
+      <Dialog
+        open={!!model.correctTarget}
+        onOpenChange={(open) => { if (!open && !model.correcting) model.setCorrectTarget(null); }}
+      >
+        <DialogContent className="max-w-md border-border" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>تصحيح الدوام بأثر رجعي — {model.correctTarget?.employeeName}</DialogTitle>
+            <DialogDescription className="text-xs">
+              استعمله فقط إذا كان القالب خاطئاً من أول يوم (مثلاً «صباحي» لموظفة تعمل مساءً).
+              لنقل موظف إلى دوام آخر من تاريخ استعمل «تغيير الدوام».
+            </DialogDescription>
+          </DialogHeader>
+          {!model.correctPreview ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">جاري حساب الأيام المتأثرة…</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 text-xs leading-6">
+                {model.correctPreview.affectedDays > 0 ? (
+                  <>
+                    ستُعاد حسبة <b>{model.correctPreview.affectedDays}</b> يوماً
+                    من <span dir="ltr">{model.correctPreview.from}</span> إلى{' '}
+                    <span dir="ltr">{model.correctPreview.to}</span> على القالب الجديد.
+                    {model.correctPreview.manualOverrideDays > 0 && (
+                      <> منها {model.correctPreview.manualOverrideDays} يوماً بتعديل يدوي لن تتغير.</>
+                    )}
+                  </>
+                ) : (
+                  'هذا الدوام لم يبدأ بعد، فلا يتغير أي يوم.'
+                )}
+              </div>
+              {model.correctPreview.lockedPeriods.length > 0 && (
+                <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  لا يمكن التصحيح: الفترة تمس رواتب مقفلة ({model.correctPreview.lockedPeriods.join('، ')}). أعد فتحها أولاً.
+                </p>
+              )}
+              <FormField label="القالب الصحيح" required>
+                <Select value={model.correctTemplateId} onValueChange={model.setCorrectTemplateId}>
+                  <SelectTrigger><SelectValue placeholder="اختر القالب" /></SelectTrigger>
+                  <SelectContent>
+                    {model.activeTemplates
+                      .filter((t) => t.id !== model.correctTarget?.templateId)
+                      .map((t) => (
+                        <SelectItem key={t.id} value={t.id}>{t.nameAr}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+              <FormField label="سبب التصحيح" required>
+                <Textarea
+                  value={model.correctReason}
+                  onChange={(e) => model.setCorrectReason(e.target.value)}
+                  placeholder="مثال: الموظفة تعمل مساءً منذ مباشرتها، وأُسند لها الصباحي بالخطأ"
+                  className="min-h-[64px] resize-none text-sm"
+                />
+              </FormField>
+            </div>
+          )}
+          <DialogFooter className={dialogFormFooterClass}>
+            <Button
+              variant="destructive"
+              type="button"
+              disabled={
+                !model.correctPreview ||
+                model.correctPreview.lockedPeriods.length > 0 ||
+                !model.correctTemplateId ||
+                model.correctReason.trim().length < 3 ||
+                model.correcting
+              }
+              onClick={() => void model.submitCorrect()}
+            >
+              {model.correcting ? 'جاري التصحيح…' : 'تصحيح وإعادة الحساب'}
+            </Button>
+            <Button variant="outline" type="button" onClick={() => model.setCorrectTarget(null)}>إلغاء</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Change shift from a date ── */}
+      <Dialog
+        open={!!model.changeTarget}
+        onOpenChange={(open) => { if (!open && !model.changing) model.setChangeTarget(null); }}
+      >
+        <DialogContent className="max-w-sm border-border" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>تغيير الدوام — {model.changeTarget?.employeeName}</DialogTitle>
+            <DialogDescription className="text-xs">
+              يبدأ الدوام الجديد من التاريخ المختار، ويُنهى الدوام الحالي في اليوم الذي قبله.
+              الأيام السابقة تبقى محسوبة على الدوام القديم.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <FormField label="الدوام الجديد" required>
+              <Select value={model.changeTemplateId} onValueChange={model.setChangeTemplateId}>
+                <SelectTrigger><SelectValue placeholder="اختر القالب" /></SelectTrigger>
+                <SelectContent>
+                  {model.activeTemplates
+                    .filter((t) => t.id !== model.changeTarget?.templateId)
+                    .map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.nameAr}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="أول يوم في الدوام الجديد" required>
+              <DatePickerInput
+                value={model.changeFrom}
+                onChange={model.setChangeFrom}
+                minDate={model.changeTarget ? addDaysIso(model.changeTarget.effectiveFrom, 1) : undefined}
+              />
+            </FormField>
+            {model.changeFrom && model.changeFrom < ksaTodayIso() && (
+              <p className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+                التاريخ في الماضي: ستُعاد حسبة الأيام من {model.changeFrom} إلى اليوم على الدوام الجديد.
+              </p>
+            )}
+          </div>
+          <DialogFooter className={dialogFormFooterClass}>
+            <Button
+              variant="luxe"
+              type="button"
+              disabled={!model.changeTemplateId || !model.changeFrom || model.changing}
+              onClick={() => void model.submitChange()}
+            >
+              {model.changing ? 'جاري الحفظ…' : 'تغيير الدوام'}
+            </Button>
+            <Button variant="outline" type="button" onClick={() => model.setChangeTarget(null)}>إلغاء</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

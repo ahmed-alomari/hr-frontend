@@ -223,6 +223,8 @@ export function useEmployeeProfileData(
         targetId: a.employeeId,
         targetLabel: employee.name,
         effectiveFrom: a.effectiveFrom,
+        effectiveTo: a.effectiveTo,
+        isActive: a.isActive,
         batchId: a.batchId ?? undefined,
       })),
     [attendance.shiftAssignments, employee.name],

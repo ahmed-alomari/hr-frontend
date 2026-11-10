@@ -6,6 +6,8 @@ export type PublicHolidayResponseDto = {
   nameEn: string | null;
   monthDay: string;
   recurring: boolean;
+  startDate: string | null;
+  endDate: string | null;
   sortOrder: number;
   isActive: boolean;
   notes: string | null;
@@ -22,6 +24,8 @@ export type CreatePublicHolidayDto = {
   nameEn?: string | null;
   monthDay: string;
   recurring?: boolean;
+  startDate?: string | null;
+  endDate?: string | null;
   sortOrder?: number;
   isActive?: boolean;
   notes?: string | null;

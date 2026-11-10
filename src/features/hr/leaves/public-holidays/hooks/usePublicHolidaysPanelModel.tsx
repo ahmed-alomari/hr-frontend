@@ -25,6 +25,8 @@ const EMPTY_DRAFT: PublicHolidayDraft = {
   nameEn: '',
   date: '',
   recurring: true,
+  startDate: null,
+  endDate: null,
   sortOrder: 0,
   isActive: true,
 };
@@ -92,6 +94,8 @@ export function usePublicHolidaysPanelModel() {
       nameEn: item.nameEn,
       date: item.date,
       recurring: item.recurring,
+      startDate: item.startDate,
+      endDate: item.endDate,
       sortOrder: item.sortOrder,
       isActive: item.isActive,
     });
@@ -108,10 +112,23 @@ export function usePublicHolidaysPanelModel() {
       setError('الاسم مطلوب');
       return;
     }
-    if (!draft.date.match(/^\d{2}-\d{2}$/)) {
+    // A recurring holiday repeats on a month-day; any other (Eid moves every
+    // year) needs its dates, from and to.
+    if (draft.recurring && !draft.date.match(/^\d{2}-\d{2}$/)) {
       setError('التاريخ يجب أن يكون بصيغة MM-DD (مثال: 09-23)');
       return;
     }
+    if (!draft.recurring && !draft.startDate) {
+      setError('حدّد أول يوم في العطلة');
+      return;
+    }
+    if (!draft.recurring && draft.startDate && draft.endDate && draft.endDate < draft.startDate) {
+      setError('آخر يوم في العطلة قبل أول يوم');
+      return;
+    }
+    const monthDay = draft.recurring ? draft.date : (draft.startDate ?? '').slice(5);
+    const startDate = draft.recurring ? null : draft.startDate;
+    const endDate = draft.recurring ? null : draft.endDate || draft.startDate;
     if (!companyId) {
       setError('تعذر تحديد الشركة');
       return;
@@ -123,8 +140,10 @@ export function usePublicHolidaysPanelModel() {
         await updatePublicHoliday(editId, {
           nameAr,
           nameEn: nameAr,
-          monthDay: draft.date,
+          monthDay,
           recurring: draft.recurring,
+          startDate,
+          endDate,
           sortOrder: draft.sortOrder,
           isActive: draft.isActive,
         });
@@ -134,8 +153,10 @@ export function usePublicHolidaysPanelModel() {
           code: slugify(nameAr) || `hol-${Date.now().toString(36)}`,
           nameAr,
           nameEn: nameAr,
-          monthDay: draft.date,
+          monthDay,
           recurring: draft.recurring,
+          startDate,
+          endDate,
           sortOrder: draft.sortOrder,
           isActive: draft.isActive,
         });

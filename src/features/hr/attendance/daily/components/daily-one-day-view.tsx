@@ -706,10 +706,11 @@ export function RegisterEventComboDialog({
     try {
       const [hh, mm] = time.split(':');
       const occurredAt = new Date(`${selectedDate}T${hh}:${mm}:00`).toISOString();
-      const res = await attendanceEventsApi.create({
+      const res = await attendanceEventsApi.createConfirmingExcluded({
         companyId, employeeId: selectedId, eventType, occurredAt, workDate: selectedDate,
         source: 'manual_hr', notes: notes.trim() || null,
       });
+      if (!res) return;
       toast.success(REGISTER_SUCCESS_MSG[eventType]);
       onCreated(selectedId, res);
       onOpenChange(false);

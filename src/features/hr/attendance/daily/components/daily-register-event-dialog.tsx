@@ -63,7 +63,7 @@ export function DailyRegisterEventDialog({ open, onOpenChange, employeeId, emplo
     try {
       const [hh, mm] = time.split(':');
       const occurredAt = new Date(`${workDate}T${hh}:${mm}:00`).toISOString();
-      const res = await attendanceEventsApi.create({
+      const res = await attendanceEventsApi.createConfirmingExcluded({
         companyId,
         employeeId,
         eventType,
@@ -72,6 +72,7 @@ export function DailyRegisterEventDialog({ open, onOpenChange, employeeId, emplo
         source: 'manual_hr',
         notes: notes.trim() || null,
       });
+      if (!res) return;
       toast.success(REGISTER_SUCCESS_MSG[eventType]);
       onCreated?.(res);
       onOpenChange(false);

@@ -38,6 +38,12 @@ export type EmployeeAttendanceDialogsProps = {
   setShiftDate: (v: string) => void;
   shiftUnlinkTarget: string | null;
   setShiftUnlinkTarget: (v: string | null) => void;
+  /** The shift to end has started: it is ended on a date, not deleted. */
+  shiftUnlinkStarted: boolean;
+  shiftEndDate: string;
+  setShiftEndDate: (v: string) => void;
+  /** The employee already has a shift on the chosen date: saving changes it from that date. */
+  shiftChangeMode: boolean;
   submitShift: () => void;
   removeAssignment: (id: string) => void;
   cpOpen: boolean;
@@ -70,8 +76,12 @@ export function EmployeeAttendanceDialogs(p: EmployeeAttendanceDialogsProps) {
                 <Layers className="h-4 w-4" />
               </div>
               <div>
-                <DialogTitle className="text-base">ربط شيفت</DialogTitle>
-                <DialogDescription className="text-xs">اختر قالب الدوام لـ {p.employeeName}</DialogDescription>
+                <DialogTitle className="text-base">{p.shiftChangeMode ? 'تغيير الدوام' : 'ربط شيفت'}</DialogTitle>
+                <DialogDescription className="text-xs">
+                  {p.shiftChangeMode
+                    ? `يبدأ الدوام الجديد لـ ${p.employeeName} من التاريخ المختار، ويُنهى الدوام الحالي في اليوم الذي قبله.`
+                    : `اختر قالب الدوام لـ ${p.employeeName}`}
+                </DialogDescription>
               </div>
             </div>
           </DialogHeader>
@@ -124,7 +134,7 @@ export function EmployeeAttendanceDialogs(p: EmployeeAttendanceDialogsProps) {
               disabled={!p.shiftTemplateId}
               className="gap-1.5"
             >
-              <Layers className="h-3.5 w-3.5" /> ربط الشيفت
+              <Layers className="h-3.5 w-3.5" /> {p.shiftChangeMode ? 'تغيير الدوام' : 'ربط الشيفت'}
             </Button>
             <Button variant="outline" size="sm" onClick={() => p.setShiftOpen(false)}>إلغاء</Button>
           </div>
@@ -135,10 +145,20 @@ export function EmployeeAttendanceDialogs(p: EmployeeAttendanceDialogsProps) {
         <DialogContent className="max-w-xs">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
-              <Unlink className="h-4 w-4" /> فك ربط الشيفت
+              <Unlink className="h-4 w-4" /> {p.shiftUnlinkStarted ? 'إنهاء الدوام' : 'حذف دوام لم يبدأ'}
             </DialogTitle>
-            <DialogDescription>هل تريد إزالة هذا الشيفت من الموظف؟</DialogDescription>
+            <DialogDescription>
+              {p.shiftUnlinkStarted
+                ? 'اختر آخر يوم في هذا الدوام. الأيام حتى هذا التاريخ تبقى محسوبة عليه.'
+                : 'هذا الدوام لم يبدأ بعد، فحذفه لا يغيّر أي يوم محسوب.'}
+            </DialogDescription>
           </DialogHeader>
+          {p.shiftUnlinkStarted && (
+            <div className="flex items-center gap-3">
+              <Label className="shrink-0 text-xs">آخر يوم</Label>
+              <DatePickerInput value={p.shiftEndDate} onChange={p.setShiftEndDate} />
+            </div>
+          )}
           <DialogFooter className="pt-2">
             <Button
               variant="destructive"
@@ -151,7 +171,7 @@ export function EmployeeAttendanceDialogs(p: EmployeeAttendanceDialogsProps) {
                 }
               }}
             >
-              <Unlink className="h-3.5 w-3.5" /> فك الربط
+              <Unlink className="h-3.5 w-3.5" /> {p.shiftUnlinkStarted ? 'إنهاء الدوام' : 'حذف'}
             </Button>
             <Button variant="outline" size="sm" onClick={() => p.setShiftUnlinkTarget(null)}>إلغاء</Button>
           </DialogFooter>

@@ -5,7 +5,12 @@ import { toast } from 'sonner';
 import type { Employee } from '@/features/hr/organization/employees/types';
 import { attendanceEventsApi, type AttendanceEventResponseDto } from '@/features/hr/attendance/lib/api/attendance-events';
 import { shiftTemplatesApi, type ShiftTemplateResponseDto } from '@/features/hr/attendance/lib/api/shift-templates';
-import { shiftAssignmentsApi, type ShiftAssignmentResponseDto } from '@/features/hr/attendance/lib/api/shift-assignments';
+import {
+  hasShiftStarted,
+  ksaTodayIso,
+  shiftAssignmentsApi,
+  type ShiftAssignmentResponseDto,
+} from '@/features/hr/attendance/lib/api/shift-assignments';
 import { checkInPointLinksApi } from '@/features/hr/attendance/lib/api/check-in-point-links';
 import { checkInPointsApi } from '@/features/hr/attendance/lib/api/check-in-points';
 import { organizationActiveListStatusQuery } from '@/features/hr/organization/lib/archive-scope';
@@ -179,13 +184,13 @@ export function useEmployeeProfileAttendance(
   const employeeEvents = attendanceEvents;
 
   const [cpOpen, setCpOpen] = React.useState(false);
-  const [cpDate, setCpDate] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [cpDate, setCpDate] = React.useState(() => ksaTodayIso());
   const [cpSel, setCpSel] = React.useState<Set<string>>(new Set());
   const [cpQuery, setCpQuery] = React.useState('');
   const [cpUnlinkTarget, setCpUnlinkTarget] = React.useState<string | null>(null);
 
   const openCpDialog = () => {
-    setCpDate(new Date().toISOString().slice(0, 10));
+    setCpDate(ksaTodayIso());
     setCpSel(new Set());
     setCpQuery('');
     setCpOpen(true);
@@ -226,13 +231,25 @@ export function useEmployeeProfileAttendance(
 
   const [shiftOpen, setShiftOpen] = React.useState(false);
   const [shiftTemplateId, setShiftTemplateId] = React.useState('');
-  const [shiftDate, setShiftDate] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [shiftDate, setShiftDate] = React.useState(() => ksaTodayIso());
   const [shiftUnlinkTarget, setShiftUnlinkTarget] = React.useState<string | null>(null);
+  /** Last working day when ending a started shift. */
+  const [shiftEndDate, setShiftEndDate] = React.useState(() => ksaTodayIso());
+
+  /** A shift that is still running on `date` (or later): a new one changes it from that date. */
+  const runningShiftOn = React.useCallback(
+    (date: string) =>
+      shiftAssignments.find(
+        (a) => a.isActive && (a.effectiveTo === null || a.effectiveTo.slice(0, 10) >= date),
+      ) ?? null,
+    [shiftAssignments],
+  );
+  const shiftChangeMode = !!runningShiftOn(shiftDate);
 
   const openShiftDialog = () => {
     const active = shiftTemplates.filter((t) => t.isActive);
     setShiftTemplateId(active[0]?.id ?? '');
-    setShiftDate(new Date().toISOString().slice(0, 10));
+    setShiftDate(ksaTodayIso());
     setShiftOpen(true);
   };
 
@@ -244,15 +261,26 @@ export function useEmployeeProfileAttendance(
     if (!shiftTemplateId) return;
 
     try {
-      await shiftAssignmentsApi.create({
-        companyId,
-        shiftTemplateId,
-        employeeId: employee.id,
-        effectiveFrom: shiftDate,
-        isActive: true,
-      });
+      if (runningShiftOn(shiftDate)) {
+        // Ends the running shift the day before; earlier days keep their shift.
+        await shiftAssignmentsApi.changeShift({
+          companyId,
+          shiftTemplateId,
+          employeeId: employee.id,
+          effectiveFrom: shiftDate,
+        });
+        toast.success(`تم تغيير الدوام من ${shiftDate}`);
+      } else {
+        await shiftAssignmentsApi.create({
+          companyId,
+          shiftTemplateId,
+          employeeId: employee.id,
+          effectiveFrom: shiftDate,
+          isActive: true,
+        });
+        toast.success('تم ربط الشيفت');
+      }
       await reloadAttendanceLinks();
-      toast.success('تم ربط الشيفت');
       setShiftOpen(false);
     } catch (err) {
       const { displayMessage } = handleApiError(err, 'shift-assignments.create');
@@ -260,11 +288,28 @@ export function useEmployeeProfileAttendance(
     }
   };
 
+  const shiftUnlinkStarted = React.useMemo(() => {
+    const target = shiftAssignments.find((a) => a.id === shiftUnlinkTarget);
+    return !!target && hasShiftStarted(target.effectiveFrom);
+  }, [shiftAssignments, shiftUnlinkTarget]);
+
+  React.useEffect(() => {
+    if (shiftUnlinkTarget) setShiftEndDate(ksaTodayIso());
+  }, [shiftUnlinkTarget]);
+
+  /** Started shift: ended on a date (never deleted). Future shift: deleted. */
   const removeAssignment = async (id: string) => {
+    const target = shiftAssignments.find((a) => a.id === id);
     try {
-      await shiftAssignmentsApi.remove(id);
-      setShiftAssignments((prev) => prev.filter((a) => a.id !== id));
-      toast.success('تم فك ربط الشيفت');
+      if (target && hasShiftStarted(target.effectiveFrom)) {
+        await shiftAssignmentsApi.update(id, { effectiveTo: shiftEndDate });
+        await reloadAttendanceLinks();
+        toast.success(`انتهى الدوام في ${shiftEndDate}`);
+      } else {
+        await shiftAssignmentsApi.remove(id);
+        setShiftAssignments((prev) => prev.filter((a) => a.id !== id));
+        toast.success('تم حذف الدوام المستقبلي');
+      }
     } catch (err) {
       const { displayMessage } = handleApiError(err, 'shift-assignments.delete');
       toast.error(displayMessage);
@@ -312,6 +357,10 @@ export function useEmployeeProfileAttendance(
     setShiftDate,
     shiftUnlinkTarget,
     setShiftUnlinkTarget,
+    shiftUnlinkStarted,
+    shiftEndDate,
+    setShiftEndDate,
+    shiftChangeMode,
     openShiftDialog,
     submitShift,
     removeCheckpointLink,

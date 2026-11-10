@@ -7,6 +7,8 @@ export type AttendanceDayStatus =
   | 'absent'
   | 'rest_day'
   | 'unscheduled'
+  /** Punches on a day without a shift: not attendance, no pay effect. */
+  | 'off_shift_work'
   | 'holiday'
   | 'on_leave'
   /** No period has started yet. */

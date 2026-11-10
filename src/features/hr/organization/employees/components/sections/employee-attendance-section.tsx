@@ -23,6 +23,7 @@ import {
 import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
 import { employeeExportSubtitle } from '@/features/hr/organization/employees/lib/employee-profile-export';
 import type { EmployeeProfileModel } from '@/features/hr/organization/employees/hooks/useEmployeeProfileModel';
+import { ksaTodayIso } from '@/features/hr/attendance/lib/api/shift-assignments';
 
 export function EmployeeAttendanceSection({ model }: { model: EmployeeProfileModel }) {
   const {
@@ -44,6 +45,10 @@ export function EmployeeAttendanceSection({ model }: { model: EmployeeProfileMod
     setShiftDate,
     shiftUnlinkTarget,
     setShiftUnlinkTarget,
+    shiftUnlinkStarted,
+    shiftEndDate,
+    setShiftEndDate,
+    shiftChangeMode,
     submitShift,
     removeAssignment,
     cpOpen,
@@ -107,12 +112,27 @@ export function EmployeeAttendanceSection({ model }: { model: EmployeeProfileMod
                         <div className="truncate text-xs font-medium">
                           {isOpen ? `شيفت مفتوح · ${asg.openShiftHours ?? '?'} ساعة` : templateName}
                         </div>
-                        <div className="font-mono text-[10px] text-muted-foreground" dir="ltr">{asg.effectiveFrom}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          من <span className="font-mono" dir="ltr">{asg.effectiveFrom}</span>
+                          {asg.effectiveTo && (
+                            <> إلى <span className="font-mono" dir="ltr">{asg.effectiveTo}</span></>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive" onClick={() => setShiftUnlinkTarget(asg.id)}>
-                      <Unlink className="h-3 w-3" />
-                    </Button>
+                    {asg.isActive && !(asg.effectiveTo && asg.effectiveTo < ksaTodayIso()) ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                        title="إنهاء الدوام"
+                        onClick={() => setShiftUnlinkTarget(asg.id)}
+                      >
+                        <Unlink className="h-3 w-3" />
+                      </Button>
+                    ) : (
+                      <Badge variant="secondary" className="shrink-0 text-[10px]">منتهٍ</Badge>
+                    )}
                   </div>
                 );
               }) : (
@@ -221,6 +241,10 @@ export function EmployeeAttendanceSection({ model }: { model: EmployeeProfileMod
         setShiftDate={setShiftDate}
         shiftUnlinkTarget={shiftUnlinkTarget}
         setShiftUnlinkTarget={setShiftUnlinkTarget}
+        shiftUnlinkStarted={shiftUnlinkStarted}
+        shiftEndDate={shiftEndDate}
+        setShiftEndDate={setShiftEndDate}
+        shiftChangeMode={shiftChangeMode}
         submitShift={submitShift}
         removeAssignment={removeAssignment}
         cpOpen={cpOpen}

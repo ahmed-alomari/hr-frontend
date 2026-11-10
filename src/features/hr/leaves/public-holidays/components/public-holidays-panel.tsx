@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { MonthDayPickerInput } from '@/features/hr/leaves/public-holidays/components/month-day-picker-input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -111,6 +112,12 @@ export function PublicHolidaysPanel() {
                       )}>
                         <span className="font-display text-sm font-bold leading-none font-mono tabular-nums" dir="ltr">{dateLabel}</span>
                       </div>
+                      {!item.recurring && item.startDate && (
+                        <span className="mx-2 min-w-0 flex-1 truncate text-[11px] text-muted-foreground" dir="ltr">
+                          {item.startDate}
+                          {item.endDate && item.endDate !== item.startDate ? ` → ${item.endDate}` : ''}
+                        </span>
+                      )}
                       <span className={cn(
                         'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium',
                         item.isActive
@@ -160,25 +167,43 @@ export function PublicHolidaysPanel() {
         open={m.open}
         onOpenChange={m.setOpen}
         title={m.editId ? 'تعديل العطلة الرسمية' : 'إضافة عطلة رسمية'}
-        description="اختر شهر ويوم العطلة الرسمية."
+        description="العطلة الثابتة (مثل اليوم الوطني) تتكرر كل سنة. الأعياد تتغير كل سنة فتُدخل بتاريخ من وإلى. لا يُحسب غياب في العطلة، ومن يعمل فيها يُسجَّل له عمل إضافي."
         size="lg"
         onSave={() => void m.save()}
         saveLabel={m.editId ? 'حفظ التعديلات' : 'إضافة العطلة'}
         error={m.error}
       >
-        <FormField label="التاريخ" required>
-          <MonthDayPickerInput
-            value={m.draft.date}
-            onChange={(mmdd) => m.patch('date', mmdd)}
-          />
-        </FormField>
+        {m.draft.recurring ? (
+          <FormField label="الشهر واليوم (كل سنة)" required>
+            <MonthDayPickerInput
+              value={m.draft.date}
+              onChange={(mmdd) => m.patch('date', mmdd)}
+            />
+          </FormField>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FormField label="من" required>
+              <DatePickerInput
+                value={m.draft.startDate ?? ''}
+                onChange={(ymd) => m.patch('startDate', ymd || null)}
+              />
+            </FormField>
+            <FormField label="إلى">
+              <DatePickerInput
+                value={m.draft.endDate ?? ''}
+                onChange={(ymd) => m.patch('endDate', ymd || null)}
+                minDate={m.draft.startDate ?? undefined}
+              />
+            </FormField>
+          </div>
+        )}
         <FormField label="الاسم" required>
           <Input value={m.draft.nameAr} onChange={(e) => m.patch('nameAr', e.target.value)} />
         </FormField>
         <Separator />
         <div className="space-y-3">
           {([
-            ['recurring', 'تتكرر سنوياً (نفس الشهر واليوم)'],
+            ['recurring', 'تتكرر سنوياً (نفس الشهر واليوم) — ألغِ التحديد للأعياد'],
             ['isActive', 'نشط'],
           ] as [keyof PublicHolidayDraft, string][]).map(([key, label]) => (
             <label key={key} className={cn(

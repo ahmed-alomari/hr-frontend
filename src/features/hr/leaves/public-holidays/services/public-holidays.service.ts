@@ -16,6 +16,8 @@ export function mapPublicHolidayResponse(dto: PublicHolidayResponseDto): HRPubli
     nameEn: dto.nameEn ?? dto.nameAr,
     date: dto.monthDay,
     recurring: dto.recurring,
+    startDate: dto.startDate ?? null,
+    endDate: dto.endDate ?? null,
     sortOrder: dto.sortOrder,
     isActive: dto.isActive,
     updatedAt: toIso(dto.updatedAt),

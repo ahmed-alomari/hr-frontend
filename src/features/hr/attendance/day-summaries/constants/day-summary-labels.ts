@@ -9,6 +9,7 @@ export const DAY_SUMMARY_STATUS_LABELS: Record<AttendanceDayStatus, string> = {
   absent: 'غائب',
   rest_day: 'يوم راحة',
   unscheduled: 'غير مجدول',
+  off_shift_work: 'عمل خارج الدوام',
   holiday: 'عطلة رسمية',
   on_leave: 'إجازة',
   upcoming: 'لم يبدأ الدوام',
@@ -25,6 +26,7 @@ export const DAY_SUMMARY_STATUS_ORDER: AttendanceDayStatus[] = [
   'holiday',
   'rest_day',
   'unscheduled',
+  'off_shift_work',
   'pending',
   'upcoming',
 ];
@@ -37,6 +39,7 @@ export const DAY_SUMMARY_STATUS_BADGE: Record<AttendanceDayStatus, string> = {
   absent: STATUS_PILL.rejected,
   rest_day: STATUS_PILL.muted,
   unscheduled: STATUS_PILL.muted,
+  off_shift_work: STATUS_PILL.info,
   holiday: STATUS_PILL.gold,
   on_leave: STATUS_PILL.info,
   upcoming: STATUS_PILL.muted,
