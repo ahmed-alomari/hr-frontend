@@ -217,7 +217,6 @@ function Reports({ period, setPeriod, defaultPeriod }: { period: PeriodRange; se
         label: {
           kind: 'name',
           text: (r) => (r.detail ? `${r.label} (${r.detail})` : r.label),
-          alsoExport: [{ label: 'إيراد بلا تكلفة', text: (r) => amount(r.uncostedRevenue) }],
         },
         units: { kind: 'number', text: (r) => amount(r.units), sort: (r) => r.units, sum: (r) => r.units, formatSum: amount },
         invoices: { kind: 'number', text: (r) => String(r.invoices), sort: (r) => r.invoices, sum: (r) => r.invoices },
@@ -235,7 +234,12 @@ function Reports({ period, setPeriod, defaultPeriod }: { period: PeriodRange; se
         },
         cost: { kind: 'number', text: (r) => (r.costedRevenue > 0 ? amount(r.cost) : '—'), sort: (r) => r.cost, sum: (r) => r.cost, formatSum: amount },
         profit: { kind: 'number', text: (r) => (r.costedRevenue > 0 ? amount(r.profit) : '—'), sort: (r) => r.profit, sum: (r) => r.profit, formatSum: amount },
-        margin: { kind: 'number', text: (r) => marginText(r.margin), sort: (r) => Number(r.margin) || 0 },
+        margin: {
+          kind: 'number',
+          text: (r) => marginText(r.margin),
+          sort: (r) => Number(r.margin) || 0,
+          alsoExport: [{ label: 'إيراد بلا تكلفة', text: (r) => amount(r.uncostedRevenue) }],
+        },
       })
     : view === 'payments'
       ? reportTable<PaymentRow>(paymentColumns, payments, {
