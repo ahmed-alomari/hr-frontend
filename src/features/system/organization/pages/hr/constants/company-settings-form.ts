@@ -21,6 +21,7 @@ export type CompanySettingsFormState = {
   pdfWatermarkOpacity: number;
   pdfContractFontScale: number;
   pdfEmployeeSignatureScale: number;
+  pdfCompanyStampScale: number;
 };
 
 /** Visibility levels of the logo background on printed pages (percent). */
@@ -37,7 +38,10 @@ export const PDF_WATERMARK_LEVELS: ReadonlyArray<{ value: number; label: string 
 export const PDF_CONTRACT_FONT_SCALE = { min: 30, max: 100 } as const;
 
 /** Employee signature size on signed PDFs, any integer percent in this range. */
-export const PDF_EMPLOYEE_SIGNATURE_SCALE = { min: 30, max: 200 } as const;
+export const PDF_EMPLOYEE_SIGNATURE_SCALE = { min: 30, max: 400 } as const;
+
+/** Establishment stamp size on PDFs, any integer percent in this range. */
+export const PDF_COMPANY_STAMP_SCALE = { min: 30, max: 400 } as const;
 
 function clampScale(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return 100;
@@ -73,6 +77,11 @@ export function companyToSettingsForm(company: CompanyResponseDto): CompanySetti
       company.pdfEmployeeSignatureScale ?? 100,
       PDF_EMPLOYEE_SIGNATURE_SCALE.min,
       PDF_EMPLOYEE_SIGNATURE_SCALE.max,
+    ),
+    pdfCompanyStampScale: clampScale(
+      company.pdfCompanyStampScale ?? 100,
+      PDF_COMPANY_STAMP_SCALE.min,
+      PDF_COMPANY_STAMP_SCALE.max,
     ),
   };
 }
@@ -117,6 +126,11 @@ export function settingsFormToUpdateDto(form: CompanySettingsFormState): UpdateC
       form.pdfEmployeeSignatureScale,
       PDF_EMPLOYEE_SIGNATURE_SCALE.min,
       PDF_EMPLOYEE_SIGNATURE_SCALE.max,
+    ),
+    pdfCompanyStampScale: clampScale(
+      form.pdfCompanyStampScale,
+      PDF_COMPANY_STAMP_SCALE.min,
+      PDF_COMPANY_STAMP_SCALE.max,
     ),
   };
 }

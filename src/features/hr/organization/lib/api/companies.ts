@@ -25,8 +25,10 @@ export type CompanyResponseDto = {
   pdfWatermarkOpacity?: number;
   /** Employment-contract PDF text size in percent (30–100, 100 = standard). */
   pdfContractFontScale?: number;
-  /** Employee signature size on signed PDFs, in percent (30–200, 100 = standard). */
+  /** Employee signature size on signed PDFs, in percent (30–400, 100 = standard). */
   pdfEmployeeSignatureScale?: number;
+  /** Establishment stamp size on PDFs, in percent (30–400, 100 = standard). */
+  pdfCompanyStampScale?: number;
   timezone: string;
   currencyCode: string;
   languageCode: string;
@@ -60,6 +62,7 @@ export type CreateCompanyDto = {
   pdfWatermarkOpacity?: number;
   pdfContractFontScale?: number;
   pdfEmployeeSignatureScale?: number;
+  pdfCompanyStampScale?: number;
   timezone?: string;
   currencyCode?: string;
   languageCode?: string;

@@ -14,6 +14,7 @@ import { uploadsApi } from '@/features/hr/lib/api/uploads';
 import {
   companyToSettingsForm,
   isValidHexColor,
+  PDF_COMPANY_STAMP_SCALE,
   PDF_CONTRACT_FONT_SCALE,
   PDF_EMPLOYEE_SIGNATURE_SCALE,
   PDF_WATERMARK_LEVELS,
@@ -25,6 +26,7 @@ import {
   SettingsPageError,
   SettingsPageLoading,
 } from '@/features/system/organization/pages/_shared/components/settings-page-states';
+import { ContractPrintPreview } from '@/features/system/organization/pages/hr/components/contract-print-preview';
 
 function FormField({
   label,
@@ -397,12 +399,23 @@ export function CompanySettingsTab() {
 
         <PercentScaleControl
           label="حجم توقيع الموظف"
-          hint="أي رقم بين 30 و 200. يُطبع توقيع الموظف بهذا الحجم في كل صفحة من العقد والخطاب وأي ملف PDF يتطلّب توقيعه."
+          hint="أي رقم بين 30 و 400. يُطبع توقيع الموظف بهذا الحجم في كل صفحة من العقد والخطاب وأي ملف PDF يتطلّب توقيعه."
           value={form.pdfEmployeeSignatureScale}
           min={PDF_EMPLOYEE_SIGNATURE_SCALE.min}
           max={PDF_EMPLOYEE_SIGNATURE_SCALE.max}
           onChange={(pdfEmployeeSignatureScale) => patch({ pdfEmployeeSignatureScale })}
         />
+
+        <PercentScaleControl
+          label="حجم ختم المنشأة"
+          hint="أي رقم بين 30 و 400. يُطبع الختم بهذا الحجم مع التوقيع في العقد والخطاب وملفات PDF التي يظهر فيها."
+          value={form.pdfCompanyStampScale}
+          min={PDF_COMPANY_STAMP_SCALE.min}
+          max={PDF_COMPANY_STAMP_SCALE.max}
+          onChange={(pdfCompanyStampScale) => patch({ pdfCompanyStampScale })}
+        />
+
+        <ContractPrintPreview form={form} />
 
         <div className="space-y-3">
           <p className="text-xs font-semibold text-muted-foreground">البيانات الأساسية</p>
