@@ -126,6 +126,7 @@ export default function HrSettingsPage() {
               allowCheckOutWithoutCheckIn: Boolean(settings.allowCheckOutWithoutCheckIn),
               allowPreviousDayCheckOut: settings.allowPreviousDayCheckOut !== false,
               openSessionMaxHours: settings.openSessionMaxHours ?? 18,
+              previousDayCheckOutUntilHours: settings.previousDayCheckOutUntilHours ?? 3,
               allowPunchOnUnscheduledDay: Boolean(settings.allowPunchOnUnscheduledDay),
               requireCheckInPointsForSelfPunch:
                 settings.requireCheckInPointsForSelfPunch !== false,

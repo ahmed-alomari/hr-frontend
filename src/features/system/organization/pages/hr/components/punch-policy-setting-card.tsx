@@ -26,6 +26,7 @@ export type PunchPolicyValues = {
   allowCheckOutWithoutCheckIn: boolean;
   allowPreviousDayCheckOut: boolean;
   openSessionMaxHours: number;
+  previousDayCheckOutUntilHours: number;
   allowPunchOnUnscheduledDay: boolean;
   requireCheckInPointsForSelfPunch: boolean;
   minMinutesBetweenPunches: number;
@@ -290,7 +291,7 @@ export function PunchPolicySettingCard({ values, disabled, hideHeader, onChange 
         />
         <Row
           title="السماح بالانصراف لمن نسي الحضور"
-          description="كل انصراف يسبقه حضور. عند الإيقاف: من لم يسجّل حضوراً يُمنع ويُقترح عليه طلب تصحيح. عند التفعيل: يُسمح مرة واحدة لكل فترة وداخل نافذة الانصراف فقط (من الخروج − النقص المسموح حتى ساعتين بعد الخروج، وبحد أقصى «أقصى مدة للدوام» من بداية الفترة)، ويُحسب اليوم ناقصاً ليراجعه HR."
+          description="كل انصراف يسبقه حضور. عند الإيقاف: من لم يسجّل حضوراً يُمنع ويُقترح عليه طلب تصحيح. عند التفعيل: يُسمح مرة واحدة لكل فترة، من منتصف الفترة حتى ساعتين بعد الخروج (وبحد أقصى «أقصى مدة للدوام» من بداية الفترة). من منتصف الفترة يرى من لم يسجّل حضوراً زرّي «حضور متأخر» و«انصراف» معاً ويختار، ويُحسب اليوم ناقصاً حتى يُعتمد طلب تصحيح."
           checked={values.allowCheckOutWithoutCheckIn}
           disabled={disabled}
           onCheckedChange={(v) => onChange({ allowCheckOutWithoutCheckIn: v })}
@@ -303,8 +304,17 @@ export function PunchPolicySettingCard({ values, disabled, hideHeader, onChange 
           onCheckedChange={(v) => onChange({ allowPreviousDayCheckOut: v })}
         />
         <NumberSettingRow
+          title="الانصراف بعد منتصف الليل حتى (ساعات)"
+          description="إذا بقي حضور الأمس مفتوحاً يُقبل انصرافه حتى هذا العدد من الساعات بعد منتصف الليل فقط. مثال: 3 → حتى 3:00 فجراً. بعدها يُعتبر انصرافاً منسياً مع اقتراح طلب تصحيح، وتُحسب أي بصمة بعدها لليوم الجديد، فلا تقلب بصمة منسية بصمات اليوم التالي."
+          value={values.previousDayCheckOutUntilHours}
+          min={1}
+          max={12}
+          disabled={disabled || !values.allowPreviousDayCheckOut}
+          onSave={(n) => onChange({ previousDayCheckOutUntilHours: n })}
+        />
+        <NumberSettingRow
           title="أقصى مدة للدوام المفتوح (ساعات)"
-          description="تُطبَّق على الجميع، وتُحسب من أول بصمة حضور في اليوم (ومن بداية الفترة لمن نسي الحضور). بعدها لا يُسمح بالانصراف ويُعتبر منسياً مع اقتراح طلب تصحيح. مثال: 18 → أول حضور 11:00 ص يمكن الانصراف حتى 5:00 ص من اليوم التالي. ينتهي أيضاً قبل ذلك إذا بدأت نافذة الدخول لشفت اليوم التالي."
+          description="تُطبَّق على الجميع، وتُحسب من أول بصمة حضور في اليوم (ومن بداية الفترة لمن نسي الحضور). بعدها لا يُسمح بالانصراف ويُعتبر منسياً مع اقتراح طلب تصحيح. مثال: 18 → أول حضور 11:00 ص يمكن الانصراف حتى 5:00 ص من اليوم التالي. ينتهي أيضاً قبل ذلك إذا بدأت نافذة الدخول لشفت اليوم التالي، أو بعد منتصف الليل عند الوقت المحدد في «الانصراف بعد منتصف الليل حتى»."
           value={values.openSessionMaxHours}
           min={1}
           max={36}

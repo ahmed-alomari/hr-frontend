@@ -96,28 +96,34 @@ function AssignmentEmployeeRows({
         return (
           <div
             key={row.id}
-            className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-border/60 bg-muted/10 px-3 py-2.5"
+            className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2.5"
           >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-              {row.targetLabel.slice(0, 1)}
+            {/* Line 1: who and when — the full name is never cut by the buttons. */}
+            <div className="flex items-start gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                {row.targetLabel.slice(0, 1)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="break-words text-sm font-medium leading-snug">{row.targetLabel}</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  <span className="font-mono" dir="ltr">{row.employeeCode}</span>
+                  <span className="mx-1">·</span>
+                  <span>من <span dir="ltr">{row.effectiveFrom}</span></span>
+                  {row.effectiveTo && (
+                    <span> إلى <span dir="ltr">{row.effectiveTo}</span></span>
+                  )}
+                </p>
+              </div>
+              <Badge
+                variant={ended || !row.isActive ? 'secondary' : started ? 'success' : 'outline'}
+                className="shrink-0 text-[10px]"
+              >
+                {!row.isActive ? 'غير نشط' : ended ? 'منتهٍ' : started ? 'جارٍ' : 'قادم'}
+              </Badge>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{row.targetLabel}</p>
-              <p className="text-[10px] text-muted-foreground">
-                <span className="font-mono" dir="ltr">{row.employeeCode}</span>
-                <span className="mx-1">·</span>
-                <span>من <span dir="ltr">{row.effectiveFrom}</span></span>
-                {row.effectiveTo && (
-                  <span> إلى <span dir="ltr">{row.effectiveTo}</span></span>
-                )}
-              </p>
-            </div>
-            <Badge
-              variant={ended || !row.isActive ? 'secondary' : started ? 'success' : 'outline'}
-              className="shrink-0 text-[10px]"
-            >
-              {!row.isActive ? 'غير نشط' : ended ? 'منتهٍ' : started ? 'جارٍ' : 'قادم'}
-            </Badge>
+            {/* Line 2: actions. */}
+            {row.isActive && (started || !ended) && (
+            <div className="mt-2 flex flex-wrap items-center justify-end gap-1 border-t border-border/40 pt-2">
             {row.isActive && started && (
               <Button
                 type="button"
@@ -156,6 +162,8 @@ function AssignmentEmployeeRows({
                   {started ? 'إنهاء الدوام' : 'حذف'}
                 </Button>
               </div>
+            )}
+            </div>
             )}
           </div>
         );
@@ -266,7 +274,7 @@ export function AssignmentsPanel() {
 
       {/* ── Detail dialog ── */}
       <Dialog open={!!viewBatch} onOpenChange={(o) => !o && setViewBatchId(null)}>
-        <DialogContent className="max-w-lg border-border" dir="rtl">
+        <DialogContent className="max-w-2xl border-border" dir="rtl">
           {viewBatch && (
             <>
               <DialogHeader>
@@ -309,7 +317,7 @@ export function AssignmentsPanel() {
 
       {/* ── Edit batch dialog ── */}
       <Dialog open={model.editOpen} onOpenChange={model.setEditOpen}>
-        <DialogContent className="max-w-lg border-border" dir="rtl">
+        <DialogContent className="max-w-2xl border-border" dir="rtl">
           {model.editBatch && (
             <>
               <DialogHeader>

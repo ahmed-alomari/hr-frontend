@@ -10,6 +10,7 @@ export type HrNotificationKey = Exclude<
   | 'updatedBy'
   | 'lateCheckInPolicy'
   | 'openSessionMaxHours'
+  | 'previousDayCheckOutUntilHours'
   | 'minMinutesBetweenPunches'
   | 'missingCheckOutCredit'
 >;

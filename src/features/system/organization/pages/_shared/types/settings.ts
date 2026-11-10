@@ -65,6 +65,8 @@ export interface HrCompanySettings {
   /** After midnight, close a check-in still open from the previous work day. Default true. */
   allowPreviousDayCheckOut?: boolean;
   openSessionMaxHours?: number;
+  /** Check-out of yesterday's open check-in accepted until this many hours after midnight. Default 3. */
+  previousDayCheckOutUntilHours?: number;
   allowPunchOnUnscheduledDay?: boolean;
   /** Default true. */
   requireCheckInPointsForSelfPunch?: boolean;
