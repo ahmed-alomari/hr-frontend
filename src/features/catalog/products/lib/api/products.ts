@@ -1,4 +1,4 @@
-import { apiRequest, type PaginatedResult } from '@/features/hr/lib/api/client';
+import { ApiError, apiRequest, type PaginatedResult } from '@/features/hr/lib/api/client';
 import { toNumber, toOptionalNumber } from '@/features/inventory/lib/api/numbers';
 import { resolveStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import {
@@ -688,13 +688,35 @@ async function fetchProductFull(id: string): Promise<Product | null> {
   }
 }
 
-async function fetchMediaByCompany(companyId: string): Promise<Map<string, MediaDto[]>> {
-  try {
-    const result = await apiRequest<PaginatedResult<MediaDto>>('/inventory/product-media', {
-      query: { companyId, page: 1, limit: 2000, archiveScope: 'active' },
+const MEDIA_IDS_PER_REQUEST = 200;
+
+/**
+ * The media of these products (the page on screen), not the company's: a
+ * company's first 2,000 media left the later products without images. A
+ * server without the `productIds` filter yet answers 400: the former reading.
+ */
+async function fetchMediaByCompany(companyId: string, productIds: readonly string[]): Promise<Map<string, MediaDto[]>> {
+  const ids = [...new Set(productIds)];
+  if (ids.length === 0) return new Map();
+  const readPage = (extra: Record<string, unknown>) =>
+    apiRequest<PaginatedResult<MediaDto>>('/inventory/product-media', {
+      query: { companyId, page: 1, limit: 2000, archiveScope: 'active', ...extra },
+      throwOnError: true,
+      silent: true,
     });
+  try {
+    let rows: MediaDto[] = [];
+    try {
+      for (let i = 0; i < ids.length; i += MEDIA_IDS_PER_REQUEST) {
+        const chunk = ids.slice(i, i + MEDIA_IDS_PER_REQUEST);
+        rows = rows.concat((await readPage({ productIds: chunk.join(',') })).items ?? []);
+      }
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status !== 400) throw err;
+      rows = (await readPage({})).items ?? [];
+    }
     const byProduct = new Map<string, MediaDto[]>();
-    for (const dto of result.items ?? []) {
+    for (const dto of rows) {
       const list = byProduct.get(dto.productId);
       if (list) list.push(dto);
       else byProduct.set(dto.productId, [dto]);
@@ -724,7 +746,10 @@ export const productsApi: AdminProductsPort = {
       },
     );
 
-    const mediaByProduct = await fetchMediaByCompany(companyId);
+    const mediaByProduct = await fetchMediaByCompany(
+      companyId,
+      (result.items ?? []).map((dto) => dto.id),
+    );
     const items = (result.items ?? []).map((dto) => {
       const media = mediaByProduct.get(dto.id) ?? [];
       const mapped: Product = {

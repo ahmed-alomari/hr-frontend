@@ -13,6 +13,11 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { notificationsApi } from '@/features/hr/notifications/lib/api/notifications';
+import { getDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
+import { getInventoryCompanyId } from '@/features/inventory/lib/company-id';
+import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getContactsCompanyId } from '@/features/contacts/lib/company-id';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -180,15 +185,45 @@ export function UnifiedNotificationBellPopover() {
     wasOpenRef.current = open;
   }, [open, tabs, unreadByTab]);
 
+  // Closed: only the unread counts (the badge), once per set of tabs. The
+  // lists load when the bell opens (below). Inventory, store and contacts
+  // share one count endpoint: it is asked once per company.
+  const tabsKey = tabs.map((tab) => tab.id).join(',');
   React.useEffect(() => {
-    for (const tab of tabs) {
-      if (tab.id === 'hr' && employeeId) void hrStore.fetch(employeeId);
-      if (tab.id === 'inventory' && userId) void inventoryStore.fetch(userId);
-      if (tab.id === 'store' && userId) void storeStore.fetch(userId);
-      if (tab.id === 'contacts' && userId) void contactsStore.fetch(userId);
-      if (tab.id === 'expenses') void expensesStore.fetch();
+    if (!tabsKey) return;
+    const ids = new Set(tabsKey.split(','));
+    if (ids.has('hr') && employeeId) {
+      void notificationsApi
+        .unreadCount(employeeId, getDefaultCompanyId() ?? undefined)
+        .then((res) => useHRNotificationsStore.setState({ unreadTotal: res.unread }))
+        .catch(() => undefined);
     }
-  }, [tabs, userId, employeeId, hrStore.fetch, inventoryStore.fetch, storeStore.fetch, contactsStore.fetch, expensesStore.fetch]);
+    if (userId) {
+      const byCompany = new Map<string, Array<'inventory' | 'store' | 'contacts'>>();
+      const add = (id: 'inventory' | 'store' | 'contacts', companyId: string | null | undefined) => {
+        if (!ids.has(id)) return;
+        const key = companyId ?? '';
+        byCompany.set(key, [...(byCompany.get(key) ?? []), id]);
+      };
+      add('inventory', getInventoryCompanyId());
+      add('store', getStorefrontCompanyId());
+      add('contacts', getContactsCompanyId());
+      for (const [companyId, apps] of byCompany) {
+        void notificationsApi
+          .userUnreadCount(userId, companyId || undefined)
+          .then((res) => {
+            const byCategory = (res.byCategory ?? {}) as Record<string, number | undefined>;
+            const of = (category: string) => byCategory[category] ?? 0;
+            if (apps.includes('inventory')) useInventoryNotificationsStore.setState({ unreadTotal: of('inventory') });
+            if (apps.includes('store')) useStoreNotificationsStore.setState({ unreadTotal: of('store') });
+            if (apps.includes('contacts')) useContactsNotificationsStore.setState({ unreadTotal: of('contacts') });
+          })
+          .catch(() => undefined);
+      }
+    }
+    // Its own small endpoint: the count and the latest few.
+    if (ids.has('expenses')) void useExpensesNotificationsStore.getState().fetch();
+  }, [tabsKey, userId, employeeId]);
 
   React.useEffect(() => {
     if (!open) return;
