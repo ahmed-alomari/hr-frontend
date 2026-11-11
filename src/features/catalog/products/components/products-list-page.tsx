@@ -19,7 +19,7 @@ import { useProductMutations } from '@/features/catalog/products/hooks/use-produ
 import { useCategories } from '@/features/catalog/categories/hooks/use-categories';
 import { useBrands } from '@/features/catalog/brands/hooks/use-brands';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
-import { ProductFormDialog } from '@/features/catalog/products/components/product-form-dialog';
+import { lazyDialog } from '@/shared/lib/lazy-dialog';
 import { DeleteProductDialog } from '@/features/catalog/products/components/delete-product-dialog';
 import { type ProductFilters } from '@/features/catalog/products/components/product-filters-bar';
 import {
@@ -67,6 +67,11 @@ import {
   writePersistedJson,
 } from '@/features/hr/lib/use-persisted-filter-state';
 import { usePersistedStateRestore } from '@/shared/hooks/use-persisted-state-restore';
+
+// Loads on first open: keeps the form's code (and zod) out of the page's first load.
+const ProductFormDialog = lazyDialog(() =>
+  import('@/features/catalog/products/components/product-form-dialog').then((m) => m.ProductFormDialog),
+);
 
 /** The filters kept in the URL and saved per user and company (the sort has its own menu). */
 const SAVED_FILTER_KEYS = [

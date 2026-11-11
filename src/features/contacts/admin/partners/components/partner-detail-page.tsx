@@ -50,7 +50,7 @@ import {
 } from '@/features/contacts/admin/partners/hooks/use-partners';
 import { usePartnerMutations } from '@/features/contacts/admin/partners/hooks/use-partner-mutations';
 import { usePartnerCategories } from '@/features/contacts/admin/categories/hooks/use-partner-categories';
-import { PartnerFormDialog } from '@/features/contacts/admin/partners/components/partner-form-dialog';
+import { lazyDialog } from '@/shared/lib/lazy-dialog';
 import { PartnerLedgerPanel } from '@/features/contacts/admin/partners/components/partner-ledger-panel';
 import { PartnerStoreOrdersPanel } from '@/features/contacts/admin/partners/components/partner-store-orders-panel';
 import { PartnerProductReviewsPanel } from '@/features/contacts/admin/partners/components/partner-product-reviews-panel';
@@ -79,6 +79,11 @@ import type {
 } from '@/features/contacts/domain/types/partner';
 import { cn, formatDateTime } from '@/shared/utils';
 import { resolveUploadUrl } from '@/shared/resolve-upload-url';
+
+// Loads on first open: keeps the form's code (and zod) out of the page's first load.
+const PartnerFormDialog = lazyDialog(() =>
+  import('@/features/contacts/admin/partners/components/partner-form-dialog').then((m) => m.PartnerFormDialog),
+);
 
 type Props = { partnerId: string };
 

@@ -14,12 +14,12 @@ import {
   useCatalogAttributeMutations,
   useCatalogAttributes,
 } from '@/features/catalog/attributes/hooks/use-catalog-attributes';
-import { CatalogAttributeFormDialog } from '@/features/catalog/attributes/components/catalog-attribute-form-dialog';
+import { lazyDialog } from '@/shared/lib/lazy-dialog';
 import {
   attributeDisplayTypeLabelAr,
   VARIANT_CREATION_OPTIONS,
   normalizeVariantCreationMode,
-} from '@/features/catalog/attributes/schemas/catalog-attribute-schema';
+} from '@/features/catalog/attributes/constants/attribute-options';
 import type { CatalogAttribute } from '@/features/ecommerce/domain/types/catalog-attribute';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
@@ -41,6 +41,11 @@ import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
 import type { RegisterColumn } from '@/components/pdf/print/register-document';
 import { fetchAllPaginatedItems } from '@/shared/api/client';
 import { catalogAttributesApi } from '@/features/catalog/attributes/lib/api/catalog-attributes';
+
+// Loads on first open: keeps the form's code (and zod) out of the page's first load.
+const CatalogAttributeFormDialog = lazyDialog(() =>
+  import('@/features/catalog/attributes/components/catalog-attribute-form-dialog').then((m) => m.CatalogAttributeFormDialog),
+);
 
 /** Server keys (list-screens skill); default: the name. */
 const ATTRIBUTES_SORT_OPTIONS: readonly ListSortOption[] = [

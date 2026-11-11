@@ -56,13 +56,7 @@ export {
   VARIANT_CREATION_OPTIONS,
 } from '@/features/catalog/attributes/schemas/catalog-attribute-schema';
 
-export const PACKAGING_TYPE_OPTIONS = [
-  { value: 'unit', labelAr: 'وحدة' },
-  { value: 'pack', labelAr: 'علبة' },
-  { value: 'box', labelAr: 'صندوق' },
-  { value: 'pallet', labelAr: 'منصة' },
-  { value: 'other', labelAr: 'أخرى' },
-] as const;
+export { PACKAGING_TYPE_OPTIONS } from '@/features/catalog/products/constants/packaging-types';
 
 const attributeValueSchema = z.object({
   id: z.string(),

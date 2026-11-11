@@ -8,7 +8,7 @@ import { PageHeaderPrimaryButton } from '@/components/layouts/page-header-primar
 import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import { useCatalogUoms } from '@/features/catalog/catalog-uoms/hooks/use-catalog-uoms';
 import { useCatalogUomMutations } from '@/features/catalog/catalog-uoms/hooks/use-catalog-uom-mutations';
-import { CatalogUomFormDialog } from '@/features/catalog/catalog-uoms/components/catalog-uom-form-dialog';
+import { lazyDialog } from '@/shared/lib/lazy-dialog';
 import { DeleteCatalogUomDialog } from '@/features/catalog/catalog-uoms/components/delete-catalog-uom-dialog';
 import type {
   CatalogUom,
@@ -27,7 +27,12 @@ import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-fi
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
-import { PACKAGING_TYPE_OPTIONS } from '@/features/catalog/products/schemas/product-schema';
+import { PACKAGING_TYPE_OPTIONS } from '@/features/catalog/products/constants/packaging-types';
+
+// Loads on first open: keeps the form's code (and zod) out of the page's first load.
+const CatalogUomFormDialog = lazyDialog(() =>
+  import('@/features/catalog/catalog-uoms/components/catalog-uom-form-dialog').then((m) => m.CatalogUomFormDialog),
+);
 
 const CATEGORY_LABELS_AR: Record<CatalogUomCategory, string> = {
   countable: 'معدود',

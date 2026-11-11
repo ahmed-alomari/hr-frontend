@@ -30,7 +30,7 @@ import { getContactsCompanyId } from '@/features/contacts/lib/company-id';
 import { contactsAdminRoutes } from '@/features/contacts/admin/constants/routes';
 import { usePartners } from '@/features/contacts/admin/partners/hooks/use-partners';
 import { usePartnerMutations } from '@/features/contacts/admin/partners/hooks/use-partner-mutations';
-import { PartnerFormDialog } from '@/features/contacts/admin/partners/components/partner-form-dialog';
+import { lazyDialog } from '@/shared/lib/lazy-dialog';
 import { PartnersCardView } from '@/features/contacts/admin/partners/components/partners-card-view';
 import {
   PartnerRoleBadges,
@@ -39,6 +39,11 @@ import {
 } from '@/features/contacts/admin/partners/components/partner-role-badges';
 import type { Partner, PartnerStatus } from '@/features/contacts/domain/types/partner';
 import { cn } from '@/shared/utils';
+
+// Loads on first open: keeps the form's code (and zod) out of the page's first load.
+const PartnerFormDialog = lazyDialog(() =>
+  import('@/features/contacts/admin/partners/components/partner-form-dialog').then((m) => m.PartnerFormDialog),
+);
 
 type ViewMode = 'list' | 'cards';
 

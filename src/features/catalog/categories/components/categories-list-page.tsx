@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import { useAllCategories } from '@/features/catalog/categories/hooks/use-categories';
-import { CategoryFormDialog } from '@/features/catalog/categories/components/category-form-dialog';
+import { lazyDialog } from '@/shared/lib/lazy-dialog';
 import { useProductsBasePath } from '@/features/catalog/products/lib/products-navigation';
 import type { Category } from '@/features/ecommerce/domain/types/category';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
@@ -29,6 +29,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { resolveUploadUrl } from '@/shared/resolve-upload-url';
 import { cn } from '@/shared/utils';
+
+// Loads on first open: keeps the form's code (and zod) out of the page's first load.
+const CategoryFormDialog = lazyDialog(() =>
+  import('@/features/catalog/categories/components/category-form-dialog').then((m) => m.CategoryFormDialog),
+);
 
 type StatusFilter = 'all' | 'active' | 'inactive';
 

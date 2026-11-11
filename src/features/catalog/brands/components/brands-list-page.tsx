@@ -12,7 +12,7 @@ import { Pencil, Plus, Trash2, Tag } from 'lucide-react';
 import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import { useBrands } from '@/features/catalog/brands/hooks/use-brands';
 import { useBrandMutations } from '@/features/catalog/brands/hooks/use-brand-mutations';
-import { BrandFormDialog } from '@/features/catalog/brands/components/brand-form-dialog';
+import { lazyDialog } from '@/shared/lib/lazy-dialog';
 import { DeleteBrandDialog } from '@/features/catalog/brands/components/delete-brand-dialog';
 import type { Brand } from '@/features/ecommerce/domain/types/brand';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
@@ -28,6 +28,11 @@ import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
 import type { RegisterExportColumn } from '@/components/pdf/lib/register-export-rows';
 import { fetchAllPaginatedItems } from '@/shared/api/client';
 import { brandsApi } from '@/features/catalog/brands/lib/api/brands';
+
+// Loads on first open: keeps the form's code (and zod) out of the page's first load.
+const BrandFormDialog = lazyDialog(() =>
+  import('@/features/catalog/brands/components/brand-form-dialog').then((m) => m.BrandFormDialog),
+);
 
 /** Server keys (list-screens skill); default: the display order. */
 const BRANDS_SORT_OPTIONS: readonly ListSortOption[] = [

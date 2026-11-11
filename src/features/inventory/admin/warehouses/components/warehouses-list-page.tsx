@@ -14,7 +14,7 @@ import { useAuthStore } from '@/features/auth/lib/auth-store';
 import { getBranchAccessLabel } from '@/features/auth/types/access-profile';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
 import { useWarehouseMutations } from '@/features/inventory/admin/warehouses/hooks/use-warehouse-mutations';
-import { WarehouseFormDialog } from '@/features/inventory/admin/warehouses/components/warehouse-form-dialog';
+import { lazyDialog } from '@/shared/lib/lazy-dialog';
 import { inventoryAdminRoutes } from '@/features/inventory/admin/constants/routes';
 import type { Warehouse as WarehouseEntity } from '@/features/inventory/domain/types/warehouse';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
@@ -45,6 +45,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+
+// Loads on first open: keeps the form's code (and zod) out of the page's first load.
+const WarehouseFormDialog = lazyDialog(() =>
+  import('@/features/inventory/admin/warehouses/components/warehouse-form-dialog').then((m) => m.WarehouseFormDialog),
+);
 
 /** Server keys (list-screens skill); by default the code. */
 const WAREHOUSES_SORT_OPTIONS: readonly ListSortOption[] = [

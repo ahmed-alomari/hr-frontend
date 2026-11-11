@@ -18,7 +18,7 @@ import {
   usePutawayRuleMutations,
   usePutawayRules,
 } from '@/features/inventory/admin/putaway-rules/hooks/use-putaway-rules';
-import { PACKAGING_TYPE_OPTIONS } from '@/features/catalog/products/schemas/product-schema';
+import { PACKAGING_TYPE_OPTIONS } from '@/features/catalog/products/constants/packaging-types';
 import type { PackagingType } from '@/features/ecommerce/domain/types/product';
 import type { PutawayAppliesTo } from '@/features/inventory/domain/types/putaway-rule';
 import { Button } from '@/components/ui/button';
