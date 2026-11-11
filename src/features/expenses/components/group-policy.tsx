@@ -1,5 +1,6 @@
 'use client';
 
+import { usableIn } from '../domain/branches';
 import * as React from 'react';
 import { CheckCircle2, Circle, MinusCircle, XCircle } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -202,11 +203,22 @@ export function openGroups(data: ExpensesData): ExpenseGroup[] {
 }
 
 /** The group picker of the forms; empty value = the default group. */
-export function GroupSelect({ value, onChange, keep }: { value: string | null; onChange: (id: string | null) => void; keep?: string | null }) {
+export function GroupSelect({
+  value,
+  onChange,
+  keep,
+  branchId,
+}: {
+  value: string | null;
+  onChange: (id: string | null) => void;
+  keep?: string | null;
+  /** Only the groups a record of this branch may use (shared or the same branch). */
+  branchId?: string | null;
+}) {
   const data = useExpensesData();
   if (!data) return null;
   const home = defaultGroup(data);
-  const list = openGroups(data);
+  const list = openGroups(data).filter((g) => branchId === undefined || usableIn(branchId, g));
   const kept = keep ? data.groups.find((g) => g.id === keep && (groupStatusOf(g) !== 'active' || g.archived)) : undefined;
   const current = value ?? home?.id ?? '';
   return (
@@ -222,12 +234,24 @@ export function GroupSelect({ value, onChange, keep }: { value: string | null; o
 }
 
 /** Picker and policy hint of a new record; hidden while the default is the only open group. */
-export function GroupField({ value, onChange, amount }: { value: string | null; onChange: (id: string | null) => void; amount: Minor }) {
+export function GroupField({
+  value,
+  onChange,
+  amount,
+  branchId,
+}: {
+  value: string | null;
+  onChange: (id: string | null) => void;
+  amount: Minor;
+  /** Only the groups a record of this branch may use. */
+  branchId?: string | null;
+}) {
   const data = useExpensesData();
-  if (!data || openGroups(data).length < 2) return amount > 0 ? <GroupPolicyHint groupId={value} amount={amount} /> : null;
+  const usable = data ? openGroups(data).filter((g) => branchId === undefined || usableIn(branchId, g)) : [];
+  if (!data || usable.length < 2) return amount > 0 ? <GroupPolicyHint groupId={value} amount={amount} /> : null;
   return (
     <div className="space-y-1">
-      <GroupSelect value={value} onChange={onChange} />
+      <GroupSelect value={value} onChange={onChange} branchId={branchId} />
       {amount > 0 ? <GroupPolicyHint groupId={value} amount={amount} /> : null}
     </div>
   );

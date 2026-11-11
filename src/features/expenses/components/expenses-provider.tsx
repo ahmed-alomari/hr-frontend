@@ -9,6 +9,7 @@ import { currencySpec, formatMoney, type CurrencySpec, type Minor } from '../dom
 import { ORG } from '../domain/types';
 import type { ExpensesData, Participant, PartyId } from '../domain/types';
 import { EXP } from '../constants/permissions';
+import type { LocalListField } from '@/components/ui/local-list';
 
 export const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -92,4 +93,73 @@ export function useExpensesPermissions() {
     }),
     [can],
   );
+}
+
+/** The company's own records (no branch), as the screens name them. */
+export const COMPANY_BRANCH_LABEL = 'الشركة (المركز)';
+/** A group or cost center without a branch. */
+export const SHARED_BRANCH_LABEL = 'كل الفروع';
+
+export type BranchChoices = {
+  /** Where this person may file a record: '' is the company itself (head office). */
+  options: Array<{ value: string; label: string }>;
+  /** Where a group or cost center may belong: '' is every branch. */
+  referenceOptions: Array<{ value: string; label: string }>;
+  /** More than one choice: the form shows the field (else it is filled alone). */
+  show: boolean;
+  /** This person sees branches: lists get the branch filter, column and grouping. */
+  hasBranches: boolean;
+  /** The active branch when allowed, else the first choice. */
+  defaultValue: string;
+  /** A record's branch, by name. */
+  nameOf: (id: string | null | undefined) => string;
+  /** A group's or cost center's branch, by name. */
+  referenceName: (id: string | null | undefined) => string;
+};
+
+/**
+ * The branches of the signed-in user in expenses, as the server sent them
+ * (decisions.md §29). The server decides; this only fills the forms.
+ */
+export function useBranches(): BranchChoices {
+  const branches = useExpensesStore((s) => s.branches);
+  const access = useExpensesStore((s) => s.branchAccess);
+  const active = useAuthStore((s) => s.activeBranchId);
+  return React.useMemo(() => {
+    const byId = new Map(branches.map((b) => [b.id, b.name]));
+    const named = branches.map((b) => ({ value: b.id, label: b.name }));
+    const options = [...(access.companyLevel ? [{ value: '', label: COMPANY_BRANCH_LABEL }] : []), ...named];
+    const referenceOptions = [...(access.companyLevel ? [{ value: '', label: SHARED_BRANCH_LABEL }] : []), ...named];
+    const defaultValue = active && byId.has(active) ? active : (options[0]?.value ?? '');
+    return {
+      options,
+      referenceOptions,
+      show: options.length > 1,
+      hasBranches: branches.length > 0,
+      defaultValue,
+      nameOf: (id) => (id ? (byId.get(id) ?? 'فرع آخر') : COMPANY_BRANCH_LABEL),
+      referenceName: (id) => (id ? (byId.get(id) ?? 'فرع آخر') : SHARED_BRANCH_LABEL),
+    };
+  }, [branches, access, active]);
+}
+
+/**
+ * The «الفرع» column of a records list: a column, a sort and a grouping, in
+ * the export too (decisions.md §29). None when this person sees no branches.
+ */
+export function branchListFields<T>(
+  branches: BranchChoices,
+  branchOf: (row: T) => string | null | undefined,
+): LocalListField<T>[] {
+  if (!branches.hasBranches) return [];
+  return [
+    {
+      key: 'branch',
+      label: 'الفرع',
+      optional: true,
+      text: (row) => branches.nameOf(branchOf(row)),
+      groupKey: (row) => branchOf(row) ?? '',
+      groupLabel: (key) => branches.nameOf(key || null),
+    },
+  ];
 }

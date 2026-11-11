@@ -21,6 +21,7 @@ export const IDEMPOTENT_COMMANDS: ReadonlySet<ExpensesCommand['type']> = new Set
   'addCustodyMove',
   'addAdvance',
   'addSettlement',
+  'addBranchTransfer',
 ]);
 
 type ExpensesCommandBody =
@@ -28,11 +29,14 @@ type ExpensesCommandBody =
   | { type: 'submit'; kind: AnyTxn['kind']; id: string }
   | { type: 'decide'; kind: AnyTxn['kind']; id: string; decision: 'approved' | 'rejected'; note?: string | null }
   | { type: 'void'; kind: AnyTxn['kind']; id: string; reason: string }
-  | { type: 'openCustody'; holderId: string; purpose: string; limit: Minor | null; amount: Minor; date: string; groupId?: string | null }
+  | { type: 'openCustody'; holderId: string; purpose: string; limit: Minor | null; amount: Minor; date: string; groupId?: string | null; branchId?: string | null }
   | { type: 'addCustodyMove'; custodyId: string; moveType: 'topup' | 'return'; amount: Minor; date: string; note: string | null }
   | { type: 'closeCustody'; custodyId: string; date: string }
-  | { type: 'addAdvance'; personId: string; amount: Minor; purpose: string; date: string; groupId?: string | null }
-  | { type: 'addSettlement'; fromId: PartyId; toId: PartyId; amount: Minor; method: Settlement['method']; date: string; note: string | null; groupId?: string | null; allowExcess?: boolean }
+  | { type: 'addAdvance'; personId: string; amount: Minor; purpose: string; date: string; groupId?: string | null; branchId?: string | null }
+  | { type: 'addSettlement'; fromId: PartyId; toId: PartyId; amount: Minor; method: Settlement['method']; date: string; note: string | null; groupId?: string | null; branchId?: string | null; allowExcess?: boolean }
+  /** Clears (part of) what one branch owes another; no branch = the company. */
+  | { type: 'addBranchTransfer'; fromBranchId: string | null; toBranchId: string | null; amount: Minor; date: string; note?: string | null }
+  | { type: 'voidBranchTransfer'; id: string; reason: string }
   /** A new row is sent with an empty id; the server gives it one. */
   | { type: 'upsertCategory'; category: Category }
   | { type: 'upsertCostCenter'; center: CostCenter }

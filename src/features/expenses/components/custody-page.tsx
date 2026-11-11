@@ -24,9 +24,9 @@ import { STATUS_LABELS_AR } from '../domain/policy';
 import type { Advance, AnyTxn, TxnStatus } from '../domain/types';
 import { ImportLinkButton } from './import-page';
 import { expensesRoutes } from '../constants/routes';
-import { AmountInput, EmptyState, Field, FormDialog, KeyValue, LoadingBlock, Money, PartyName, PartySelect, Section, StatusBadge, useRunCommand } from './common';
+import { AmountInput, BranchSelect, EmptyState, Field, FormDialog, KeyValue, LoadingBlock, Money, PartyName, PartySelect, Section, StatusBadge, useRunCommand } from './common';
 import { txnTitle } from './dashboard-page';
-import { todayIso, useCurrency, useDirectory, useExpensesData, useExpensesPermissions, useLedger } from './expenses-provider';
+import { todayIso, useBranches, useCurrency, useDirectory, useExpensesData, useExpensesPermissions, useLedger, branchListFields } from './expenses-provider';
 import { GroupField, GroupPolicyHint } from './group-policy';
 import { TxnActions } from './txn-actions';
 
@@ -38,8 +38,11 @@ function OpenCustodyDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [limit, setLimit] = React.useState<{ t: string; m: Minor }>({ t: '', m: 0 });
   const [date, setDate] = React.useState(todayIso());
   const [groupId, setGroupId] = React.useState<string | null>(null);
+  const branches = useBranches();
+  const [branchId, setBranchId] = React.useState('');
   React.useEffect(() => {
-    if (open) { setHolderId(null); setPurpose(''); setAmount({ t: '', m: 0 }); setLimit({ t: '', m: 0 }); setDate(todayIso()); setGroupId(null); }
+    if (open) { setHolderId(null); setPurpose(''); setAmount({ t: '', m: 0 }); setLimit({ t: '', m: 0 }); setDate(todayIso()); setGroupId(null); setBranchId(branches.defaultValue); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when the dialog opens
   }, [open]);
   return (
     <FormDialog
@@ -49,16 +52,17 @@ function OpenCustodyDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       description="مال المنشأة لدى شخص يصرف منه نيابة عنها — ليست سلفة عليه."
       footer={<>
         <Button variant="outline" onClick={() => onOpenChange(false)}>إلغاء</Button>
-        <Button disabled={!holderId || amount.m <= 0} onClick={() => { if (holderId) void exec({ type: 'openCustody', holderId, purpose, limit: limit.m > 0 ? limit.m : null, amount: amount.m, date, groupId }, 'فُتحت العهدة').then((ok) => ok && onOpenChange(false)); }}>فتح وتسليم</Button>
+        <Button disabled={!holderId || amount.m <= 0} onClick={() => { if (holderId) void exec({ type: 'openCustody', holderId, purpose, limit: limit.m > 0 ? limit.m : null, amount: amount.m, date, groupId, branchId: branchId || null }, 'فُتحت العهدة').then((ok) => ok && onOpenChange(false)); }}>فتح وتسليم</Button>
       </>}
     >
       <Field label="حامل العهدة"><PartySelect value={holderId} onChange={setHolderId} /></Field>
+      {branches.show ? <BranchSelect value={branchId} onChange={(v) => { setBranchId(v); setGroupId(null); }} options={branches.options} /> : null}
       <Field label="الغرض"><Input className="h-10" placeholder="مثال: مصاريف الفرع والزيارات" value={purpose} onChange={(e) => setPurpose(e.target.value)} /></Field>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="مبلغ التسليم"><AmountInput value={amount.t} onChange={(t, m) => setAmount({ t, m })} /></Field>
         <Field label="سقف العهدة (اختياري)"><AmountInput value={limit.t} onChange={(t, m) => setLimit({ t, m })} /></Field>
       </div>
-      <GroupField value={groupId} onChange={setGroupId} amount={amount.m} />
+      <GroupField value={groupId} onChange={setGroupId} amount={amount.m} branchId={branchId || null} />
       <Field label="التاريخ"><Input type="date" className="h-10" max={todayIso()} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
     </FormDialog>
   );
@@ -102,7 +106,12 @@ function AdvanceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
   const [amount, setAmount] = React.useState<{ t: string; m: Minor }>({ t: '', m: 0 });
   const [date, setDate] = React.useState(todayIso());
   const [groupId, setGroupId] = React.useState<string | null>(null);
-  React.useEffect(() => { if (open) { setPersonId(null); setPurpose(''); setAmount({ t: '', m: 0 }); setDate(todayIso()); setGroupId(null); } }, [open]);
+  const branches = useBranches();
+  const [branchId, setBranchId] = React.useState('');
+  React.useEffect(() => {
+    if (open) { setPersonId(null); setPurpose(''); setAmount({ t: '', m: 0 }); setDate(todayIso()); setGroupId(null); setBranchId(branches.defaultValue); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when the dialog opens
+  }, [open]);
   return (
     <FormDialog
       open={open}
@@ -111,13 +120,14 @@ function AdvanceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
       description="مبلغ يصبح على الشخص للمنشأة، ويُسدَّد بالتسويات — منفصل عن العهد."
       footer={<>
         <Button variant="outline" onClick={() => onOpenChange(false)}>إلغاء</Button>
-        <Button disabled={!personId || amount.m <= 0} onClick={() => { if (personId) void exec({ type: 'addAdvance', personId, amount: amount.m, purpose, date, groupId }, 'سُجّلت السلفة').then((ok) => ok && onOpenChange(false)); }}>تسجيل</Button>
+        <Button disabled={!personId || amount.m <= 0} onClick={() => { if (personId) void exec({ type: 'addAdvance', personId, amount: amount.m, purpose, date, groupId, branchId: branchId || null }, 'سُجّلت السلفة').then((ok) => ok && onOpenChange(false)); }}>تسجيل</Button>
       </>}
     >
       <Field label="الشخص"><PartySelect value={personId} onChange={setPersonId} /></Field>
+      {branches.show ? <BranchSelect value={branchId} onChange={(v) => { setBranchId(v); setGroupId(null); }} options={branches.options} /> : null}
       <Field label="المبلغ"><AmountInput value={amount.t} onChange={(t, m) => setAmount({ t, m })} /></Field>
       <Field label="الغرض"><Input className="h-10" value={purpose} onChange={(e) => setPurpose(e.target.value)} /></Field>
-      <GroupField value={groupId} onChange={setGroupId} amount={amount.m} />
+      <GroupField value={groupId} onChange={setGroupId} amount={amount.m} branchId={branchId || null} />
       <Field label="التاريخ"><Input type="date" className="h-10" max={todayIso()} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
     </FormDialog>
   );
@@ -165,6 +175,7 @@ function CustodyCard({ b, onMove, onClose, onArchive }: { b: CustodyBalance; onM
 }
 
 export function CustodyPage() {
+  const branches = useBranches();
   const data = useExpensesData();
   const ledger = useLedger();
   const perms = useExpensesPermissions();
@@ -202,11 +213,12 @@ export function CustodyPage() {
   const custodyFields = React.useMemo<LocalListField<CustodyBalance>[]>(() => [
     { key: 'holder', label: 'الحامل', kind: 'name', text: (b) => directory.nameOf(b.custody.holderId), groupKey: (b) => b.custody.holderId, groupLabel: (id) => directory.nameOf(id) },
     { key: 'purpose', label: 'الغرض', text: (b) => b.custody.purpose },
+    ...branchListFields<CustodyBalance>(branches, (b) => b.custody.branchId),
     { key: 'status', label: 'الحالة', kind: 'status', text: (b) => (b.custody.archived ? 'مؤرشفة' : b.custody.status === 'open' ? 'مفتوحة' : 'مقفلة'), groupKey: (b) => b.custody.status, groupLabel: (s) => (s === 'open' ? 'مفتوحة' : 'مقفلة') },
     { key: 'spent', label: 'المصروف', kind: 'number', optional: true, text: (b) => currency.format(b.spent), sortValue: (b) => b.spent, sum: (b) => b.spent, formatSum: currency.format },
     { key: 'actual', label: 'الرصيد الفعلي', kind: 'number', text: (b) => currency.format(b.actual), sortValue: (b) => b.actual, sum: (b) => b.actual, formatSum: currency.format },
     { key: 'expected', label: 'المتوقع', kind: 'number', optional: true, text: (b) => currency.format(b.expected), sortValue: (b) => b.expected, sum: (b) => b.expected, formatSum: currency.format },
-  ], [directory, currency]);
+  ], [directory, currency, branches]);
   const custodyList = useLocalList({ section: 'expenses', page: 'custodies', fields: custodyFields, rows: balances });
 
   const advanceRows = React.useMemo(
@@ -232,12 +244,13 @@ export function CustodyPage() {
     { key: 'date', label: 'التاريخ', kind: 'date', text: (a) => a.date, groupKey: (a) => a.date.slice(0, 7) },
     { key: 'person', label: 'الشخص', kind: 'name', text: (a) => directory.nameOf(a.personId), cell: (a) => <PartyName id={a.personId} />, groupKey: (a) => a.personId, groupLabel: (id) => directory.nameOf(id) },
     { key: 'purpose', label: 'الغرض', text: (a) => a.purpose },
+    ...branchListFields<Advance>(branches, (a) => a.branchId),
     { key: 'group', label: 'المجموعة', optional: true, hiddenByDefault: true, text: (a) => data?.groups.find((g) => g.id === a.groupId)?.name ?? '—', groupKey: (a) => a.groupId ?? null, groupLabel: (id) => data?.groups.find((g) => g.id === id)?.name ?? id },
     { key: 'owed', label: 'المتبقي عليه الآن', optional: true, kind: 'number', sortable: false, text: (a) => currency.format(owedNow(a.personId)) },
     { key: 'amount', label: 'المبلغ', kind: 'number', text: (a) => currency.format(a.amount), sortValue: (a) => a.amount, sum: (a) => (a.status === 'approved' ? a.amount : 0), formatSum: currency.format, cell: (a) => <Money value={a.amount} className="font-semibold" /> },
     { key: 'status', label: 'الحالة', kind: 'status', text: (a) => STATUS_LABELS_AR[a.status], cell: (a) => <StatusBadge status={a.status} />, groupKey: (a) => a.status, groupLabel: (k) => STATUS_LABELS_AR[k as TxnStatus] ?? k },
     { key: 'actions', label: '', sortable: false, screenOnly: true, text: () => '', cell: (a) => <TxnActions txn={a} compact /> },
-  ], [data, directory, currency, owedNow]);
+  ], [data, directory, currency, owedNow, branches]);
   const advances = useLocalList({ section: 'expenses', page: 'advances', fields: advanceFields, rows: advanceRows });
 
   const custodyFilterCount = (custodySearch.trim() ? 1 : 0) + [custodyStatus, holderId].filter((v) => v !== 'all').length;

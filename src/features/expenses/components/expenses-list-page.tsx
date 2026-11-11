@@ -21,7 +21,7 @@ import { expensesRoutes } from '../constants/routes';
 import { EmptyState, LoadingBlock, Money, PartyName, StatusBadge } from './common';
 import { ExpenseFormDialog } from './expense-form-dialog';
 import { ImportLinkButton } from './import-page';
-import { useCurrency, useDirectory, useExpensesData, useExpensesPermissions } from './expenses-provider';
+import { useCurrency, useDirectory, useExpensesData, useExpensesPermissions, useBranches, branchListFields } from './expenses-provider';
 
 export type ListFilters = {
   q: string;
@@ -29,11 +29,13 @@ export type ListFilters = {
   categoryId: string;
   groupId: string;
   personId: string;
+  /** 'all', a branch id, or '' for the company's own records. */
+  branchId?: string;
   from: string;
   to: string;
 };
 
-export const EMPTY_FILTERS: ListFilters = { q: '', status: 'all', categoryId: 'all', groupId: 'all', personId: 'all', from: '', to: '' };
+export const EMPTY_FILTERS: ListFilters = { q: '', status: 'all', categoryId: 'all', groupId: 'all', personId: 'all', branchId: 'all', from: '', to: '' };
 
 export function activeFilterCount(f: ListFilters): number {
   return (Object.keys(EMPTY_FILTERS) as Array<keyof ListFilters>).filter((k) => f[k] !== EMPTY_FILTERS[k]).length;
@@ -47,6 +49,7 @@ function applyFilters(rows: Expense[], f: ListFilters): Expense[] {
       (f.categoryId === 'all' || e.categoryId === f.categoryId) &&
       (f.groupId === 'all' || e.groupId === f.groupId || e.allocation.some((a) => a.groupId === f.groupId)) &&
       (f.personId === 'all' || involves(e, f.personId)) &&
+      (f.branchId === undefined || f.branchId === 'all' || (e.branchId ?? '') === f.branchId) &&
       (!f.from || e.date >= f.from) &&
       (!f.to || e.date <= f.to) &&
       (!q || e.description.includes(q) || (e.note ?? '').includes(q)),
@@ -55,6 +58,7 @@ function applyFilters(rows: Expense[], f: ListFilters): Expense[] {
 
 export function FiltersPanel({ data, value, onChange, hideStatus }: { data: ExpensesData; value: ListFilters; onChange: (f: ListFilters) => void; hideStatus?: boolean }) {
   const directory = useDirectory();
+  const branches = useBranches();
   const set = <K extends keyof ListFilters>(k: K, v: ListFilters[K]) => onChange({ ...value, [k]: v });
   return (
     <ListFilterBar
@@ -76,6 +80,18 @@ export function FiltersPanel({ data, value, onChange, hideStatus }: { data: Expe
               placeholder: 'كل الحالات',
               options: [{ value: 'all', label: 'كل الحالات' }, ...(Object.keys(STATUS_LABELS_AR) as TxnStatus[]).map((s) => ({ value: s, label: STATUS_LABELS_AR[s] }))],
             }]),
+        ...(branches.hasBranches
+          ? [{
+              id: 'branch',
+              value: value.branchId ?? 'all',
+              onChange: (v: string) => set('branchId', v === '__company__' ? '' : v),
+              placeholder: 'كل الفروع',
+              options: [
+                { value: 'all', label: 'كل الفروع' },
+                ...branches.options.map((o) => ({ value: o.value || '__company__', label: o.label })),
+              ],
+            }]
+          : []),
         {
           id: 'category',
           value: value.categoryId,
@@ -108,6 +124,7 @@ const payLabel = (e: Expense) => e.payments.map((p) => (p.source === 'org' ? 'ا
 function useExpenseFields(data: ExpensesData | null): LocalListField<Expense>[] {
   const currency = useCurrency();
   const directory = useDirectory();
+  const branches = useBranches();
   return React.useMemo(() => {
     const catName = (id: string) => data?.categories.find((c) => c.id === id)?.name ?? '—';
     const home = data?.groups.find((g) => g.isDefault)?.id ?? null;
@@ -121,6 +138,7 @@ function useExpenseFields(data: ExpensesData | null): LocalListField<Expense>[] 
       { key: 'date', label: 'التاريخ', kind: 'date', text: (e) => e.date, cell: (e) => <span className="tabular-nums text-muted-foreground">{e.date}</span>, groupKey: (e) => e.date.slice(0, 7) },
       { key: 'description', label: 'الوصف', kind: 'name', text: (e) => e.description, cell: (e) => <span className="font-medium">{e.description}</span> },
       { key: 'category', label: 'الفئة', text: (e) => catName(e.categoryId), groupKey: (e) => e.categoryId, groupLabel: catName },
+      ...branchListFields<Expense>(branches, (e) => e.branchId),
       { key: 'group', label: 'المجموعة', optional: true, text: (e) => groupName(e.groupId ?? home), groupKey: (e) => e.groupId ?? home, groupLabel: groupName },
       { key: 'payment', label: 'الدفع', optional: true, text: payLabel, groupKey: payLabel },
       { key: 'bearing', label: 'التحميل', optional: true, hiddenByDefault: true, text: (e) => (e.bearing.method === 'org' ? 'المنشأة' : `${e.bearing.shares.length} أطراف`) },
@@ -131,7 +149,7 @@ function useExpenseFields(data: ExpensesData | null): LocalListField<Expense>[] 
       { key: 'status', label: 'الحالة', kind: 'status', text: (e) => STATUS_LABELS_AR[e.status], cell: (e) => <StatusBadge status={e.status} />, groupKey: (e) => e.status, groupLabel: (s) => STATUS_LABELS_AR[s as TxnStatus] ?? s },
     ];
     return fields;
-  }, [data, currency, directory]);
+  }, [data, currency, directory, branches]);
 }
 
 export function ExpensesListPage() {

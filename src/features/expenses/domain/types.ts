@@ -43,6 +43,8 @@ export interface CostCenter {
   code: string;
   name: string;
   archived?: boolean;
+  /** Reference data: no branch = shared by every branch (decisions.md §29). */
+  branchId?: string | null;
 }
 
 /** A rule that applies to every record, to none, or from an amount up. */
@@ -116,6 +118,8 @@ export interface ExpenseGroup {
   isDefault?: boolean;
   /** Hidden from lists and pickers; its records stay as they are. */
   archived?: boolean;
+  /** Reference data: no branch = shared by every branch (decisions.md §29). */
+  branchId?: string | null;
   policy: GroupPolicy;
 }
 
@@ -145,6 +149,8 @@ export interface TxnApproval {
 
 interface TxnBase {
   id: string;
+  /** No branch = the company's own record (head office), not «unknown». */
+  branchId?: string | null;
   currency: string;
   /** The group it is filed under (the company's default group when not chosen). */
   groupId?: string | null;
@@ -234,6 +240,8 @@ export interface Expense extends TxnBase {
  */
 export interface Custody {
   id: string;
+  /** No branch = the company's own custody (head office). */
+  branchId?: string | null;
   /** Its moves are filed under this group and follow its policy. */
   groupId?: string | null;
   holderId: string;
@@ -277,6 +285,24 @@ export interface Settlement extends TxnBase {
 
 export type AnyTxn = Expense | CustodyMove | Advance | Settlement;
 
+/** Money one branch hands another to clear what it owes it. No branch = the company. */
+export interface BranchTransfer {
+  id: string;
+  /** The branch that pays (the one that owes). */
+  fromBranchId: string | null;
+  /** The branch that receives. */
+  toBranchId: string | null;
+  amount: Minor;
+  currency: string;
+  date: string;
+  note?: string | null;
+  createdBy: string;
+  createdAt: string;
+  voidedBy?: string | null;
+  voidedAt?: string | null;
+  voidReason?: string | null;
+}
+
 /** App-wide settings. Approval, receipts and limits are each group's policy. */
 export interface ExpensesSettings {
   mode: 'simple' | 'advanced';
@@ -300,6 +326,8 @@ export interface ExpensesData {
   custodyMoves: CustodyMove[];
   advances: Advance[];
   settlements: Settlement[];
+  /** Between branches (and the company). */
+  branchTransfers?: BranchTransfer[];
   /** Closed (and reopened) periods, oldest first. */
   closings?: PeriodClosing[];
   settings: ExpensesSettings;

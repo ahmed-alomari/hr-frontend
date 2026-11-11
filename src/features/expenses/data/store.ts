@@ -15,7 +15,18 @@ import { IDEMPOTENT_COMMANDS, type ExpensesCommand } from './commands';
 
 type SourceState = 'loading' | 'live' | 'unavailable';
 
-type ExpensesView = ExpensesData & { actorId: string; currency: string; fullAccess: boolean };
+/** A branch this person may file records under (decisions.md §29). */
+export type BranchOption = { id: string; name: string };
+/** Every branch (all), and the company's own records (companyLevel). */
+export type BranchAccess = { all: boolean; companyLevel: boolean };
+
+type ExpensesView = ExpensesData & {
+  actorId: string;
+  currency: string;
+  fullAccess: boolean;
+  branches?: BranchOption[];
+  branchAccess?: BranchAccess;
+};
 
 /** A command's answer: only what it changed. */
 type CommandAnswer<R> = {
@@ -24,6 +35,8 @@ type CommandAnswer<R> = {
   actorId: string;
   currency: string;
   fullAccess: boolean;
+  branches?: BranchOption[];
+  branchAccess?: BranchAccess;
 };
 
 /** New and edited rows into the data the screen already holds. */
@@ -51,6 +64,9 @@ type ExpensesState = {
   currency: string;
   /** False: the data holds only this person's own records. */
   fullAccess: boolean;
+  /** Branches this person may pick, from the server. */
+  branches: BranchOption[];
+  branchAccess: BranchAccess;
   liveParticipants: Participant[];
   participants: SourceState;
   loadError: string | null;
@@ -79,7 +95,8 @@ function withRequestId(command: ExpensesCommand): ExpensesCommand {
 /** The server's refusal (Arabic) or a generic message. */
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.status === 403) return 'ليست لديك صلاحية لهذا الإجراء.';
+    // The server names the branch rule it applied: show it as it is.
+    if (err.status === 403) return err.message || 'ليست لديك صلاحية لهذا الإجراء.';
     return err.message || 'تعذر التنفيذ';
   }
   return err instanceof Error ? err.message : 'تعذر التنفيذ';
@@ -87,8 +104,15 @@ export function errorMessage(err: unknown): string {
 
 export const useExpensesStore = create<ExpensesState>((set, get) => {
   const apply = (view: ExpensesView) => {
-    const { actorId, currency, fullAccess, ...data } = view;
-    set({ data, actorId, currency, fullAccess });
+    const { actorId, currency, fullAccess, branches, branchAccess, ...data } = view;
+    set({
+      data,
+      actorId,
+      currency,
+      fullAccess,
+      branches: branches ?? [],
+      branchAccess: branchAccess ?? { all: true, companyLevel: true },
+    });
   };
 
   const load = async (companyId: string) => {
@@ -128,6 +152,8 @@ export const useExpensesStore = create<ExpensesState>((set, get) => {
     actorId: null,
     currency: 'YER',
     fullAccess: true,
+    branches: [],
+    branchAccess: { all: true, companyLevel: true },
     liveParticipants: [],
     participants: 'loading',
     loadError: null,
@@ -178,7 +204,15 @@ export const useExpensesStore = create<ExpensesState>((set, get) => {
           const { data, fullAccess } = get();
           // A setting can change what this person may read: read it all again.
           if (!data || res.changes.settings || res.fullAccess !== fullAccess) await load(companyId);
-          else set({ data: mergeChanges(data, res.changes), actorId: res.actorId, currency: res.currency, fullAccess: res.fullAccess });
+          else
+            set({
+              data: mergeChanges(data, res.changes),
+              actorId: res.actorId,
+              currency: res.currency,
+              fullAccess: res.fullAccess,
+              ...(res.branches ? { branches: res.branches } : {}),
+              ...(res.branchAccess ? { branchAccess: res.branchAccess } : {}),
+            });
         }
         return res.result;
       } catch (err) {

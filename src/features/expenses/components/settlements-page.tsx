@@ -22,10 +22,11 @@ import { STATUS_LABELS_AR } from '../domain/policy';
 import { settlementSuggestions, type SettlementSuggestion } from '../domain/ledger';
 import { minorToInput, type Minor } from '../domain/money';
 import type { PartyId, Settlement, TxnStatus } from '../domain/types';
-import { AmountInput, EmptyState, Field, FormDialog, LoadingBlock, Money, PartyName, PartySelect, StatusBadge, useRunCommand } from './common';
-import { todayIso, useCurrency, useDirectory, useExpensesData, useExpensesPermissions, useLedger } from './expenses-provider';
+import { AmountInput, EmptyState, Field, FormDialog, LoadingBlock, Money, PartyName, PartySelect, StatusBadge, useRunCommand, BranchSelect } from './common';
+import { todayIso, useCurrency, useDirectory, useExpensesData, useExpensesPermissions, useLedger, useBranches, branchListFields } from './expenses-provider';
 import { GroupField } from './group-policy';
 import { TxnActions } from './txn-actions';
+import { BranchTransferDialog, useBranchDues, useBranchTransfers, VoidBranchTransferDialog } from './branch-dues';
 
 const METHOD_LABELS: Record<Settlement['method'], string> = { cash: 'نقداً', transfer: 'تحويل', payroll: 'خصم من الراتب (يدوي)', other: 'أخرى' };
 
@@ -48,15 +49,19 @@ export function SettlementDialog({
   const [date, setDate] = React.useState(todayIso());
   const [note, setNote] = React.useState('');
   const [groupId, setGroupId] = React.useState<string | null>(null);
+  const branches = useBranches();
+  const [branchId, setBranchId] = React.useState('');
   React.useEffect(() => {
     if (!open) return;
     setGroupId(null);
+    setBranchId(branches.defaultValue);
     setFromId(preset?.fromId ?? null);
     setToId(preset?.toId ?? null);
     setAmount(preset ? { t: minorToInput(preset.amount, currency.decimals), m: preset.amount } : { t: '', m: 0 });
     setMethod('cash');
     setDate(todayIso());
     setNote('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when the dialog opens
   }, [open, preset, currency.decimals]);
   if (!data) return null;
   const owed = fromId && toId ? owedBetween(data, fromId, toId, currency.code) : 0;
@@ -64,7 +69,7 @@ export function SettlementDialog({
     if (!fromId || !toId) return;
     const excess = amount.m > owed;
     if (excess && !window.confirm('المبلغ أكبر مما على الدافع لهذا الطرف؛ الزيادة تصبح مستحقة للدافع. متابعة؟')) return;
-    void run({ type: 'addSettlement', fromId, toId, amount: amount.m, method, date, note: note.trim() || null, groupId, allowExcess: excess }, 'سُجّل السداد').then((ok) => ok && onOpenChange(false));
+    void run({ type: 'addSettlement', fromId, toId, amount: amount.m, method, date, note: note.trim() || null, groupId, branchId: branchId || null, allowExcess: excess }, 'سُجّل السداد').then((ok) => ok && onOpenChange(false));
   };
   return (
     <FormDialog
@@ -89,7 +94,8 @@ export function SettlementDialog({
         </p>
       ) : null}
       <Field label="المبلغ"><AmountInput value={amount.t} onChange={(t, m) => setAmount({ t, m })} /></Field>
-      <GroupField value={groupId} onChange={setGroupId} amount={amount.m} />
+      {branches.show ? <BranchSelect value={branchId} onChange={(v) => { setBranchId(v); setGroupId(null); }} options={branches.options} /> : null}
+      <GroupField value={groupId} onChange={setGroupId} amount={amount.m} branchId={branchId || null} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="الطريقة">
           <Select value={method} onValueChange={(v) => setMethod(v as Settlement['method'])}>
@@ -104,10 +110,11 @@ export function SettlementDialog({
   );
 }
 
-const TABS = ['due', 'history'] as const;
+const TABS = ['due', 'history', 'branches', 'transfers'] as const;
 type Tab = (typeof TABS)[number];
 
 export function SettlementsPage() {
+  const branches = useBranches();
   const data = useExpensesData();
   const ledger = useLedger();
   const currency = useCurrency();
@@ -126,6 +133,11 @@ export function SettlementsPage() {
   const [status, setStatus] = usePersistedFilterState(historyKey('status'), 'all');
   const [method, setMethod] = usePersistedFilterState(historyKey('method'), 'all');
   const [period, setPeriod] = usePersistedFilterState<PeriodRange>(historyKey('period'), { from: '', to: '' });
+  const branchKey = (field: string) => hrFiltersKey('expenses', 'branch-dues', companyId, field);
+  const [branchFilter, setBranchFilter] = usePersistedFilterState(branchKey('branch'), 'all');
+  const [transferPeriod, setTransferPeriod] = usePersistedFilterState<PeriodRange>(branchKey('period'), { from: '', to: '' });
+  const dues = useBranchDues(branchFilter);
+  const transfers = useBranchTransfers(branchFilter, transferPeriod);
 
   const suggestions = React.useMemo(() => (ledger ? settlementSuggestions(ledger) : []), [ledger]);
   const dueRows = React.useMemo(() => {
@@ -165,18 +177,29 @@ export function SettlementsPage() {
     { key: 'from', label: 'الدافع', kind: 'name', text: (s) => directory.nameOf(s.fromId), cell: (s) => <PartyName id={s.fromId} />, groupKey: (s) => s.fromId, groupLabel: (id) => directory.nameOf(id) },
     { key: 'to', label: 'المستلم', text: (s) => directory.nameOf(s.toId), cell: (s) => <PartyName id={s.toId} />, groupKey: (s) => s.toId, groupLabel: (id) => directory.nameOf(id) },
     { key: 'method', label: 'الطريقة', text: (s) => METHOD_LABELS[s.method], groupKey: (s) => s.method, groupLabel: (m) => METHOD_LABELS[m as Settlement['method']] ?? m },
+    ...branchListFields<Settlement>(branches, (s) => s.branchId),
     { key: 'note', label: 'ملاحظة', optional: true, hiddenByDefault: true, sortable: false, text: (s) => s.note ?? '' },
     { key: 'createdBy', label: 'سجّله', optional: true, hiddenByDefault: true, text: (s) => directory.nameOf(s.createdBy), groupKey: (s) => s.createdBy, groupLabel: (id) => directory.nameOf(id) },
     { key: 'amount', label: 'المبلغ', kind: 'number', text: (s) => currency.format(s.amount), sortValue: (s) => s.amount, sum: (s) => (s.status === 'approved' ? s.amount : 0), formatSum: currency.format, cell: (s) => <Money value={s.amount} className="font-semibold" /> },
     { key: 'status', label: 'الحالة', kind: 'status', text: (s) => STATUS_LABELS_AR[s.status], cell: (s) => <StatusBadge status={s.status} />, groupKey: (s) => s.status, groupLabel: (k) => STATUS_LABELS_AR[k as TxnStatus] ?? k },
     { key: 'actions', label: '', sortable: false, screenOnly: true, text: () => '', cell: (s) => <TxnActions txn={s} compact /> },
-  ], [directory, currency]);
+  ], [directory, currency, branches]);
   const list = useLocalList({ section: 'expenses', page: 'settlements', fields, rows: history });
 
   const dueFilterCount = (dueSearch.trim() ? 1 : 0) + (duePerson !== 'all' ? 1 : 0);
   const historyFilterCount =
     (search.trim() ? 1 : 0) + [person, status, method].filter((v) => v !== 'all').length + (period.from || period.to ? 1 : 0);
   const periodLine = period.from || period.to ? `الفترة: ${period.from || '…'} إلى ${period.to || '…'}` : null;
+  const branchFilterCount = branchFilter !== 'all' ? 1 : 0;
+  const transferFilterCount = branchFilterCount + (transferPeriod.from || transferPeriod.to ? 1 : 0);
+  const transferPeriodLine = transferPeriod.from || transferPeriod.to ? `الفترة: ${transferPeriod.from || '…'} إلى ${transferPeriod.to || '…'}` : null;
+  const branchFilterSelect = {
+    id: 'branch',
+    value: branchFilter === '' ? '__company__' : branchFilter,
+    onChange: (v: string) => setBranchFilter(v === '__company__' ? '' : v),
+    placeholder: 'كل الفروع',
+    options: [{ value: 'all', label: 'كل الفروع' }, ...branches.options.map((o) => ({ value: o.value || '__company__', label: o.label }))],
+  };
 
   usePageHeaderActions(
     () => {
@@ -185,17 +208,50 @@ export function SettlementsPage() {
           تسجيل سداد
         </PageHeaderPrimaryButton>
       );
+      const branchPrimary = (
+        <PageHeaderPrimaryButton icon={Plus} label="تسوية بين فرعين" disabled={!perms.settle} onClick={() => dues.setTransfer('new')}>
+          تسوية بين فرعين
+        </PageHeaderPrimaryButton>
+      );
+      const branchLine = branchFilter === 'all' ? null : `الفرع: ${branches.nameOf(branchFilter || null)}`;
+      if (tab === 'branches')
+        return <LocalListToolbar list={dues.list} title="المستحقات بين الفروع" fileName="branch-dues" subtitleLines={branchLine ? [branchLine] : []} before={<FilterToggleButton activeFilterCount={branchFilterCount} />} primary={branchPrimary} />;
+      if (tab === 'transfers')
+        return <LocalListToolbar list={transfers.list} title="التسويات بين الفروع" fileName="branch-transfers" subtitleLines={[...(branchLine ? [branchLine] : []), ...(transferPeriodLine ? [transferPeriodLine] : [])]} before={<FilterToggleButton activeFilterCount={transferFilterCount} />} primary={branchPrimary} />;
       return tab === 'due'
         ? <LocalListToolbar list={due} title="مطلوب سداده" fileName="settlements-due" before={<FilterToggleButton activeFilterCount={dueFilterCount} />} primary={primary} />
         : <LocalListToolbar list={list} title="سجل السداد" fileName="settlements" subtitleLines={['المبالغ المجمّعة للمعتمد فقط', ...(periodLine ? [periodLine] : [])]} before={<FilterToggleButton activeFilterCount={historyFilterCount} />} primary={primary} />;
     },
-    [tab, perms.settle, dueFilterCount, historyFilterCount, periodLine, due.rows, due.visibleFields, due.groups, due.sort.sortKey, list.rows, list.visibleFields, list.groups, list.sort.sortKey],
+    [tab, perms.settle, dueFilterCount, historyFilterCount, periodLine, due.rows, due.visibleFields, due.groups, due.sort.sortKey, list.rows, list.visibleFields, list.groups, list.sort.sortKey, branchFilter, branchFilterCount, transferFilterCount, transferPeriodLine, dues.list.rows, dues.list.visibleFields, dues.list.groups, dues.list.sort.sortKey, transfers.list.rows, transfers.list.visibleFields, transfers.list.groups, transfers.list.sort.sortKey],
   );
 
   const personOptions = [{ value: 'all', label: 'كل الأشخاص' }, ...directory.choices.map((p) => ({ value: p.id, label: p.name }))];
   useEntityFilterSlot(
     () =>
-      tab === 'due' ? (
+      tab === 'branches' ? (
+        <ListFilterBar
+          showDateSection={false}
+          showStatusSection={false}
+          showEmployeePicker={false}
+          periodFilterActive={branchFilterCount > 0}
+          onClearAll={() => setBranchFilter('all')}
+          inlineSelects={[branchFilterSelect]}
+        />
+      ) : tab === 'transfers' ? (
+        <ListFilterBar
+          optionalDateRange
+          showStatusSection={false}
+          showEmployeePicker={false}
+          periodValue={transferPeriod}
+          onPeriodChange={setTransferPeriod}
+          periodFilterActive={transferFilterCount > 0}
+          onClearAll={() => {
+            setBranchFilter('all');
+            setTransferPeriod({ from: '', to: '' });
+          }}
+          inlineSelects={[branchFilterSelect]}
+        />
+      ) : tab === 'due' ? (
         <ListFilterBar
           showDateSection={false}
           showStatusSection={false}
@@ -231,7 +287,7 @@ export function SettlementsPage() {
           ]}
         />
       ),
-    [tab, dueSearch, duePerson, search, person, status, method, period, directory.choices, dueFilterCount, historyFilterCount],
+    [tab, dueSearch, duePerson, search, person, status, method, period, directory.choices, dueFilterCount, historyFilterCount, branchFilter, transferPeriod, branches.options],
   );
 
   if (!data || !ledger) return <LoadingBlock />;
@@ -240,9 +296,11 @@ export function SettlementsPage() {
     <div className="space-y-3">
       <SetPageTitle titleAr="التسويات والسداد" descriptionAr="ما يلزم سداده بين الأطراف ومع المنشأة" iconName="Banknote" />
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-        <TabsList className="grid w-full grid-cols-2 sm:inline-flex sm:w-auto">
+        <TabsList className={branches.hasBranches ? 'grid w-full grid-cols-2 sm:inline-flex sm:w-auto' : 'grid w-full grid-cols-2 sm:inline-flex sm:w-auto'}>
           <TabsTrigger value="due">مطلوب سداده ({suggestions.length})</TabsTrigger>
           <TabsTrigger value="history">سجل السداد ({data.settlements.filter((s) => s.currency === currency.code).length})</TabsTrigger>
+          {branches.hasBranches ? <TabsTrigger value="branches">بين الفروع ({dues.rows.length})</TabsTrigger> : null}
+          {branches.hasBranches ? <TabsTrigger value="transfers">تسويات الفروع ({transfers.rows.length})</TabsTrigger> : null}
         </TabsList>
         <TabsContent value="due" className="mt-3 space-y-2">
           <p className="text-xs text-muted-foreground">دفعة مباشرة لكل طرفين بينهما مستحق.</p>
@@ -275,7 +333,45 @@ export function SettlementsPage() {
             )}
           />
         </TabsContent>
+        <TabsContent value="branches" className="mt-3 space-y-2">
+          <p className="text-xs text-muted-foreground">مصروف فرع دُفع من عهدة فرع آخر يجعل الأول مديناً للثاني. إجمالي الشركة لا يتغير.</p>
+          <LocalListTable
+            list={dues.list}
+            rowKey={(d) => d.key}
+            empty={<EmptyState text={dues.rows.length === 0 ? 'لا مستحقات بين الفروع' : 'لا نتائج لهذه الفلاتر'} />}
+            card={(d) => (
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 text-sm">
+                  <p className="truncate">{branches.nameOf(d.fromBranchId)} <span className="text-muted-foreground">مدين لـ</span> {branches.nameOf(d.toBranchId)}</p>
+                  <Money value={d.amount} className="font-bold" />
+                </div>
+                {perms.settle ? <Button size="sm" onClick={() => dues.setTransfer(d)}>تسوية</Button> : null}
+              </div>
+            )}
+          />
+        </TabsContent>
+        <TabsContent value="transfers" className="mt-3">
+          <LocalListTable
+            list={transfers.list}
+            rowKey={(x) => x.id}
+            empty={<EmptyState text={transferFilterCount > 0 ? 'لا نتائج لهذه الفلاتر' : 'لا تسويات بين الفروع'} />}
+            card={(x) => (
+              <div className="space-y-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="min-w-0 text-sm">{branches.nameOf(x.fromBranchId)} ← {branches.nameOf(x.toBranchId)}</p>
+                  <Money value={x.amount} className={x.voidedAt ? 'line-through text-muted-foreground' : 'font-semibold'} />
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{x.date}{x.note ? ` · ${x.note}` : ''}{x.voidedAt ? ' · ملغاة' : ''}</span>
+                  {perms.settle && !x.voidedAt ? <Button size="sm" variant="ghost" className="text-destructive" onClick={() => transfers.setVoiding(x)}>إلغاء</Button> : null}
+                </div>
+              </div>
+            )}
+          />
+        </TabsContent>
       </Tabs>
+      <BranchTransferDialog open={dues.transfer !== null} onOpenChange={(o) => !o && dues.setTransfer(null)} preset={dues.transfer === 'new' ? null : dues.transfer} />
+      <VoidBranchTransferDialog transfer={transfers.voiding} onClose={() => transfers.setVoiding(null)} />
       <SettlementDialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)} preset={dialog === 'new' ? null : dialog} />
     </div>
   );

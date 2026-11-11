@@ -17,8 +17,9 @@ import { minorToInput, sumMinor, toMinor, type Minor } from '../domain/money';
 import { approvalRequired, blocksSubmit, checkPolicies, groupCostCenterIds, groupOf, groupStatusOf, policyOf } from '../domain/policy';
 import { ORG } from '../domain/types';
 import type { AllocationLine, AttachmentMeta, Expense, PartyId, SplitMethod } from '../domain/types';
-import { AmountInput, Field, FormDialog, Money, PartyChecklist, PartyName, PartySelect } from './common';
-import { todayIso, useCurrency, useDirectory, useExpensesData, useLedger } from './expenses-provider';
+import { usableIn } from '../domain/branches';
+import { AmountInput, BranchSelect, Field, FormDialog, Money, PartyChecklist, PartyName, PartySelect } from './common';
+import { todayIso, useBranches, useCurrency, useDirectory, useExpensesData, useLedger } from './expenses-provider';
 import { GroupPolicyHint, GroupSelect, openGroups } from './group-policy';
 
 type PayMode = 'org' | 'custody' | 'personal';
@@ -59,6 +60,9 @@ export function ExpenseFormDialog({
   const [description, setDescription] = React.useState('');
   const [categoryId, setCategoryId] = React.useState('');
   const [date, setDate] = React.useState(todayIso());
+  const branches = useBranches();
+  /** '' is the company's own record (head office). */
+  const [branchId, setBranchId] = React.useState('');
   const [groupId, setGroupId] = React.useState<string | null>(null);
   const [costCenterId, setCostCenterId] = React.useState<string | null>(null);
   const [payMode, setPayMode] = React.useState<PayMode>('org');
@@ -85,6 +89,7 @@ export function ExpenseFormDialog({
       setDescription(editing.description);
       setCategoryId(editing.categoryId);
       setDate(editing.date);
+      setBranchId(editing.branchId ?? '');
       setGroupId(editing.groupId ?? null);
       setCostCenterId(editing.costCenterId ?? null);
       const first = editing.payments[0];
@@ -114,6 +119,7 @@ export function ExpenseFormDialog({
       setDescription('');
       setCategoryId(data.categories.find((c) => !c.archived)?.id ?? '');
       setDate(todayIso());
+      setBranchId(branches.defaultValue);
       setGroupId(null);
       setCostCenterId(null);
       const mine = openCustodies.find((c) => c.holderId === actorId);
@@ -163,6 +169,7 @@ export function ExpenseFormDialog({
     amount,
     categoryId,
     date,
+    branchId: branchId || null,
     groupId,
     costCenterId,
     payments,
@@ -180,13 +187,32 @@ export function ExpenseFormDialog({
   const effects = amount > 0 && issues.length === 0 ? expenseEffects({ ...draft, id: 'preview', kind: 'expense', currency: currency.code, status: 'approved', createdBy: actorId ?? '', createdAt: '', attachments } as Expense) : [];
   const group = groupId ? data.groups.find((g) => g.id === groupId) : undefined;
   const submitLabel = policy.approval === 'none' ? 'حفظ' : !approvalRequired(policy, amount) ? 'حفظ (اعتماد تلقائي)' : 'إرسال للاعتماد';
-  const pickable = openGroups(data).length > 1 || (group != null && groupStatusOf(group) !== 'active');
+  const pickable = openGroups(data).filter((g) => usableIn(branchId || null, g)).length > 1 || (group != null && groupStatusOf(group) !== 'active');
 
   // The group's centers when it has some; a center already on the record stays listed.
   const fileUnder = groupOf(data, groupId);
   const groupCenters = fileUnder ? groupCostCenterIds(fileUnder) : [];
   const centerChoices = (current: string | null) =>
-    data.costCenters.filter((c) => c.id === current || (!c.archived && (groupCenters.length === 0 || groupCenters.includes(c.id))));
+    data.costCenters.filter(
+      (c) => c.id === current || (!c.archived && usableIn(branchId || null, c) && (groupCenters.length === 0 || groupCenters.includes(c.id))),
+    );
+
+  // Another branch: the group and cost center must be shared or of that branch.
+  const pickBranch = (next: string) => {
+    setBranchId(next);
+    const g = groupId ? data.groups.find((x) => x.id === groupId) : undefined;
+    if (g && !usableIn(next || null, g)) setGroupId(null);
+    const c = costCenterId ? data.costCenters.find((x) => x.id === costCenterId) : undefined;
+    if (c && !usableIn(next || null, c)) setCostCenterId(null);
+    setAllocLines((lines) =>
+      lines.map((l) => {
+        const lc = l.costCenterId ? data.costCenters.find((x) => x.id === l.costCenterId) : undefined;
+        return lc && !usableIn(next || null, lc) ? { ...l, costCenterId: null } : l;
+      }),
+    );
+  };
+  const custodyBranch = custody ? (custody.branchId ?? null) : null;
+  const crossBranch = payMode === 'custody' && custody != null && custodyBranch !== (branchId || null);
 
   const pickGroup = (id: string | null) => {
     setGroupId(id);
@@ -275,9 +301,19 @@ export function ExpenseFormDialog({
         <Field label="التاريخ" htmlFor="exp-date">
           <Input id="exp-date" type="date" className="h-11" value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)} />
         </Field>
+        {branches.show ? (
+          <div className="space-y-1 sm:col-span-2">
+            <BranchSelect id="exp-branch" value={branchId} onChange={pickBranch} options={branches.options} />
+            {crossBranch ? (
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                العهدة من {branches.nameOf(custodyBranch)}: يُسجَّل المصروف على {branches.nameOf(branchId || null)}، ويصير عليه مستحق لـ{branches.nameOf(custodyBranch)} بقدر ما يُدفع منها.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {pickable ? (
           <div className="space-y-1 sm:col-span-2">
-            <GroupSelect value={groupId} keep={editing?.groupId} onChange={pickGroup} />
+            <GroupSelect value={groupId} keep={editing?.groupId} onChange={pickGroup} branchId={branchId || null} />
             {amount > 0 ? <GroupPolicyHint groupId={groupId} amount={amount} expense /> : null}
           </div>
         ) : null}

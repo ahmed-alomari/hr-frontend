@@ -507,3 +507,39 @@ export function useRunCommand() {
     [exec],
   );
 }
+
+/** Picks a branch from what the server allows ('' = the company, or every branch for setup rows). */
+export function BranchSelect({
+  value,
+  onChange,
+  options,
+  id = 'branch',
+  label = 'الفرع',
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  id?: string;
+  label?: string;
+  disabled?: boolean;
+}) {
+  // Radix Select reserves '': map it to a token of its own.
+  const NONE = '__company__';
+  return (
+    <Field label={label} htmlFor={id}>
+      <Select value={value || NONE} onValueChange={(v) => onChange(v === NONE ? '' : v)} disabled={disabled}>
+        <SelectTrigger id={id} className="h-9">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value || NONE} value={o.value || NONE}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
+  );
+}

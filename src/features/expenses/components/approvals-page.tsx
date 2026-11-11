@@ -20,7 +20,7 @@ import type { AnyTxn, TxnStatus } from '../domain/types';
 import { expensesRoutes } from '../constants/routes';
 import { EmptyState, LoadingBlock, Money, PartyName } from './common';
 import { TXN_KIND_LABELS, txnTitle } from './dashboard-page';
-import { useCurrency, useDirectory, useExpensesData, useExpensesPermissions } from './expenses-provider';
+import { useCurrency, useDirectory, useExpensesData, useExpensesPermissions, useBranches, branchListFields } from './expenses-provider';
 import { ApprovalTimeline } from './group-policy';
 import { mayDecideNow, TxnActions } from './txn-actions';
 
@@ -73,16 +73,18 @@ export function ApprovalsPage() {
     );
   }, [buckets, tab, search, kind, createdBy, groupId, period, data, directory]);
 
+  const branches = useBranches();
   const fields = React.useMemo<LocalListField<AnyTxn>[]>(() => [
     { key: 'date', label: 'التاريخ', kind: 'date', text: (t) => t.date, groupKey: (t) => t.date.slice(0, 7) },
     { key: 'title', label: 'البيان', kind: 'name', text: (t) => txnTitle(t, directory.nameOf) },
     { key: 'kind', label: 'النوع', text: (t) => TXN_KIND_LABELS[t.kind], groupKey: (t) => t.kind, groupLabel: (k) => TXN_KIND_LABELS[k as AnyTxn['kind']] ?? k },
     { key: 'createdBy', label: 'سجّلها', text: (t) => directory.nameOf(t.createdBy), groupKey: (t) => t.createdBy, groupLabel: (id) => directory.nameOf(id) },
     { key: 'group', label: 'المجموعة', optional: true, text: groupName, groupKey: groupName },
+    ...branchListFields<AnyTxn>(branches, (t) => t.branchId),
     { key: 'violations', label: 'مخالفات السياسة', optional: true, hiddenByDefault: true, sortable: false, text: (t) => violationsOf(t).map((v) => v.message).join('، ') },
     { key: 'amount', label: 'المبلغ', kind: 'number', text: (t) => currency.format(t.amount), sortValue: (t) => t.amount, sum: (t) => t.amount, formatSum: currency.format },
     { key: 'status', label: 'الحالة', kind: 'status', text: (t) => STATUS_LABELS_AR[t.status as TxnStatus] },
-  ], [directory, groupName, violationsOf, currency]);
+  ], [directory, groupName, violationsOf, currency, branches]);
   const list = useLocalList({ section: 'expenses', page: 'approvals', fields, rows });
 
   const filterCount =

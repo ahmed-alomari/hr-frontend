@@ -11,8 +11,8 @@ import { Button } from '@/components/ui/button';
 import { ApiError, apiDownloadToDevice, apiFormRequest } from '@/shared/api/client';
 import { expensesRoutes } from '../constants/routes';
 import { useExpensesStore } from '../data/store';
-import { EmptyState, Money, ResponsiveTable, Section } from './common';
-import { useExpensesPermissions } from './expenses-provider';
+import { EmptyState, Money, ResponsiveTable, Section, BranchSelect } from './common';
+import { useExpensesPermissions, useBranches } from './expenses-provider';
 
 /** Mirrors `expenses-import.service.ts` in the backend. */
 type SheetKey = 'expenses' | 'custodies' | 'advances';
@@ -49,12 +49,17 @@ export function ImportPage() {
   const [preview, setPreview] = React.useState<ImportPreview | null>(null);
   const [result, setResult] = React.useState<ImportResult | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const branches = useBranches();
+  /** Every row lands here; '' is the company itself (decisions.md §29). */
+  const [branchId, setBranchId] = React.useState(branches.defaultValue);
+  React.useEffect(() => setBranchId(branches.defaultValue), [branches.defaultValue]);
   const allowed = perms.create && perms.approve;
 
   const send = async (step: 'preview' | 'commit', chosen: File) => {
     const form = new FormData();
     form.append('file', chosen);
-    return apiFormRequest<ImportPreview | ImportResult>(`/expenses/import/${step}?companyId=${encodeURIComponent(companyId ?? '')}`, form);
+    const branchQuery = branchId ? `&branchId=${encodeURIComponent(branchId)}` : '';
+    return apiFormRequest<ImportPreview | ImportResult>(`/expenses/import/${step}?companyId=${encodeURIComponent(companyId ?? '')}${branchQuery}`, form);
   };
 
   const check = async (chosen: File) => {
@@ -111,6 +116,11 @@ export function ImportPage() {
         </ul>
       </Section>
       <Section title="2. ارفع الملف وراجع الفحص" description="الفحص لا يحفظ شيئاً. إن وُجد خطأ واحد لا يُسجَّل شيء.">
+        {branches.show ? (
+          <div className="mb-3 max-w-xs">
+            <BranchSelect id="imp-branch" label="فرع الصفوف المستوردة" value={branchId} onChange={(v) => { setBranchId(v); setPreview(null); setResult(null); }} options={branches.options} />
+          </div>
+        ) : null}
         <input ref={inputRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void check(f); }} />
         <Button disabled={!allowed || busy} onClick={() => inputRef.current?.click()}>
           <Upload className="me-1.5 h-4 w-4" />
