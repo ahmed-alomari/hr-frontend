@@ -47,7 +47,7 @@ export function applyContractTemplateToForm(
   const essential = options?.essentialArticleIds ?? [];
   const articleIds =
     templateArticleIds.length > 0
-      ? [...new Set([...essential, ...templateArticleIds])]
+      ? [...new Set([...templateArticleIds, ...essential])]
       : [...essential];
 
   const start = options?.startDate?.trim();

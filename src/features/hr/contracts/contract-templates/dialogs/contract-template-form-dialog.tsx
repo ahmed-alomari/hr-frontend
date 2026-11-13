@@ -33,6 +33,7 @@ import {
 import { allowanceTypesApi, type AllowanceTypeDto } from '@/features/hr/contracts/lib/api/allowance-types';
 import { useContractArticles } from '@/features/hr/contracts/lib/hooks/use-contract-articles';
 import { payrollListArchiveQuery } from '@/features/hr/organization/lib/archive-scope';
+import { ArticleOrderList, orderedArticles } from '@/components/contracts/article-order-list';
 import {
   ContractTemplateAllowanceLinesEditor,
   type AllowanceLineDraft,
@@ -329,6 +330,22 @@ export function ContractTemplateFormDialog({ open, onOpenChange, editItem, compa
                   </label>
                 ))}
               </div>
+              {form.articleIds.length > 1 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">ترتيب المواد في العقد</Label>
+                  <ArticleOrderList
+                    items={orderedArticles(
+                      form.articleIds,
+                      articles.map((a) => ({ id: a.id, code: a.code, title: a.titleAr })),
+                      (id) => {
+                        const saved = editItem?.articles?.find((x) => x.articleId === id);
+                        return saved ? { id, code: saved.articleCode ?? '', title: saved.articleTitleAr ?? '—' } : undefined;
+                      },
+                    )}
+                    onChange={(articleIds) => patch({ articleIds })}
+                  />
+                </div>
+              )}
             </div>
           )}
 

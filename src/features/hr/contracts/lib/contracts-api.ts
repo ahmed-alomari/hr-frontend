@@ -91,6 +91,13 @@ export const contractArticlesApi = {
 
   delete: (id: string) =>
     apiRequest<void>(`/payroll/contract-articles/${id}`, { method: 'DELETE' }),
+
+  /** The company's default order; saved templates and contracts keep theirs. */
+  reorder: (body: { companyId: string; articleIds: string[] }) =>
+    apiRequest<ApiContractArticle[]>('/payroll/contract-articles/reorder', {
+      method: 'POST',
+      body,
+    }),
 };
 
 // ─── Employee Contracts ───────────────────────────────────────────────────────

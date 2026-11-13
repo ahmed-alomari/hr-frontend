@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Plus, BookOpen, Star, Eye, Pencil, Trash2, X, CheckCircle2 } from 'lucide-react';
+import { Plus, ListOrdered, BookOpen, Star, Eye, Pencil, Trash2, X, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -34,6 +34,8 @@ import {
   type OrganizationArchiveScope,
 } from '@/features/hr/organization/lib/archive-scope';
 import { cn } from '@/shared/utils';
+import { useCan } from '@/features/auth/hooks/use-can';
+import { ArticleLibraryOrderDialog } from './article-library-order-dialog';
 
 type DraftForm = {
   code: string;
@@ -112,7 +114,8 @@ export function ContractArticlesClient() {
         isArchived: a.isArchived,
       }));
       const scoped = filterRowsByArchiveScope(mapped, archiveScope);
-      const items = scoped.sort((a, b) => a.code.localeCompare(b.code));
+      // Kept in print order (sortOrder, then code), as the server sends it.
+      const items = scoped;
       const total = archiveScope === 'active' && kindFilter === 'all'
         ? res.pagination.total
         : items.length;
@@ -138,6 +141,9 @@ export function ContractArticlesClient() {
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [previewId, setPreviewId] = React.useState<string | null>(null);
+  const [orderOpen, setOrderOpen] = React.useState(false);
+  const can = useCan();
+  const canReorder = can('hr.payroll.contract-articles.update');
 
   const total = pagination.total;
   const preview = previewId ? filtered.find(a => a.id === previewId) ?? null : null;
@@ -211,12 +217,18 @@ export function ContractArticlesClient() {
     () => (
       <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
         <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {canReorder ? (
+          <Button variant="outline" onClick={() => setOrderOpen(true)} size="sm" className="h-8 gap-1.5">
+            <ListOrdered className="h-4 w-4" />
+            <span className="hidden sm:inline">ترتيب المواد</span>
+          </Button>
+        ) : null}
         <Button onClick={openCreate} size="sm" className="h-8 gap-1.5">
           <Plus className="h-4 w-4" />مادة جديدة
         </Button>
       </div>
     ),
-    [archiveScope, activeFilterCount, openCreate],
+    [archiveScope, activeFilterCount, openCreate, canReorder],
   );
 
   useEntityFilterSlot(
@@ -484,6 +496,13 @@ export function ContractArticlesClient() {
           </div>
         </FormField>
       </HRSettingsFormDrawer>
+
+      <ArticleLibraryOrderDialog
+        open={orderOpen}
+        onOpenChange={setOrderOpen}
+        companyId={companyId}
+        onSaved={() => void reloadArticles()}
+      />
 
       <ConfirmationModal
         open={!!confirmId}

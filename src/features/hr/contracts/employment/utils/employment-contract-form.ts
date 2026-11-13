@@ -38,7 +38,8 @@ export function mergeEssentialArticleIds(
   essentialArticleIds: string[],
 ): string[] {
   if (essentialArticleIds.length === 0) return articleIds;
-  return [...new Set([...essentialArticleIds, ...articleIds])];
+  // Keep the chosen order; essentials not yet chosen follow in library order.
+  return [...new Set([...articleIds, ...essentialArticleIds])];
 }
 
 export function emptyEmploymentContractForm(essentialArticleIds: string[] = []): EmploymentContractFormValues {

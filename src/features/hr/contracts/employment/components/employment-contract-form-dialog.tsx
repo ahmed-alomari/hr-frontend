@@ -28,6 +28,7 @@ import {
   type EmploymentContractFormValues,
 } from '@/features/hr/contracts/employment/utils/employment-contract-form';
 import { cn } from '@/shared/utils';
+import { ArticleOrderList, orderedArticles } from '@/components/contracts/article-order-list';
 
 type ArticleItem = {
   id: string;
@@ -482,6 +483,15 @@ export function EmploymentContractFormDialog({
                 </div>
               )}
             </SectionCard>
+            {form.articleIds.length > 1 ? (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">ترتيب المواد في العقد</Label>
+                <ArticleOrderList
+                  items={orderedArticles(form.articleIds, activeArticles)}
+                  onChange={(articleIds) => onPatch({ articleIds })}
+                />
+              </div>
+            ) : null}
           </section>
 
           {error ? (
