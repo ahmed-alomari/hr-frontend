@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useLocale } from 'next-intl';
 import { STOREFRONT_KEYS } from '@/features/ecommerce/storefront/hooks/query-keys';
 import { storefrontSearchRepository } from '@/features/ecommerce/storefront/lib/repositories/search-repository';
-import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { useStorefrontCompanyId } from '@/features/ecommerce/storefront/components/storefront-company-provider';
 import type { StorefrontLocale } from '@/i18n/routing';
 
 export function storefrontSearchQueryFn(companyId: string, locale: StorefrontLocale, query: string) {
@@ -12,7 +12,7 @@ export function storefrontSearchQueryFn(companyId: string, locale: StorefrontLoc
 }
 
 export function useStorefrontSearch(query: string, enabled = true) {
-  const companyId = getPublicStorefrontCompanyId();
+  const companyId = useStorefrontCompanyId();
   const locale = useLocale() as StorefrontLocale;
   const trimmed = query.trim();
 

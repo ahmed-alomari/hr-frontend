@@ -27,14 +27,28 @@ export function resolveStorefrontCompanyId(companyId?: string | null): string {
   return companyId;
 }
 
+/** Set in the browser by `StorefrontCompanyProvider` (the page's hostname). */
+let clientStorefrontCompanyId: string | null = null;
+
+export function setClientStorefrontCompanyId(companyId: string): void {
+  if (isCompanyIdUuid(companyId)) clientStorefrontCompanyId = companyId;
+}
+
 /**
- * The public store's company: always the deployment's store, never the admin
- * session. The admin panel shares the store's origin, so a signed-in admin
+ * The public store's company, never the admin session (a signed-in admin
  * whose active company differs would otherwise ask for another company's
- * cities and districts (empty → free-text fields) and catalog. Matches what
- * the server renders.
+ * cities and catalog).
+ *
+ * - Browser: the company the server chose for this page's hostname
+ *   (company domains), else the deployment's store.
+ * - Server: always the deployment's store. Server code must use
+ *   `getRequestStorefrontCompanyId()` (storefront-company.server.ts), and
+ *   client components rendering on the server `useStorefrontCompanyId()`.
  */
 export function getPublicStorefrontCompanyId(): string {
+  if (typeof window !== 'undefined' && clientStorefrontCompanyId) {
+    return clientStorefrontCompanyId;
+  }
   return STOREFRONT_FALLBACK_COMPANY_ID;
 }
 

@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { MapPin } from 'lucide-react';
 import type { PartnerAddress } from '@/features/ecommerce/storefront/lib/api/partner-addresses-api';
-import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { useStorefrontCompanyId } from '@/features/ecommerce/storefront/components/storefront-company-provider';
 import { useStoreCountry } from '@/features/ecommerce/storefront/hooks/use-store-country';
 import {
   GeoCascadeSelect,
@@ -136,7 +136,7 @@ export function StoreAddressFields({
 }: Props) {
   const t = useTranslations('storefront');
   const locale = useLocale();
-  const companyId = getPublicStorefrontCompanyId();
+  const companyId = useStorefrontCompanyId();
   const country = useStoreCountry();
   const { data: geoCountries = [] } = usePublicGeoCountries(companyId, Boolean(companyId));
   const useGeoCascade = geoCountries.length > 0;

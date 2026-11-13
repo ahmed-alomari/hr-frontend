@@ -1,30 +1,23 @@
 import type { MetadataRoute } from 'next';
-import { publicConfig } from '@/shared/config';
 import { storefrontProductsRepository } from '@/features/ecommerce/storefront/lib/repositories/products-repository';
 import { storefrontCategoriesRepository } from '@/features/ecommerce/storefront/lib/repositories/categories-repository';
 import { storefrontBrandsRepository } from '@/features/ecommerce/storefront/lib/repositories/brands-repository';
-import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getRequestStorefront } from '@/features/ecommerce/storefront/lib/storefront-company.server';
 import { localizedStorePath } from '@/features/ecommerce/storefront/lib/store-paths';
 import { routing, type StorefrontLocale } from '@/i18n/routing';
 
-function absoluteStoreUrl(path: string): string {
-  const base = publicConfig.siteUrl.replace(/\/$/, '');
-  return base ? `${base}${path}` : path;
-}
-
-function localizedEntries(
-  href: `/store${string}`,
-  meta: Omit<MetadataRoute.Sitemap[number], 'url'>,
-): MetadataRoute.Sitemap {
-  return routing.locales.map((locale) => ({
-    url: absoluteStoreUrl(localizedStorePath(locale, href)),
-    ...meta,
-  }));
-}
-
 /** Storefront sitemap — static CMS routes plus repository-backed dynamic URLs for all locales. */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const companyId = getPublicStorefrontCompanyId();
+  // The store of the hostname asked for (company domains), on its primary domain.
+  const { companyId, siteUrl: base } = await getRequestStorefront();
+  const localizedEntries = (
+    href: `/store${string}`,
+    meta: Omit<MetadataRoute.Sitemap[number], 'url'>,
+  ): MetadataRoute.Sitemap =>
+    routing.locales.map((locale) => {
+      const path = localizedStorePath(locale, href);
+      return { url: base ? `${base}${path}` : path, ...meta };
+    });
   const locale = routing.defaultLocale as StorefrontLocale;
   const now = new Date();
 

@@ -5,7 +5,7 @@ import {
   type StoreContactMessageType,
 } from '@/features/ecommerce/shared/lib/api/store-content-api';
 import { isStoreHttpEnabled } from '@/features/ecommerce/storefront/lib/api/store-http';
-import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getRequestStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company.server';
 
 export async function submitStorefrontContactMessage(input: {
   name: string;
@@ -29,7 +29,7 @@ export async function submitStorefrontContactMessage(input: {
 
   try {
     await submitPublicContactMessage({
-      companyId: getPublicStorefrontCompanyId(),
+      companyId: await getRequestStorefrontCompanyId(),
       name,
       email,
       phone: phone || undefined,

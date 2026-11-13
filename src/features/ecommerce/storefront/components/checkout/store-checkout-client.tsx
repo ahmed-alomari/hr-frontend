@@ -84,7 +84,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { storeLoginHref, storeRegisterHref } from '@/features/ecommerce/storefront/lib/store-auth-return';
-import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { useStorefrontCompanyId } from '@/features/ecommerce/storefront/components/storefront-company-provider';
 import { STORE_CURRENCY_MISMATCH_ERROR } from '@/features/ecommerce/domain/constants/store-currency';
 import {
   STORE_COUNTRY_UNAVAILABLE_ERROR,
@@ -170,7 +170,7 @@ export function StoreCheckoutClient({ currency: storeCurrency, country }: Checko
     return unsub;
   }, []);
 
-  const companyId = getPublicStorefrontCompanyId();
+  const companyId = useStorefrontCompanyId();
   const { data: geoCountries = [], isFetched: geoCountriesFetched } = usePublicGeoCountries(
     companyId,
     Boolean(companyId),

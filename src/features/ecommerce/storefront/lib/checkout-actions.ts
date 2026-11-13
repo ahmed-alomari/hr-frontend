@@ -6,7 +6,7 @@ import type {
   StorefrontOrderStatus,
 } from '@/features/ecommerce/storefront/domain/checkout';
 import { storefrontOrdersRepository } from '@/features/ecommerce/storefront/lib/repositories/storefront-orders-repository';
-import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getRequestStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company.server';
 import { StoreHttpError } from '@/features/ecommerce/storefront/lib/api/store-http';
 import {
   STORE_CURRENCY_MISMATCH_ERROR,
@@ -29,7 +29,7 @@ export type PlaceStorefrontOrderResult =
 export async function placeStorefrontOrder(
   input: Omit<PlaceOrderInput, 'companyId'>,
 ): Promise<PlaceStorefrontOrderResult> {
-  const companyId = getPublicStorefrontCompanyId();
+  const companyId = await getRequestStorefrontCompanyId();
   const address = input.address;
 
   if (
@@ -102,14 +102,14 @@ export async function getStorefrontOrderByNumber(
   orderNumber: string,
   options?: { phone?: string | null; accessToken?: string | null },
 ): Promise<StorefrontCustomerOrder | null> {
-  const companyId = getPublicStorefrontCompanyId();
+  const companyId = await getRequestStorefrontCompanyId();
   return storefrontOrdersRepository.getByOrderNumber(companyId, orderNumber, options);
 }
 
 export async function getStorefrontOrdersByNumbers(
   lookups: Array<string | { orderNumber: string; phone?: string | null }>,
 ): Promise<StorefrontCustomerOrder[]> {
-  const companyId = getPublicStorefrontCompanyId();
+  const companyId = await getRequestStorefrontCompanyId();
   const unique = new Map<string, { orderNumber: string; phone?: string | null }>();
   for (const entry of lookups) {
     if (typeof entry === 'string') {
@@ -145,7 +145,7 @@ export async function syncStorefrontOrderStatus(input: {
   orderNumber?: string;
   status: OrderStatus;
 }): Promise<StorefrontCustomerOrder | null> {
-  const companyId = getPublicStorefrontCompanyId();
+  const companyId = await getRequestStorefrontCompanyId();
   const status = toStorefrontStatus(input.status);
 
   if (input.orderNumber?.trim()) {

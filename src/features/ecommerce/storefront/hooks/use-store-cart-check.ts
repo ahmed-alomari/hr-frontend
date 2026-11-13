@@ -6,7 +6,7 @@ import {
   type StoreOrderCheckIssue,
 } from '@/features/ecommerce/shared/lib/api/store-orders-api';
 import { useStorefrontCartUi } from '@/features/ecommerce/storefront/hooks/use-storefront-cart-ui';
-import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { useStorefrontCompanyId } from '@/features/ecommerce/storefront/components/storefront-company-provider';
 
 /**
  * The cart's lines checked by the server with the rules of placing the order
@@ -14,7 +14,7 @@ import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/li
  * sold) shows on the line from the start, not at the last step.
  */
 export function useStoreCartCheck() {
-  const companyId = getPublicStorefrontCompanyId();
+  const companyId = useStorefrontCompanyId();
   const lines = useStorefrontCartUi((state) => state.lines);
   const items = lines.map((line) => ({
     productId: line.productId,

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import createMiddleware from 'next-intl/middleware';
 import { routing } from './i18n/routing';
+import { resolveStorefrontHost } from './features/ecommerce/storefront/lib/storefront-host-resolver';
 
 /**
  * Next.js 16: this file must be `proxy.ts` only — do not add `middleware.ts`.
@@ -78,11 +79,16 @@ function requestHost(request: NextRequest): string {
   return (request.headers.get('host') ?? '').split(':')[0].toLowerCase();
 }
 
-function hostKind(host: string): HostKind {
+async function hostKind(host: string): Promise<HostKind> {
   // Local dev, LAN IPs and tunnels: keep every route reachable from one origin,
   // otherwise `npm run dev` on localhost could never open the console.
   if (!host || !host.includes('.') || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return 'both';
   if (host.startsWith('admin.')) return 'admin';
+  // A console domain added by the platform owner (company domains), e.g.
+  // `erp.amarstore.com`. Every other hostname is a store; which company's
+  // store is decided by the page itself (storefront-company.server.ts).
+  const resolved = await resolveStorefrontHost(host);
+  if (resolved?.kind === 'admin') return 'admin';
   return 'store';
 }
 
@@ -94,11 +100,11 @@ function isStorefrontPath(pathname: string): boolean {
   );
 }
 
-export default function proxy(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = requestHost(request);
 
-  if (hostKind(host) === 'store') {
+  if ((await hostKind(host)) === 'store') {
     // The bare domain shows the shop, and keeps showing `qutb.tech` in the
     // address bar — a rewrite, not a redirect.
     if (pathname === '/') {

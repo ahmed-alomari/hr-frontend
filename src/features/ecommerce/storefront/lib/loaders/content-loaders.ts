@@ -9,7 +9,7 @@ import type {
   StorefrontLegalPage,
 } from '@/features/ecommerce/storefront/domain/storefront-models';
 import { storefrontContentRepository } from '@/features/ecommerce/storefront/lib/repositories/content-repository';
-import { getPublicStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getRequestStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company.server';
 import { isStorefrontBuildFallbackEnabled } from '@/features/ecommerce/storefront/lib/default-company-config';
 import type { StorefrontLocale } from '@/i18n/routing';
 
@@ -40,13 +40,13 @@ function buildPlaceholderLegalPage(slug: LegalPageSlug): StorefrontLegalPage {
 
 export const getStorefrontFaq = cache(async (): Promise<StorefrontFaqItem[]> => {
   const locale = (await getLocale()) as StorefrontLocale;
-  const companyId = getPublicStorefrontCompanyId();
+  const companyId = await getRequestStorefrontCompanyId();
   return storefrontContentRepository.getFaq(companyId, locale);
 });
 
 export const getStorefrontAboutContent = cache(async (): Promise<StorefrontAboutContent> => {
   const locale = (await getLocale()) as StorefrontLocale;
-  const companyId = getPublicStorefrontCompanyId();
+  const companyId = await getRequestStorefrontCompanyId();
   const content = await storefrontContentRepository.getAbout(companyId, locale);
   if (!content) {
     if (isStorefrontBuildFallbackEnabled()) return BUILD_PLACEHOLDER_ABOUT;
@@ -57,7 +57,7 @@ export const getStorefrontAboutContent = cache(async (): Promise<StorefrontAbout
 
 export const getStorefrontContactContent = cache(async (): Promise<StorefrontContactContent> => {
   const locale = (await getLocale()) as StorefrontLocale;
-  const companyId = getPublicStorefrontCompanyId();
+  const companyId = await getRequestStorefrontCompanyId();
   const content = await storefrontContentRepository.getContact(companyId, locale);
   if (!content) {
     if (isStorefrontBuildFallbackEnabled()) return BUILD_PLACEHOLDER_CONTACT;
@@ -68,7 +68,7 @@ export const getStorefrontContactContent = cache(async (): Promise<StorefrontCon
 
 export const getStorefrontLegalPage = cache(async (slug: LegalPageSlug): Promise<StorefrontLegalPage> => {
   const locale = (await getLocale()) as StorefrontLocale;
-  const companyId = getPublicStorefrontCompanyId();
+  const companyId = await getRequestStorefrontCompanyId();
   const page = await storefrontContentRepository.getLegalPage(companyId, slug, locale);
   if (!page) {
     if (isStorefrontBuildFallbackEnabled()) return buildPlaceholderLegalPage(slug);

@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { systemOwnerRoutes } from '@/features/system-owner/constants/routes';
+import { CompanyDomainsTab } from '@/features/system-owner/components/company-domains-tab';
 import { useAuthStore } from '@/features/auth/lib/auth-store';
 import {
   useSystemOwnerCompany,
@@ -49,7 +50,7 @@ import {
 import { ApiError } from '@/shared/api/client';
 import { cn } from '@/shared/utils';
 
-type TabId = 'apps' | 'data' | 'users' | 'superusers';
+type TabId = 'apps' | 'data' | 'users' | 'superusers' | 'domains';
 
 export function SystemOwnerCompanyDetailPage() {
   const params = useParams<{ companyId: string }>();
@@ -90,6 +91,7 @@ export function SystemOwnerCompanyDetailPage() {
                 ['data', 'البيانات الافتراضية'],
                 ['users', 'المستخدمون'],
                 ['superusers', 'Superusers'],
+                ['domains', 'النطاقات'],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -110,6 +112,7 @@ export function SystemOwnerCompanyDetailPage() {
           {tab === 'data' ? <CompanyDataTab companyId={companyId} /> : null}
           {tab === 'users' ? <CompanyUsersTab companyId={companyId} /> : null}
           {tab === 'superusers' ? <CompanySuperusersTab companyId={companyId} /> : null}
+          {tab === 'domains' ? <CompanyDomainsTab companyId={companyId} /> : null}
         </>
       )}
     </div>

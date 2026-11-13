@@ -1,7 +1,9 @@
+import { StorefrontCompanyProvider } from '@/features/ecommerce/storefront/components/storefront-company-provider';
 import { StorefrontShell } from '@/features/ecommerce/storefront/components/storefront-shell';
 import { StorefrontShellCsr } from '@/features/ecommerce/storefront/components/storefront-shell-csr';
 import { getStorefrontCompanyConfig } from '@/features/ecommerce/storefront/lib/get-storefront-company-config';
 import { isStorefrontCsrEnabled } from '@/features/ecommerce/storefront/lib/is-storefront-csr';
+import { getRequestStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company.server';
 import type { Metadata } from 'next';
 
 /** Store pages depend on live backend data; skip static generation at build time. */
@@ -17,9 +19,16 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function StoreLayout({ children }: { children: React.ReactNode }) {
-  if (isStorefrontCsrEnabled()) {
-    return <StorefrontShellCsr>{children}</StorefrontShellCsr>;
-  }
-  return <StorefrontShell>{children}</StorefrontShell>;
+export default async function StoreLayout({ children }: { children: React.ReactNode }) {
+  // The company of this hostname (company domains), for every client component.
+  const companyId = await getRequestStorefrontCompanyId();
+  return (
+    <StorefrontCompanyProvider companyId={companyId}>
+      {isStorefrontCsrEnabled() ? (
+        <StorefrontShellCsr>{children}</StorefrontShellCsr>
+      ) : (
+        <StorefrontShell>{children}</StorefrontShell>
+      )}
+    </StorefrontCompanyProvider>
+  );
 }
