@@ -84,7 +84,8 @@ export function SystemOwnerCompanyDetailPage() {
         <p className="text-sm text-destructive">تعذر تحميل الشركة.</p>
       ) : (
         <>
-          <div className="flex gap-1 rounded-xl border border-border bg-muted/30 p-1">
+          <div className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-muted/30 p-1">
+            {/* Five tabs: on a phone the bar scrolls instead of widening the page. */}
             {(
               [
                 ['apps', 'التطبيقات'],
@@ -99,7 +100,7 @@ export function SystemOwnerCompanyDetailPage() {
                 type="button"
                 onClick={() => setTab(id)}
                 className={cn(
-                  'flex-1 rounded-lg px-3 py-1.5 text-sm transition-colors',
+                  'flex-1 shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors',
                   tab === id ? 'bg-card font-medium shadow-sm' : 'text-muted-foreground',
                 )}
               >

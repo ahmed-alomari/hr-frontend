@@ -422,7 +422,11 @@ function AddDomainDialog({
                 <p className="text-sm">نطاق فرعي من المنصة</p>
                 <p className="text-xs text-muted-foreground">يعمل فوراً دون إعداد DNS.</p>
               </div>
-              <Switch checked={usePlatform} onCheckedChange={setUsePlatform} />
+              <Switch
+                checked={usePlatform}
+                onCheckedChange={setUsePlatform}
+                aria-label="نطاق فرعي من المنصة"
+              />
             </div>
           ) : null}
 
