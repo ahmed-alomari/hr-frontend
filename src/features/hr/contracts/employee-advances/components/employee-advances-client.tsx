@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Plus, Banknote, Send, CalendarDays } from 'lucide-react';
 import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
+import { RejectReasonDialog } from '@/components/approval/reject-reason-dialog';
 import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
 import {
   employeeStatusFilterLabelAr,
@@ -499,6 +500,12 @@ export function EmployeeAdvancesClient() {
     }
   }, [approve, companyId, currentEmployeeId, decidedByActor, reloadList]);
 
+  const [rejectTarget, setRejectTarget] = React.useState<{
+    advance: HREmployeeAdvance;
+    states: Parameters<typeof buildEmployeeAdvanceDecisionPayload>[0];
+  } | null>(null);
+
+  /** Checks the approver may act, then asks for the reason before rejecting. */
   const handleRejectAdvance = React.useCallback(async (x: HREmployeeAdvance) => {
     if (!companyId || !currentEmployeeId) return;
     try {
@@ -512,11 +519,22 @@ export function EmployeeAdvancesClient() {
         toast.warning(access.message);
         return;
       }
+      setRejectTarget({ advance: x, states: access.states });
+    } catch (e) {
+      const { displayMessage } = handleApiError(e, 'employee-advances/decide.reject');
+      toast.error(displayMessage);
+    }
+  }, [companyId, currentEmployeeId]);
+
+  const confirmRejectAdvance = React.useCallback(async (reason: string) => {
+    if (!rejectTarget || !currentEmployeeId) return;
+    const x = rejectTarget.advance;
+    try {
       const payload = buildEmployeeAdvanceDecisionPayload(
-        access.states,
+        rejectTarget.states,
         currentEmployeeId,
         'reject',
-        { decidedBy: decidedByActor },
+        { notes: reason, decidedBy: decidedByActor },
       );
       setActionLoadingId(x.id);
       await reject(x.id, payload);
@@ -530,10 +548,11 @@ export function EmployeeAdvancesClient() {
       } else {
         toast.error(displayMessage);
       }
+      throw e;
     } finally {
       setActionLoadingId(null);
     }
-  }, [companyId, currentEmployeeId, decidedByActor, reject, reloadList]);
+  }, [currentEmployeeId, decidedByActor, reject, rejectTarget, reloadList]);
 
   const canShowApprovalActions = React.useCallback(
     (x: HREmployeeAdvance) =>
@@ -1236,6 +1255,17 @@ export function EmployeeAdvancesClient() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <RejectReasonDialog
+        open={rejectTarget != null}
+        onOpenChange={(open) => { if (!open) setRejectTarget(null); }}
+        kind="advance"
+        title="رفض طلب السلفة"
+        description={rejectTarget
+          ? `${rejectTarget.advance.employeeNameAr} · ${rejectTarget.advance.advanceNumber}`
+          : undefined}
+        onConfirm={confirmRejectAdvance}
+      />
     </>
   );
 }

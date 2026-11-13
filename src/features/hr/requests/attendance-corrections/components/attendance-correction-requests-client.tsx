@@ -16,6 +16,7 @@ import { DirectoryPagedViews, useServerDirectoryPagination } from '@/components/
 import { correctionRequestsApi } from '@/features/hr/requests/lib/api/correction-requests';
 import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
 import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
+import { RejectReasonDialog } from '@/components/approval/reject-reason-dialog';
 import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
 import {
   employeeStatusFilterLabelAr,
@@ -386,6 +387,12 @@ export function AttendanceCorrectionRequestsClient() {
     }
   }, [approve, companyId, currentEmployeeId, reloadList, updatedByActor]);
 
+  const [rejectTarget, setRejectTarget] = React.useState<{
+    row: AttendanceCorrectionRequest;
+    states: Parameters<typeof buildRequestCorrectionDecisionPayload>[0];
+  } | null>(null);
+
+  /** Checks the approver may act, then asks for the reason before rejecting. */
   const handleReject = React.useCallback(async (r: AttendanceCorrectionRequest) => {
     if (!companyId || !currentEmployeeId) return;
     try {
@@ -399,21 +406,32 @@ export function AttendanceCorrectionRequestsClient() {
         toast.warning(access.message);
         return;
       }
+      setRejectTarget({ row: r, states: access.states });
+    } catch (err) {
+      const { displayMessage } = handleApiError(err, 'correction-requests.decide.reject');
+      toast.error(displayMessage);
+    }
+  }, [companyId, currentEmployeeId]);
+
+  const confirmReject = React.useCallback(async (reason: string) => {
+    if (!rejectTarget || !currentEmployeeId) return;
+    try {
       const payload = buildRequestCorrectionDecisionPayload(
-        access.states,
+        rejectTarget.states,
         currentEmployeeId,
         'reject',
-        { updatedBy: updatedByActor },
+        { decisionNotesAr: reason, updatedBy: updatedByActor },
       );
-      await reject(r.id, payload);
+      await reject(rejectTarget.row.id, payload);
       toast.message('تم رفض الطلب.');
       await reloadList();
       setDetailRow(null);
     } catch (err) {
       const { displayMessage } = handleApiError(err, 'correction-requests.decide.reject');
       toast.error(displayMessage);
+      throw err;
     }
-  }, [companyId, currentEmployeeId, reject, reloadList, updatedByActor]);
+  }, [currentEmployeeId, reject, rejectTarget, reloadList, updatedByActor]);
 
   const canShowApprovalActions = React.useCallback(
     (r: AttendanceCorrectionRequest) =>
@@ -828,6 +846,15 @@ export function AttendanceCorrectionRequestsClient() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <RejectReasonDialog
+        open={rejectTarget != null}
+        onOpenChange={(open) => { if (!open) setRejectTarget(null); }}
+        kind="attendance"
+        title="رفض طلب تصحيح الحضور"
+        description={rejectTarget ? `${rejectTarget.row.employeeNameAr} · ${rejectTarget.row.workDate}` : undefined}
+        onConfirm={confirmReject}
+      />
     </div>
   );
 }

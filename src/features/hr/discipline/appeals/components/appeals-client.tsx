@@ -60,6 +60,8 @@ import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-con
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { DisciplineListViewport, DisciplinePaginatedList } from '@/features/hr/discipline/components/discipline-paginated-list';
+import { RejectReasonSuggestions } from '@/components/approval/reject-reason-dialog';
+import { isRejectReasonValid, REJECT_REASON_MIN_LENGTH } from '@/components/approval/reject-reasons';
 
 const CHANNEL_OPTIONS = (Object.entries(APPEAL_CHANNEL_LABELS) as [HRAppealChannel, string][]).map(([v, l]) => ({ value: v, label: l }));
 
@@ -312,6 +314,10 @@ export function AppealsClient() {
     if (!decisionTarget) return;
     if (!decisionNote.trim()) {
       setDecisionError('رد الموارد البشرية مطلوب');
+      return;
+    }
+    if (decisionTarget.status === 'rejected' && !isRejectReasonValid(decisionNote)) {
+      setDecisionError(`سبب الرفض مطلوب (${REJECT_REASON_MIN_LENGTH} أحرف على الأقل)`);
       return;
     }
     setDecisionError(null);
@@ -674,7 +680,19 @@ export function AppealsClient() {
             </div>
           ) : null}
 
-          <FormField label="رد الموارد البشرية" required>
+          {decisionTarget?.status === 'rejected' ? (
+            <RejectReasonSuggestions
+              kind="appeal"
+              value={decisionNote}
+              onChange={(next) => {
+                setDecisionNote(next);
+                if (decisionError) setDecisionError(null);
+              }}
+              disabled={deciding}
+            />
+          ) : null}
+
+          <FormField label={decisionTarget?.status === 'rejected' ? 'سبب رفض التظلم' : 'رد الموارد البشرية'} required>
             <textarea
               value={decisionNote}
               onChange={(e) => {

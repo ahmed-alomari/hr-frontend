@@ -47,6 +47,7 @@ import {
 import type { ApiRequestType } from '@/features/hr/requests/lib/api/request-types';
 import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
 import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
+import { RejectReasonDialog } from '@/components/approval/reject-reason-dialog';
 import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
 import {
   CREATE_PICKER_ACTIVE_ONLY,
@@ -734,6 +735,12 @@ export function UnifiedManagementClient() {
     }
   }, [companyId, currentEmployeeId, detailLeave?.id, reloadLeaves, updatedByActor]);
 
+  const [rejectTarget, setRejectTarget] = React.useState<{
+    leave: UnifiedLeaveRecord;
+    states: Parameters<typeof buildRequestCorrectionDecisionPayload>[0];
+  } | null>(null);
+
+  /** Checks the approver may act, then asks for the reason before rejecting. */
   const handleReject = React.useCallback(async (leave: UnifiedLeaveRecord) => {
     if (!companyId || !currentEmployeeId) return;
     try {
@@ -747,11 +754,22 @@ export function UnifiedManagementClient() {
         toast.warning(access.message);
         return;
       }
+      setRejectTarget({ leave, states: access.states });
+    } catch (err) {
+      const { displayMessage } = handleApiError(err, 'leave-requests.decide.reject');
+      toast.error(displayMessage);
+    }
+  }, [companyId, currentEmployeeId]);
+
+  const confirmReject = React.useCallback(async (reason: string) => {
+    if (!rejectTarget || !currentEmployeeId) return;
+    const { leave, states } = rejectTarget;
+    try {
       const payload = buildRequestCorrectionDecisionPayload(
-        access.states,
+        states,
         currentEmployeeId,
         'reject',
-        { updatedBy: updatedByActor },
+        { decisionNotesAr: reason, updatedBy: updatedByActor },
       );
       const updated = await leaveRequestsNewApi.decide(leave.id, payload);
       const mapped = mapApiLeave(updated, leaveTypesRef.current);
@@ -761,8 +779,9 @@ export function UnifiedManagementClient() {
     } catch (err) {
       const { displayMessage } = handleApiError(err, 'leave-requests.decide.reject');
       toast.error(displayMessage);
+      throw err;
     }
-  }, [companyId, currentEmployeeId, detailLeave?.id, reloadLeaves, updatedByActor]);
+  }, [currentEmployeeId, detailLeave?.id, rejectTarget, reloadLeaves, updatedByActor]);
 
   const activeFilterCount =
     (branchId !== 'all' ? 1 : 0) + (departmentId !== 'all' ? 1 : 0) +
@@ -906,6 +925,17 @@ export function UnifiedManagementClient() {
           onClose={() => setDetailLeave(null)}
         />
       )}
+
+      <RejectReasonDialog
+        open={rejectTarget != null}
+        onOpenChange={(open) => { if (!open) setRejectTarget(null); }}
+        kind="leave"
+        title="رفض طلب الإجازة"
+        description={rejectTarget
+          ? `${employeeDisplayName(rejectTarget.leave, employeesList)} · ${leaveTypeDisplayLabel(rejectTarget.leave)} · ${rejectTarget.leave.start} إلى ${rejectTarget.leave.end}`
+          : undefined}
+        onConfirm={confirmReject}
+      />
 
       {/* Add/Edit dialog */}
       <AddLeaveDialog

@@ -314,13 +314,15 @@ export function useOvertimeRequestsDirectoryModel() {
     }
   }, [actor, companyId, currentEmployeeId, reloadList]);
 
-  const handleReject = React.useCallback(async (x: OvertimeRequestRecord) => {
+  /** Rejects with the reason the approver wrote; throws so the reason dialog stays open on failure. */
+  const handleReject = React.useCallback(async (x: OvertimeRequestRecord, reason: string) => {
     if (!companyId) return;
     try {
       setActionLoadingId(x.id);
       await overtimeRequestsApi.decide(x.id, {
         decision: 'reject',
         ...(currentEmployeeId ? { approverEmployeeId: currentEmployeeId, decidedByEmployeeId: currentEmployeeId } : {}),
+        decisionNotesAr: reason,
         updatedBy: actor,
       });
       toast.message('تم رفض طلب العمل الإضافي.');
@@ -329,6 +331,7 @@ export function useOvertimeRequestsDirectoryModel() {
     } catch (err) {
       const { displayMessage } = handleApiError(err, 'overtime-requests.decide.reject');
       toast.error(displayMessage);
+      throw err;
     } finally {
       setActionLoadingId(null);
     }

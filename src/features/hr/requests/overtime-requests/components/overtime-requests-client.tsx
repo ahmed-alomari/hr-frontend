@@ -38,6 +38,7 @@ import {
 import { ForbiddenState } from '@/components/shared/forbidden-state';
 import { DurationMinutesDisplay } from '@/components/shared/duration-minutes-display';
 import { Can } from '@/components/shared/can';
+import { RejectReasonDialog } from '@/components/approval/reject-reason-dialog';
 import { cn, formatTime } from '@/shared/utils';
 import { STATUS_PILL } from '@/shared/status-pill-classes';
 import {
@@ -177,6 +178,7 @@ export function OvertimeRequestsClient() {
 
   const [approveChoice, setApproveChoice] = React.useState<'requested' | 'actual'>('requested');
   const [approveNotes, setApproveNotes] = React.useState('');
+  const [rejectTarget, setRejectTarget] = React.useState<OvertimeRequestRecord | null>(null);
 
   const [formBreakdown, setFormBreakdown] = React.useState<DailyBreakdownResponseDto | null>(null);
   const [formBreakdownLoading, setFormBreakdownLoading] = React.useState(false);
@@ -391,7 +393,7 @@ export function OvertimeRequestsClient() {
                 currentEmployeeId={m.currentEmployeeId}
                 getUiState={() => m.getApprovalUiState(x)}
                 onApprove={() => openApprove(x)}
-                onReject={() => void m.handleReject(x)}
+                onReject={() => setRejectTarget(x)}
               />
             ) : null}
             <TableRowActions menuItems={menuItems} />
@@ -469,7 +471,7 @@ export function OvertimeRequestsClient() {
                           ? {
                               showApproveReject: true,
                               onApprove: () => openApprove(x),
-                              onReject: () => void m.handleReject(x),
+                              onReject: () => setRejectTarget(x),
                               disabled: !m.getApprovalUiState(x).canAct,
                               waitingReason: m.getApprovalUiState(x).reasonAr ?? undefined,
                             }
@@ -668,7 +670,7 @@ export function OvertimeRequestsClient() {
                   currentEmployeeId={m.currentEmployeeId}
                   getUiState={() => m.getApprovalUiState(m.detailTarget!)}
                   onApprove={() => openApprove(m.detailTarget!)}
-                  onReject={() => void m.handleReject(m.detailTarget!)}
+                  onReject={() => setRejectTarget(m.detailTarget!)}
                 />
               ) : null}
             </div>
@@ -772,6 +774,17 @@ export function OvertimeRequestsClient() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <RejectReasonDialog
+        open={rejectTarget != null}
+        onOpenChange={(open) => { if (!open) setRejectTarget(null); }}
+        kind="overtime"
+        title="رفض طلب العمل الإضافي"
+        description={rejectTarget ? `${rejectTarget.employeeNameAr} · ${rejectTarget.workDate}` : undefined}
+        onConfirm={async (reason) => {
+          if (rejectTarget) await m.handleReject(rejectTarget, reason);
+        }}
+      />
     </>
   );
 }
