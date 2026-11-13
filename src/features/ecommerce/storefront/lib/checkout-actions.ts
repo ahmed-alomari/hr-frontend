@@ -7,6 +7,7 @@ import type {
 } from '@/features/ecommerce/storefront/domain/checkout';
 import { storefrontOrdersRepository } from '@/features/ecommerce/storefront/lib/repositories/storefront-orders-repository';
 import { getRequestStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company.server';
+import { clientAddressHeaders } from '@/features/ecommerce/storefront/lib/client-address.server';
 import { StoreHttpError } from '@/features/ecommerce/storefront/lib/api/store-http';
 import {
   STORE_CURRENCY_MISMATCH_ERROR,
@@ -65,7 +66,7 @@ export async function placeStorefrontOrder(
         mapAddress: address.mapAddress?.trim() || undefined,
       },
       customerNote: input.customerNote?.trim() || null,
-    });
+    }, await clientAddressHeaders());
     return { ok: true, order };
   } catch (error) {
     if (error instanceof StoreHttpError) {
@@ -103,7 +104,10 @@ export async function getStorefrontOrderByNumber(
   options?: { phone?: string | null; accessToken?: string | null },
 ): Promise<StorefrontCustomerOrder | null> {
   const companyId = await getRequestStorefrontCompanyId();
-  return storefrontOrdersRepository.getByOrderNumber(companyId, orderNumber, options);
+  return storefrontOrdersRepository.getByOrderNumber(companyId, orderNumber, {
+    ...options,
+    clientHeaders: await clientAddressHeaders(),
+  });
 }
 
 export async function getStorefrontOrdersByNumbers(
@@ -121,11 +125,12 @@ export async function getStorefrontOrdersByNumbers(
     }
   }
   const orders: StorefrontCustomerOrder[] = [];
+  const clientHeaders = await clientAddressHeaders();
   for (const lookup of unique.values()) {
     const order = await storefrontOrdersRepository.getByOrderNumber(
       companyId,
       lookup.orderNumber,
-      { phone: lookup.phone },
+      { phone: lookup.phone, clientHeaders },
     );
     if (order) orders.push(order);
   }

@@ -378,6 +378,8 @@ function mapStorefrontOrder(dto: StoreOrderDto): StorefrontCustomerOrder {
 export async function placePublicStoreOrder(
   input: PlaceOrderInput,
   partnerToken?: string | null,
+  /** Server actions: the customer's X-Forwarded-For (API rate limits). */
+  clientHeaders?: Record<string, string>,
 ): Promise<StorefrontCustomerOrder> {
   const proofUrls = resolvePaymentProofUrls({
     paymentProofUrls: input.paymentProofUrls,
@@ -393,7 +395,7 @@ export async function placePublicStoreOrder(
     publicStoreRequest<StoreOrderDto>('/public/store/orders', {
       method: 'POST',
       token: partnerToken,
-      headers: { 'Idempotency-Key': idempotencyKey },
+      headers: { ...clientHeaders, 'Idempotency-Key': idempotencyKey },
       body: {
         companyId: resolveStorefrontCompanyId(input.companyId),
         paymentMethod: input.paymentMethod,
@@ -456,10 +458,13 @@ export async function fetchPublicStoreOrder(input: {
   orderNumber: string;
   phone?: string | null;
   partnerToken?: string | null;
+  /** Server actions: the customer's X-Forwarded-For (API rate limits). */
+  clientHeaders?: Record<string, string>;
 }): Promise<StorefrontCustomerOrder | null> {
   return publicStoreRequest<StoreOrderDto>(
     `/public/store/orders/${encodeURIComponent(input.orderNumber)}`,
     {
+      headers: input.clientHeaders,
       query: {
         companyId: resolveStorefrontCompanyId(input.companyId),
         phone: input.phone?.trim() || undefined,

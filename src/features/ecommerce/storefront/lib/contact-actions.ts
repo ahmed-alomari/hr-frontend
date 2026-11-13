@@ -6,6 +6,7 @@ import {
 } from '@/features/ecommerce/shared/lib/api/store-content-api';
 import { isStoreHttpEnabled } from '@/features/ecommerce/storefront/lib/api/store-http';
 import { getRequestStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company.server';
+import { clientAddressHeaders } from '@/features/ecommerce/storefront/lib/client-address.server';
 
 export async function submitStorefrontContactMessage(input: {
   name: string;
@@ -35,6 +36,7 @@ export async function submitStorefrontContactMessage(input: {
       phone: phone || undefined,
       type: input.type,
       message,
+      clientHeaders: await clientAddressHeaders(),
     });
     return { ok: true };
   } catch (error) {

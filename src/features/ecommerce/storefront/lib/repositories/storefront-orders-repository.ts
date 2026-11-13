@@ -14,20 +14,27 @@ import {
  * Customer-facing storefront orders — HTTP only (store-frontend-binding.md §3).
  */
 export const storefrontOrdersRepository = {
-  async placeOrder(input: PlaceOrderInput): Promise<StorefrontCustomerOrder> {
+  async placeOrder(
+    input: PlaceOrderInput,
+    clientHeaders?: Record<string, string>,
+  ): Promise<StorefrontCustomerOrder> {
     if (input.lines.length === 0) {
       throw new Error('EMPTY_CART');
     }
     if (!isStoreHttpEnabled()) {
       throw new Error('STORE_HTTP_DISABLED');
     }
-    return placePublicStoreOrder(input, input.accessToken);
+    return placePublicStoreOrder(input, input.accessToken, clientHeaders);
   },
 
   async getByOrderNumber(
     companyId: string,
     orderNumber: string,
-    options?: { phone?: string | null; accessToken?: string | null },
+    options?: {
+      phone?: string | null;
+      accessToken?: string | null;
+      clientHeaders?: Record<string, string>;
+    },
   ): Promise<StorefrontCustomerOrder | null> {
     if (!isStoreHttpEnabled()) return null;
     return fetchPublicStoreOrder({
@@ -35,6 +42,7 @@ export const storefrontOrdersRepository = {
       orderNumber,
       phone: options?.phone,
       partnerToken: options?.accessToken,
+      clientHeaders: options?.clientHeaders,
     });
   },
 

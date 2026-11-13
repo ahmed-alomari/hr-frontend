@@ -327,9 +327,12 @@ export async function submitPublicContactMessage(input: {
   phone?: string;
   message: string;
   type: StoreContactMessageType;
+  /** Server actions: the customer's X-Forwarded-For (API rate limits). */
+  clientHeaders?: Record<string, string>;
 }) {
   return publicStoreRequest('/public/store/contact-messages', {
     method: 'POST',
+    headers: input.clientHeaders,
     body: {
       companyId: resolveStorefrontCompanyId(input.companyId),
       name: input.name,
