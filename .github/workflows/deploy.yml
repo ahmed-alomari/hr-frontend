@@ -149,6 +149,15 @@ jobs:
               exit 1
             }
 
+            # الصور باسم مالك المستودع الحالي (تغيّر اسم حساب GitHub، 2026-11-13).
+            # يتكرر بأمان؛ نسخة احتياطية قبل التعديل. نشر الباك اند يفعل الشيء نفسه.
+            OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+            if grep -E "image: ghcr\.io/[^/]+/(backend|frontend):" docker-compose.yml | grep -vq "ghcr.io/${OWNER}/"; then
+              cp docker-compose.yml "docker-compose.yml.bak-$(date +%Y%m%d%H%M%S)"
+              sed -i -E "s#image: ghcr\.io/[^/]+/(backend|frontend):#image: ghcr.io/${OWNER}/\1:#" docker-compose.yml
+              echo "docker-compose.yml: الصور من ghcr.io/${OWNER}"
+            fi
+
             # خدمة هذا المستودع وحدها — الباك اند لا يُعاد تشغيله
             docker compose pull ${{ env.SERVICE }}
             docker compose up -d ${{ env.SERVICE }}
