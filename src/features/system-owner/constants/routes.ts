@@ -10,6 +10,8 @@ export const systemOwnerRoutes = {
   requests: `${SYSTEM_OWNER_BASE}/requests`,
   /** Platform status of every application (started / stopped for all companies). */
   applications: `${SYSTEM_OWNER_BASE}/applications`,
+  /** Read-only: request limits in force (rate limits). */
+  security: `${SYSTEM_OWNER_BASE}/security`,
 } as const;
 
 export function isSystemOwnerAppPath(pathname: string): boolean {

@@ -293,6 +293,12 @@ export const systemOwnerNavConfig: NavItem[] = [
     href: systemOwnerRoutes.applications,
     icon: LayoutGrid,
   },
+  {
+    key: 'system-owner-security',
+    label: 'حماية المنصة',
+    href: systemOwnerRoutes.security,
+    icon: ShieldCheck,
+  },
 ];
 
 export const systemNavConfig: NavItem[] = [
