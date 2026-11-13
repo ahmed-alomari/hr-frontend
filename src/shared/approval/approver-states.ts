@@ -197,3 +197,58 @@ export function formatApproverStatesSummary(states: ApproverStatesSnapshot): str
     .map((a) => `${a.employeeNameAr}: ${approverStatusLabelAr(a.status)}`)
     .join(' · ');
 }
+
+/** Outcome of the whole workflow, decided exactly as the server does (`request-approval.util.ts`). */
+export function approvalWorkflowOutcome(
+  states: ApproverStatesSnapshot,
+): 'pending' | 'approved' | 'rejected' {
+  const approvers = states.approvers;
+  if (approvers.length === 0) return 'pending';
+  const approved = approvers.filter((a) => a.status === 'approved').length;
+  const rejected = approvers.filter((a) => a.status === 'rejected').length;
+  if (states.approvalMode === 'sequential' || states.approvalMode === 'parallel') {
+    if (rejected > 0) return 'rejected';
+    return approved === approvers.length ? 'approved' : 'pending';
+  }
+  if (approved > 0) return 'approved';
+  return rejected === approvers.length ? 'rejected' : 'pending';
+}
+
+/**
+ * What an approver row shows. An approver who never acted on a request that
+ * is already closed (rejected or approved by others, or cancelled) is not
+ * «قيد الانتظار»: nothing waits on them any more.
+ *
+ * - `not_reached`: sequential flow ended before their turn («لم يصل دوره»).
+ * - `not_needed`: the others settled it, or the request was withdrawn («لم يعد مطلوباً»).
+ */
+export type ApproverDisplayStatus = ApproverEntryStatus | 'not_reached' | 'not_needed';
+
+/** Request statuses that still wait for approvers; any other status means the request is closed. */
+const OPEN_REQUEST_STATUSES = new Set(['pending', 'pending_approval', 'draft']);
+
+export function approverDisplayStatus(
+  states: ApproverStatesSnapshot,
+  entry: Pick<ApproverStateEntry, 'status'>,
+  requestStatus?: string | null,
+): ApproverDisplayStatus {
+  if (entry.status !== 'pending') return entry.status;
+  const outcome = approvalWorkflowOutcome(states);
+  if (outcome === 'pending') {
+    const requestClosed = requestStatus != null && !OPEN_REQUEST_STATUSES.has(requestStatus);
+    return requestClosed ? 'not_needed' : 'pending';
+  }
+  return states.approvalMode === 'sequential' && outcome === 'rejected' ? 'not_reached' : 'not_needed';
+}
+
+const APPROVER_DISPLAY_LABELS: Record<ApproverDisplayStatus, string> = {
+  pending: approverStatusLabelAr('pending'),
+  approved: approverStatusLabelAr('approved'),
+  rejected: approverStatusLabelAr('rejected'),
+  not_reached: 'لم يصل دوره',
+  not_needed: 'لم يعد مطلوباً',
+};
+
+export function approverDisplayStatusLabelAr(status: ApproverDisplayStatus): string {
+  return APPROVER_DISPLAY_LABELS[status];
+}

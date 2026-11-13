@@ -1034,7 +1034,7 @@ function LeaveTable({ leaves, employees, branches, currentEmployeeId, onDetail, 
       key: 'approvers',
       title: 'مسار الموافقة',
       hideOnMobile: true,
-      render: (l) => <RequestApproversInline states={l.approverStates} />,
+      render: (l) => <RequestApproversInline states={l.approverStates} requestStatus={l.status} />,
     },
     {
       key: 'department',
@@ -1103,7 +1103,7 @@ function LeaveTable({ leaves, employees, branches, currentEmployeeId, onDetail, 
                 ملاحظات القرار: {l.decisionNotesAr}
               </p>
             ) : null}
-            <RequestApproversInline states={l.approverStates} />
+            <RequestApproversInline states={l.approverStates} requestStatus={l.status} />
             {showApproval ? (
               <RequestApprovalActionButtons
                 states={l.approverStates}
@@ -1201,7 +1201,7 @@ function LeaveCardGrid({ leaves, employees, currentEmployeeId, onDetail, onAppro
                   />
                 ) : null}
                 {l.approverStates ? (
-                  <RequestApproverStatesPanel states={l.approverStates} compact className="border-0 bg-transparent p-0" />
+                  <RequestApproverStatesPanel states={l.approverStates} requestStatus={l.status} compact className="border-0 bg-transparent p-0" />
                 ) : null}
               </div>
             }
@@ -1277,7 +1277,7 @@ function LeaveDetailDialog({ leave, employees, open, onClose }: {
 
           <Separator />
 
-          <RequestApproverStatesPanel states={leave.approverStates} />
+          <RequestApproverStatesPanel states={leave.approverStates} requestStatus={leave.status} />
 
           <div>
             <p className="mb-3 text-sm font-semibold">القرار</p>

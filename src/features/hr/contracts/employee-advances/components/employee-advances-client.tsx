@@ -781,7 +781,7 @@ export function EmployeeAdvancesClient() {
       title: 'مسار الموافقة',
       headerClassName: 'whitespace-nowrap',
       className: 'min-w-[14rem]',
-      render: (x) => <RequestApproversInline states={x.approverStates} />,
+      render: (x) => <RequestApproversInline states={x.approverStates} requestStatus={x.status} />,
     },
     {
       key: 'decisionNotes',
@@ -1035,6 +1035,7 @@ export function EmployeeAdvancesClient() {
               >
                 <RequestApproverStatesPanel
                   states={x.approverStates}
+                  requestStatus={x.status}
                   compact
                   className="border-0 bg-transparent p-0"
                 />
@@ -1241,8 +1242,8 @@ export function EmployeeAdvancesClient() {
                   </div>
                 ) : null}
               </div>
-              <RequestApproversInline states={detailAdvance.approverStates} />
-              <RequestApproverStatesPanel states={detailAdvance.approverStates} />
+              <RequestApproversInline states={detailAdvance.approverStates} requestStatus={detailAdvance.status} />
+              <RequestApproverStatesPanel states={detailAdvance.approverStates} requestStatus={detailAdvance.status} />
               {canShowApprovalActions(detailAdvance) ? (
                 <RequestApprovalActionButtons
                   states={detailAdvance.approverStates}

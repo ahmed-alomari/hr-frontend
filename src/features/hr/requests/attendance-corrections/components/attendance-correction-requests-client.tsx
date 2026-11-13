@@ -622,7 +622,7 @@ export function AttendanceCorrectionRequestsClient() {
         key: 'approvers',
         title: 'مسار الموافقة',
         hideOnMobile: true,
-        render: (r) => <RequestApproversInline states={r.approverStates} />,
+        render: (r) => <RequestApproversInline states={r.approverStates} requestStatus={r.status} />,
       },
       {
         key: 'decisionNotes',
@@ -766,7 +766,7 @@ export function AttendanceCorrectionRequestsClient() {
                         previousCheckOut={r.previousCheckOut}
                         correctedPeriods={r.correctedPeriods}
                       />
-                      <RequestApproverStatesPanel states={r.approverStates} compact className="border-0 bg-transparent p-0" />
+                      <RequestApproverStatesPanel states={r.approverStates} requestStatus={r.status} compact className="border-0 bg-transparent p-0" />
                     </EntityActionCard>
                   ))}
                 </EntityActionCardGrid>
@@ -819,7 +819,7 @@ export function AttendanceCorrectionRequestsClient() {
                 <div className="sm:col-span-2"><p className="text-xs text-muted-foreground">ملاحظات القرار</p><p className="text-sm">{detailRow.decisionNotesAr || '—'}</p></div>
               </div>
 
-              <RequestApproverStatesPanel states={detailRow.approverStates} />
+              <RequestApproverStatesPanel states={detailRow.approverStates} requestStatus={detailRow.status} />
               {canShowApprovalActions(detailRow) ? (
                 <RequestApprovalActionButtons
                   states={detailRow.approverStates}

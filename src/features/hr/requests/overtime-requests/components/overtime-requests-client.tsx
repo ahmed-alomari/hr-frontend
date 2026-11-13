@@ -359,7 +359,7 @@ export function OvertimeRequestsClient() {
       key: 'approvers',
       title: 'مسار الموافقة',
       hideOnMobile: true,
-      render: (x) => <RequestApproversInline states={x.approverStates} />,
+      render: (x) => <RequestApproversInline states={x.approverStates} requestStatus={x.status} />,
     },
     {
       key: 'decisionNotes',
@@ -507,7 +507,7 @@ export function OvertimeRequestsClient() {
                         ) : undefined
                       }
                     >
-                      <RequestApproverStatesPanel states={x.approverStates} compact className="border-0 bg-transparent p-0" />
+                      <RequestApproverStatesPanel states={x.approverStates} requestStatus={x.status} compact className="border-0 bg-transparent p-0" />
                     </EntityActionCard>
                   );
                 })}
@@ -663,7 +663,7 @@ export function OvertimeRequestsClient() {
                 error={m.breakdownError}
                 breakdown={m.dailyBreakdown}
               />
-              <RequestApproverStatesPanel states={m.detailTarget.approverStates} />
+              <RequestApproverStatesPanel states={m.detailTarget.approverStates} requestStatus={m.detailTarget.status} />
               {m.canShowApprovalActions(m.detailTarget) ? (
                 <ApprovalActionButtons
                   states={m.detailTarget.approverStates}
