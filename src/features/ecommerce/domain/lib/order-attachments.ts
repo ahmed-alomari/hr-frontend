@@ -1,22 +1,17 @@
-import { compressPaymentProofToDataUrl } from '@/features/ecommerce/domain/lib/payment-proofs';
+import { compressImageToJpeg } from '@/features/ecommerce/domain/lib/payment-proofs';
 import type { CreateStoreOrderAttachmentInput } from '@/features/ecommerce/domain/types/order';
+import { resolveApiBaseUrl } from '@/shared/api-base-url';
+import { publicConfig } from '@/shared/config';
+import { resolveUploadUrl } from '@/shared/resolve-upload-url';
 
 /** Backend caps attachments uploaded with a single order at 20. */
 export const MAX_ORDER_ATTACHMENTS = 20;
-/** Original file size cap (per file) before encoding. */
+/** Original file size cap (per file); the server accepts up to 5 MB. */
 export const MAX_ORDER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
-/**
- * Non-image files (e.g. PDF) can't be compressed and are embedded as a data URL,
- * so keep the *original* size low enough that base64 (+~33%) stays under the
- * request body limit and the server doesn't reject the whole order with a 413.
- */
-export const MAX_ORDER_ATTACHMENT_FILE_BYTES = 3 * 1024 * 1024;
-/** Hard cap on the encoded data URL length actually sent to the API. */
-export const MAX_ORDER_ATTACHMENT_ENCODED_BYTES = 5 * 1024 * 1024;
 /** File picker accept list — images + PDF cover the common receipt/ID cases. */
 export const ORDER_ATTACHMENT_ACCEPT = 'image/*,application/pdf';
 
-/** Thrown by `fileToOrderAttachment` with a user-facing Arabic message. */
+/** Thrown by the upload helpers with a user-facing Arabic message. */
 export class OrderAttachmentError extends Error {}
 
 export function isImageMime(mime?: string | null): boolean {
@@ -38,53 +33,87 @@ export function formatAttachmentSize(bytes: string | number | null | undefined):
   return `${rounded} ${units[unit]}`;
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error('READ_FAILED'));
-    reader.readAsDataURL(file);
-  });
+function jpegName(name: string): string {
+  const base = name.replace(/\.[^.]+$/, '') || 'receipt';
+  return `${base}.jpg`;
 }
 
 /**
- * Convert a picked file into the attachment payload the order API expects.
- * There is no separate upload endpoint in the frontend, so the file is embedded
- * as a data URL (images are compressed like payment proofs; other types read as-is)
- * and sent through `fileUrl`.
+ * Uploads a receipt or attachment for a store order (store plan A3) and
+ * returns a link the order accepts: `POST /public/store/order-files`. The
+ * order itself only stores the file's path, never its content and never an
+ * outside link. Images are re-encoded as JPEG first (smaller, no metadata).
  */
+export async function uploadStoreOrderFile(
+  companyId: string,
+  file: File,
+): Promise<{ url: string; fileName: string; mimeType: string; sizeBytes: number }> {
+  if (file.size > MAX_ORDER_ATTACHMENT_BYTES) {
+    throw new OrderAttachmentError(
+      `${file.name}: حجم الملف كبير جداً (الحد ${formatAttachmentSize(MAX_ORDER_ATTACHMENT_BYTES)}).`,
+    );
+  }
+  const isImage = file.type.startsWith('image/');
+  let body: Blob = file;
+  let fileName = file.name;
+  if (isImage) {
+    try {
+      body = await compressImageToJpeg(file);
+      fileName = jpegName(file.name);
+    } catch {
+      throw new OrderAttachmentError(`${file.name}: تعذّرت قراءة الصورة. جرّب صورة أخرى.`);
+    }
+  }
+  const form = new FormData();
+  form.append('file', body, fileName);
+
+  const base = resolveApiBaseUrl(publicConfig.apiUrl).replace(/\/$/, '');
+  let response: Response;
+  try {
+    response = await fetch(
+      `${base}/public/store/order-files?companyId=${encodeURIComponent(companyId)}`,
+      { method: 'POST', body: form },
+    );
+  } catch {
+    throw new OrderAttachmentError(`${file.name}: تعذّر الاتصال. تحقق من الإنترنت وحاول مجدداً.`);
+  }
+  const payload = (await response.json().catch(() => null)) as {
+    message?: string | string[];
+    data?: { url?: string; mimeType?: string; size?: number };
+  } | null;
+  if (!response.ok || !payload?.data?.url) {
+    const message = Array.isArray(payload?.message)
+      ? payload?.message.join(' · ')
+      : payload?.message;
+    throw new OrderAttachmentError(
+      `${file.name}: ${message?.trim() || 'تعذّر رفع الملف. حاول مجدداً.'}`,
+    );
+  }
+  return {
+    // Browser-loadable (through the API proxy) and accepted by the order.
+    url: resolveUploadUrl(payload.data.url),
+    fileName,
+    mimeType: payload.data.mimeType || body.type || file.type,
+    sizeBytes: payload.data.size ?? body.size,
+  };
+}
+
+/** Upload a picked file and build the attachment the order API expects. */
 export async function fileToOrderAttachment(
+  companyId: string,
   file: File,
   label?: string | null,
 ): Promise<CreateStoreOrderAttachmentInput> {
-  const isImage = file.type.startsWith('image/');
-
-  // Non-image files are embedded uncompressed, so cap the raw size up front.
-  if (!isImage && file.size > MAX_ORDER_ATTACHMENT_FILE_BYTES) {
-    throw new OrderAttachmentError(
-      `${file.name}: حجم الملف كبير جداً (الحد ${formatAttachmentSize(
-        MAX_ORDER_ATTACHMENT_FILE_BYTES,
-      )} لملفات PDF).`,
-    );
+  if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+    throw new OrderAttachmentError(`${file.name}: المسموح صور أو PDF فقط.`);
   }
-
-  const fileUrl = isImage
-    ? await compressPaymentProofToDataUrl(file)
-    : await readFileAsDataUrl(file);
-
-  // Final guard: the encoded payload is what actually hits the request body limit.
-  if (fileUrl.length > MAX_ORDER_ATTACHMENT_ENCODED_BYTES) {
-    throw new OrderAttachmentError(
-      `${file.name}: تعذّر رفع الملف — الحجم بعد الترميز كبير جداً. جرّب ملفاً أصغر.`,
-    );
-  }
-
+  const uploaded = await uploadStoreOrderFile(companyId, file);
   const trimmedLabel = label?.trim();
   return {
-    fileName: file.name.slice(0, 255),
-    fileUrl,
-    mimeType: file.type || null,
-    sizeBytes: file.size || null,
+    fileName: uploaded.fileName.slice(0, 255),
+    fileUrl: uploaded.url,
+    mimeType: uploaded.mimeType || null,
+    sizeBytes: uploaded.sizeBytes || null,
     label: trimmedLabel ? trimmedLabel.slice(0, 120) : null,
   };
 }

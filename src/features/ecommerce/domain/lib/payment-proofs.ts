@@ -1,16 +1,23 @@
-/** Normalize legacy single URL + array field into a clean unique list. */
+import { resolveUploadUrl } from '@/shared/resolve-upload-url';
+
+/**
+ * Normalize legacy single URL + array field into a clean unique list of
+ * browser-loadable links: uploaded receipts (`/uploads/...`, store plan A3)
+ * go through the API proxy; old embedded images (`data:`) stay as they are.
+ */
 export function resolvePaymentProofUrls(input: {
   paymentProofUrls?: string[] | null;
   paymentProofUrl?: string | null;
 }): string[] {
   const fromArray = (input.paymentProofUrls ?? [])
     .map((url) => url?.trim())
-    .filter((url): url is string => Boolean(url));
+    .filter((url): url is string => Boolean(url))
+    .map((url) => resolveUploadUrl(url));
   if (fromArray.length > 0) {
     return Array.from(new Set(fromArray));
   }
   const single = input.paymentProofUrl?.trim();
-  return single ? [single] : [];
+  return single ? [resolveUploadUrl(single)] : [];
 }
 
 /** UI limit before compression (original file). */
@@ -18,11 +25,10 @@ export const MAX_PAYMENT_PROOF_FILES = 5;
 export const MAX_PAYMENT_PROOF_BYTES = 4 * 1024 * 1024;
 
 /**
- * Compress an image for JSON order payloads.
- * Nest rejects large bodies ("request entity too large") when base64 proofs are huge.
- * Target ~120KB data URL.
+ * Re-encode an image as a JPEG of at most 1280px on the long edge before it is
+ * uploaded: smaller, and without the photo's metadata (location, device).
  */
-export async function compressPaymentProofToDataUrl(file: File): Promise<string> {
+export async function compressImageToJpeg(file: File): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
   const maxEdge = 1280;
   const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
@@ -40,12 +46,9 @@ export async function compressPaymentProofToDataUrl(file: File): Promise<string>
   ctx.drawImage(bitmap, 0, 0, width, height);
   bitmap.close();
 
-  let quality = 0.72;
-  let dataUrl = canvas.toDataURL('image/jpeg', quality);
-  const maxDataUrlChars = 160_000; // ~120KB binary + base64 overhead
-  while (dataUrl.length > maxDataUrlChars && quality > 0.35) {
-    quality -= 0.1;
-    dataUrl = canvas.toDataURL('image/jpeg', quality);
-  }
-  return dataUrl;
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, 'image/jpeg', 0.8),
+  );
+  if (!blob) throw new Error('ENCODE_FAILED');
+  return blob;
 }

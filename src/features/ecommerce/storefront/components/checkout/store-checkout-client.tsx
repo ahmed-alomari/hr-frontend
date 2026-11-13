@@ -58,7 +58,6 @@ import { StoreEmptyState } from '@/features/ecommerce/storefront/components/stor
 import {
   MAX_PAYMENT_PROOF_BYTES,
   MAX_PAYMENT_PROOF_FILES,
-  compressPaymentProofToDataUrl,
 } from '@/features/ecommerce/domain/lib/payment-proofs';
 import {
   MAX_ORDER_ATTACHMENTS,
@@ -67,6 +66,7 @@ import {
   OrderAttachmentError,
   fileToOrderAttachment,
   isImageMime,
+  uploadStoreOrderFile,
 } from '@/features/ecommerce/domain/lib/order-attachments';
 import type { CreateStoreOrderAttachmentInput } from '@/features/ecommerce/domain/types/order';
 import { Button } from '@/components/ui/button';
@@ -280,6 +280,9 @@ export function StoreCheckoutClient({ currency: storeCurrency, country }: Checko
     [],
   );
   const [attachmentsBusy, setAttachmentsBusy] = React.useState(false);
+  /** A receipt is uploading: the order waits for it (A3). */
+  const [proofsBusy, setProofsBusy] = React.useState(false);
+  const filesUploading = attachmentsBusy || proofsBusy;
   const [submitting, setSubmitting] = React.useState(false);
   const [addressErrors, setAddressErrors] = React.useState<
     Partial<Record<keyof CheckoutAddressInput, string>>
@@ -604,7 +607,7 @@ export function StoreCheckoutClient({ currency: storeCurrency, country }: Checko
           continue;
         }
         try {
-          const input = await fileToOrderAttachment(file);
+          const input = await fileToOrderAttachment(companyId, file);
           setOrderAttachments((prev) =>
             prev.length >= MAX_ORDER_ATTACHMENTS ? prev : [...prev, input],
           );
@@ -1363,7 +1366,7 @@ export function StoreCheckoutClient({ currency: storeCurrency, country }: Checko
                                 type="file"
                                 accept="image/*"
                                 multiple
-                                disabled={paymentProofs.length >= MAX_PAYMENT_PROOF_FILES}
+                                disabled={proofsBusy || paymentProofs.length >= MAX_PAYMENT_PROOF_FILES}
                                 className="mt-2 h-11 cursor-pointer rounded-xl file:me-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary"
                                 onChange={(e) => {
                                   const files = Array.from(e.target.files ?? []);
@@ -1391,30 +1394,42 @@ export function StoreCheckoutClient({ currency: storeCurrency, country }: Checko
                                       );
                                     }
 
-                                    for (const file of picked) {
-                                      if (!file.type.startsWith('image/')) {
-                                        toast.error(t('checkout.errors.paymentProofType'));
-                                        continue;
+                                    setProofsBusy(true);
+                                    try {
+                                      for (const file of picked) {
+                                        if (!file.type.startsWith('image/')) {
+                                          toast.error(t('checkout.errors.paymentProofType'));
+                                          continue;
+                                        }
+                                        if (file.size > MAX_PAYMENT_PROOF_BYTES) {
+                                          toast.error(t('checkout.errors.paymentProofSize'));
+                                          continue;
+                                        }
+                                        try {
+                                          // Uploaded first; the order keeps only its link (A3).
+                                          const uploaded = await uploadStoreOrderFile(
+                                            companyId,
+                                            file,
+                                          );
+                                          setPaymentProofs((prev) => {
+                                            if (prev.length >= MAX_PAYMENT_PROOF_FILES) {
+                                              return prev;
+                                            }
+                                            return [
+                                              ...prev,
+                                              { url: uploaded.url, name: uploaded.fileName },
+                                            ];
+                                          });
+                                        } catch (error) {
+                                          toast.error(
+                                            error instanceof OrderAttachmentError
+                                              ? error.message
+                                              : t('checkout.errors.paymentProofType'),
+                                          );
+                                        }
                                       }
-                                      if (file.size > MAX_PAYMENT_PROOF_BYTES) {
-                                        toast.error(t('checkout.errors.paymentProofSize'));
-                                        continue;
-                                      }
-                                      try {
-                                        const result =
-                                          await compressPaymentProofToDataUrl(file);
-                                        setPaymentProofs((prev) => {
-                                          if (prev.length >= MAX_PAYMENT_PROOF_FILES) {
-                                            return prev;
-                                          }
-                                          return [
-                                            ...prev,
-                                            { url: result, name: file.name },
-                                          ];
-                                        });
-                                      } catch {
-                                        toast.error(t('checkout.errors.paymentProofType'));
-                                      }
+                                    } finally {
+                                      setProofsBusy(false);
                                     }
                                   })();
                                 }}
@@ -1696,7 +1711,7 @@ export function StoreCheckoutClient({ currency: storeCurrency, country }: Checko
               type="button"
               className="min-w-44 rounded-xl"
               onClick={() => void submitOrder()}
-              disabled={submitting}
+              disabled={submitting || filesUploading}
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
               {submitting ? t('checkout.placing') : t('checkout.placeOrder')}
@@ -1826,7 +1841,7 @@ export function StoreCheckoutClient({ currency: storeCurrency, country }: Checko
               type="button"
               className="flex-1 rounded-xl"
               onClick={() => void submitOrder()}
-              disabled={submitting}
+              disabled={submitting || filesUploading}
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
               {submitting ? t('checkout.placing') : t('checkout.placeOrder')}

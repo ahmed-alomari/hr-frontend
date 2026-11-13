@@ -76,7 +76,7 @@ export function OrderAttachmentsPanel({
         continue;
       }
       try {
-        const input = await fileToOrderAttachment(file);
+        const input = await fileToOrderAttachment(order.companyId, file);
         await add.mutateAsync({
           orderId: order.id,
           input: { ...input, visibleToCustomer: !addAsInternal },
