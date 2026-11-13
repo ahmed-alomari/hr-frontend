@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { PDF_PRINT_FONT_FAMILY } from '@/components/pdf/lib/pdf-print-font';
 
-/** Typography scale — parity with `employment-contract-print-html`. */
+/** Typography scale for printable HTML documents. */
 export const PDF_PAGE_FONT = 22;
 export const PDF_BODY_FONT = 22.5;
 export const PDF_SECTION_FONT = 26;

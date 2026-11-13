@@ -1,188 +1,162 @@
 'use client';
 
-import { COMPANY_STAMP_PUBLIC_PATH } from '@/components/pdf/lib/company-stamp';
-import { resolveUploadUrl } from '@/shared/resolve-upload-url';
+import * as React from 'react';
+import { ExternalLink, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { countPdfPages } from '@/components/pdf/official-pdf-preview-dialog';
+import { employeeContractsApi } from '@/features/hr/contracts/lib/contracts-api';
+import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import type { CompanySettingsFormState } from '@/features/system/organization/pages/hr/constants/company-settings-form';
 
-const PAGE_1 = [
-  {
-    title: 'المادة (1): موضوع العقد',
-    body: 'اتفق الطرفان على أن يعمل الطرف الثاني لدى الطرف الأول في الوظيفة المبينة في هذا العقد، وفق أنظمة العمل والتعليمات المعتمدة في المنشأة.',
-  },
-  {
-    title: 'المادة (2): مدة العقد',
-    body: 'مدة هذا العقد سنة، تتجدد تلقائيًا لمدة مماثلة ما لم يُخطر أحد الطرفين الآخر برغبته في عدم التجديد قبل نهاية المدة بثلاثين يومًا.',
-  },
-  {
-    title: 'المادة (3): الأجر',
-    body: 'يستحق الطرف الثاني أجرًا شهريًا شاملًا للبدلات المتفق عليها، يُصرف في نهاية كل شهر ميلادي عبر الحساب البنكي المعتمد.',
-  },
-  {
-    title: 'المادة (4): ساعات العمل',
-    body: 'ساعات العمل ثماني ساعات يوميًا، وخمس أيام في الأسبوع، مع مراعاة العطل الرسمية. وأي عمل إضافي يكون بموافقة الطرفين ووفق النظام.',
-  },
-] as const;
+/** Waits for the sliders to settle before asking the server for a new sample. */
+const REFRESH_DELAY_MS = 700;
 
-const PAGE_2 = [
-  {
-    title: 'المادة (5): الإجازات',
-    body: 'يستحق الطرف الثاني إجازة سنوية مدفوعة وفق نظام العمل، ولا تُجدول إلا بعد موافقة الإدارة، مع بقاء حقوقه النظامية كاملة.',
-  },
-  {
-    title: 'المادة (6): الالتزامات',
-    body: 'يلتزم الطرف الثاني بالمحافظة على أسرار العمل وأدواته، وبتنفيذ التعليمات المهنية، وبعدم العمل لدى جهة منافسة طوال مدة العقد.',
-  },
-  {
-    title: 'المادة (7): إنهاء العقد',
-    body: 'ينتهي العقد بانتهاء مدته أو باتفاق الطرفين أو وفق الحالات التي يجيزها النظام. وتُسوّى الحقوق خلال المهلة النظامية.',
-  },
-  {
-    title: 'المادة (8): أحكام عامة',
-    body: 'ما لم يرد فيه نص يخضع لنظام العمل ولائحته. حُرر هذا العقد من نسختين، بيد كل طرف نسخة للعمل بموجبها. هذه معاينة تجريبية ولا تُحفظ مع الإعدادات.',
-  },
-] as const;
-
-function SampleSignature({ scale }: { scale: number }) {
-  const height = 16 * scale;
-  const width = 42 * scale;
-  return (
-    <svg
-      viewBox="0 0 220 70"
-      aria-hidden
-      style={{ width: `${width}mm`, height: `${height}mm` }}
-    >
-      <path
-        d="M8 48 C 28 8, 46 62, 70 34 S 104 6, 128 40 S 168 66, 210 18"
-        fill="none"
-        stroke="#1c1917"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+function canShowPdfInline(): boolean {
+  if (typeof navigator === 'undefined') return true;
+  if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) return false;
+  const nav = navigator as Navigator & { pdfViewerEnabled?: boolean };
+  return nav.pdfViewerEnabled !== false;
 }
 
-function PreviewPage({
+/**
+ * Sample contract made by the server with the settings as they are in the
+ * form, before save. It is the same renderer as real contracts, so the page
+ * count and the sizes here are what every contract will print with.
+ */
+export function ContractPrintPreview({
+  companyId,
   form,
-  page,
-  articles,
 }: {
+  companyId: string;
   form: CompanySettingsFormState;
-  page: 1 | 2;
-  articles: ReadonlyArray<{ title: string; body: string }>;
 }) {
-  const font = form.pdfContractFontScale / 100;
-  const signature = form.pdfEmployeeSignatureScale / 100;
-  const stamp = form.pdfCompanyStampScale / 100;
-  const logo = form.logoUrl.trim() ? resolveUploadUrl(form.logoUrl) : '';
-  const name = form.nameAr.trim() || 'اسم المنشأة';
+  const [url, setUrl] = React.useState<string | null>(null);
+  const [pages, setPages] = React.useState<number | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [inline, setInline] = React.useState(true);
+  const urlRef = React.useRef<string | null>(null);
 
-  return (
-    <article
-      className="relative mx-auto box-border h-[297mm] w-[210mm] overflow-hidden bg-white text-black shadow-md"
-      dir="rtl"
-      style={{ padding: '14mm 14mm 28mm' }}
-    >
-      {form.pdfWatermarkEnabled && logo ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={logo}
-          alt=""
-          className="pointer-events-none absolute left-1/2 top-1/2 w-[55%] -translate-x-1/2 -translate-y-1/2 object-contain"
-          style={{ opacity: form.pdfWatermarkOpacity / 100 }}
-        />
-      ) : null}
+  React.useEffect(() => {
+    setInline(canShowPdfInline());
+    return () => {
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    };
+  }, []);
 
-      <header className="relative flex items-center justify-between gap-4 border-b border-neutral-800 pb-3">
-        <div className="text-right">
-          <p className="text-[15px] font-bold">{name}</p>
-          {form.commercialRegistrationNo.trim() ? (
-            <p className="text-[11px]">س.ت {form.commercialRegistrationNo.trim()}</p>
-          ) : null}
-        </div>
-        {logo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logo} alt="" className="h-12 w-12 object-contain" />
-        ) : (
-          <div className="flex h-12 w-12 items-center justify-center border border-dashed text-[10px] text-neutral-500">
-            الشعار
-          </div>
-        )}
-      </header>
+  const {
+    nameAr,
+    nameEn,
+    commercialRegistrationNo,
+    pdfWatermarkEnabled,
+    pdfWatermarkOpacity,
+    pdfContractFontScale,
+    pdfEmployeeSignatureScale,
+    pdfCompanyStampScale,
+  } = form;
 
-      <h2
-        className="relative mt-4 text-center font-bold"
-        style={{ fontSize: `${18 * font}px` }}
-      >
-        عقد عمل تجريبي — صفحة {page} من 2
-      </h2>
-      <p className="relative mt-2 text-center" style={{ fontSize: `${12 * font}px` }}>
-        الطرف الأول: {name} — الطرف الثاني: موظف تجريبي
-      </p>
+  React.useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { blob } = await employeeContractsApi.samplePdf({
+          companyId,
+          nameAr: nameAr.trim() || undefined,
+          nameEn: nameEn.trim() || undefined,
+          commercialRegistrationNo: commercialRegistrationNo.trim() || undefined,
+          pdfWatermarkEnabled,
+          pdfWatermarkOpacity: Math.round(pdfWatermarkOpacity),
+          pdfContractFontScale: Math.round(pdfContractFontScale),
+          pdfEmployeeSignatureScale: Math.round(pdfEmployeeSignatureScale),
+          pdfCompanyStampScale: Math.round(pdfCompanyStampScale),
+        });
+        if (cancelled) return;
+        const file = blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' });
+        const count = await countPdfPages(file);
+        if (cancelled) return;
+        if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+        urlRef.current = URL.createObjectURL(file);
+        setUrl(urlRef.current);
+        setPages(count);
+      } catch (err) {
+        if (cancelled) return;
+        setError(handleApiError(err, 'company-settings.contract-sample').displayMessage);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, REFRESH_DELAY_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    companyId,
+    nameAr,
+    nameEn,
+    commercialRegistrationNo,
+    pdfWatermarkEnabled,
+    pdfWatermarkOpacity,
+    pdfContractFontScale,
+    pdfEmployeeSignatureScale,
+    pdfCompanyStampScale,
+  ]);
 
-      <div className="relative mt-4 space-y-3">
-        {articles.map((article) => (
-          <section key={article.title}>
-            <h3
-              className="bg-neutral-200 px-2 py-1 text-center font-bold"
-              style={{ fontSize: `${14 * font}px` }}
-            >
-              {article.title}
-            </h3>
-            <p className="mt-1 text-justify leading-relaxed" style={{ fontSize: `${12.5 * font}px` }}>
-              {article.body}
-            </p>
-          </section>
-        ))}
-      </div>
-
-      <footer className="absolute inset-x-[14mm] bottom-[10mm] flex flex-wrap items-end justify-between gap-4">
-        <div className="text-center">
-          <p className="mb-1 text-[12px] font-bold">ختم المنشأة</p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={COMPANY_STAMP_PUBLIC_PATH}
-            alt="ختم المنشأة"
-            style={{
-              width: `${34 * stamp}mm`,
-              maxHeight: `${40 * stamp}mm`,
-              objectFit: 'contain',
-            }}
-          />
-        </div>
-        <div className="text-center">
-          <p className="mb-1 text-[12px] font-bold">توقيع الموظف</p>
-          <SampleSignature scale={signature} />
-        </div>
-      </footer>
-    </article>
-  );
-}
-
-/** Two-page sample contract. Uses the form as it is now, before save. */
-export function ContractPrintPreview({ form }: { form: CompanySettingsFormState }) {
   return (
     <div className="space-y-2">
-      <div>
-        <p className="text-xs font-semibold text-muted-foreground">معاينة عقد من صفحتين</p>
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
-          بيانات تجريبية فقط. تتغير المعاينة مع حجم الخط والتوقيع والختم والشعار قبل الضغط على حفظ.
-        </p>
-      </div>
-      <div className="max-h-[78vh] overflow-auto rounded-lg border bg-muted/40 p-4">
-        <div className="mx-auto flex w-[118mm] flex-col gap-4" dir="ltr">
-          <div className="h-[167mm] overflow-hidden">
-            <div className="origin-top-left scale-[0.56]">
-              <PreviewPage form={form} page={1} articles={PAGE_1} />
-            </div>
-          </div>
-          <div className="h-[167mm] overflow-hidden">
-            <div className="origin-top-left scale-[0.56]">
-              <PreviewPage form={form} page={2} articles={PAGE_2} />
-            </div>
-          </div>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground">
+            معاينة عقد تجريبي{pages ? ` — عدد الصفحات: ${pages}` : ''}
+          </p>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            ملف PDF حقيقي من الخادم بمواد الشركة الأساسية وبيانات موظف تجريبية، وبالإعدادات الحالية قبل الحفظ.
+            يُطبع العقد بالصفحات نفسها على أي جهاز.
+          </p>
         </div>
+        {loading ? <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-muted-foreground" /> : null}
       </div>
+
+      {error ? (
+        <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+
+      {url ? (
+        inline ? (
+          <object
+            title="معاينة عقد تجريبي"
+            data={url}
+            type="application/pdf"
+            className="h-[78vh] min-h-[420px] w-full rounded-lg border bg-white"
+          >
+            <iframe title="معاينة عقد تجريبي" src={url} className="h-full min-h-[420px] w-full border-0" />
+          </object>
+        ) : (
+          <div className="flex flex-col items-center gap-2 rounded-lg border bg-muted/30 px-4 py-6 text-center">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              متصفح الجوال لا يعرض PDF داخل الصفحة. افتح الملف لمعاينته.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => window.open(url, '_blank', 'noopener')}
+            >
+              <ExternalLink className="h-4 w-4" />
+              فتح العقد التجريبي
+            </Button>
+          </div>
+        )
+      ) : !error ? (
+        <div className="flex h-40 items-center justify-center gap-2 rounded-lg border bg-muted/30 text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          جاري تحضير العقد التجريبي…
+        </div>
+      ) : null}
     </div>
   );
 }

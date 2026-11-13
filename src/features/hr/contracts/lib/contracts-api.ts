@@ -191,6 +191,39 @@ export type CreateEmployeeContractDto = {
   createdBy?: string;
 };
 
+export type PreviewEmployeeContractPdfDto = {
+  companyId: string;
+  employeeId: string;
+  branchId?: string;
+  contractNumber?: string;
+  contractNature?: ContractNature;
+  workArrangement?: WorkArrangement;
+  startDate: string;
+  endDate?: string;
+  probationDays?: number;
+  annualLeaveDays?: number;
+  baseSalary?: number;
+  currency?: string;
+  allowancesNote?: string;
+  deductionsNote?: string;
+  articleIds?: string[];
+  /** A new contract also gets the basic articles on save. */
+  includeBasicArticles?: boolean;
+  allowanceLines?: { allowanceTypeId: string; amount: number; sortOrder?: number }[];
+};
+
+export type ContractSamplePdfDto = {
+  companyId: string;
+  nameAr?: string;
+  nameEn?: string;
+  commercialRegistrationNo?: string;
+  pdfWatermarkEnabled?: boolean;
+  pdfWatermarkOpacity?: number;
+  pdfContractFontScale?: number;
+  pdfEmployeeSignatureScale?: number;
+  pdfCompanyStampScale?: number;
+};
+
 export type UpdateEmployeeContractDto = {
   branchId?: string | null;
   contractNature?: ContractNature;
@@ -270,5 +303,21 @@ export const employeeContractsApi = {
   getPdf: (id: string, fileName?: string) =>
     apiDownloadRequest(`/payroll/contracts/${id}/pdf`, {
       defaultFileName: fileName ?? `employment-contract-${id}.pdf`,
+    }),
+
+  /** Official contract PDF from form values before save (server renderer, writes nothing). */
+  previewPdf: (body: PreviewEmployeeContractPdfDto, fileName?: string) =>
+    apiDownloadRequest('/payroll/contracts/preview-pdf', {
+      method: 'POST',
+      body,
+      defaultFileName: fileName ?? 'employment-contract-preview.pdf',
+    }),
+
+  /** Sample contract with the company document settings before save (writes nothing). */
+  samplePdf: (body: ContractSamplePdfDto) =>
+    apiDownloadRequest('/payroll/contracts/sample-pdf', {
+      method: 'POST',
+      body,
+      defaultFileName: 'employment-contract-sample.pdf',
     }),
 };

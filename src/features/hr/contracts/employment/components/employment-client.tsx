@@ -64,7 +64,7 @@ import {
   contractCreditsLeaveDays,
   resolveContractActions,
 } from '@/features/hr/contracts/employment/utils/contract-leave-credit';
-import { PdfPreviewExportDialog } from '@/components/pdf/pdf-preview-export-dialog';
+import { OfficialPdfPreviewDialog, useOfficialPdfPreview } from '@/components/pdf/official-pdf-preview-dialog';
 import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
 import type { RegisterColumn } from '@/components/pdf/print/register-document';
 import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
@@ -77,7 +77,6 @@ import {
   isEmployeeStatusFilterActive,
   useEmployeeStatusFilter,
 } from '@/features/hr/lib/employee-status-filter';
-import { EmploymentContractPrintHtml } from '@/components/pdf/print/employment-contract-print-html';
 import { useAuthStore } from '@/features/auth/lib/auth-store';
 import { getDefaultCompanyId, useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
 import { getSessionCompanyDisplay } from '@/features/hr/organization/lib/session-company-display';
@@ -295,37 +294,22 @@ export function EmploymentContractsClient() {
       .catch(() => setCopySourceContracts([]));
   }, [copyFromEmployeeId, companyId]);
 
-  const [contractPdfOpen, setContractPdfOpen] = React.useState(false);
-  const [contractPrintable, setContractPrintable] = React.useState<React.ReactElement | null>(null);
+  // Contract PDFs come from the server renderer only: the preview and the
+  // downloaded file are the same bytes, with the same pages on every device.
+  const contractPdf = useOfficialPdfPreview();
+  const openContractPdfPreview = contractPdf.openPreview;
 
   const getEmpName = (id: string, fallback?: string) =>
     fallback?.trim()
     || employees.find(e => e.id === id)?.nameAr
     || id;
 
-  React.useEffect(() => {
-    if (!contractPdfOpen) setContractPrintable(null);
-  }, [contractPdfOpen]);
-
-  const openEmploymentContractPdf = React.useCallback(async (
-    source?: FormValues,
-    employeeOverride?: {
-      nameAr?: string;
-      nationalId?: string | null;
-      nationality?: string | null;
-      phone?: string | null;
-      email?: string | null;
-      gender?: string | null;
-      position?: string | null;
-      branchNameAr?: string | null;
-      city?: string | null;
-    },
-  ) => {
-    await ensureFormCatalogLoaded();
-    ensureFormEmployeesLoaded();
-    const latestArticles = articles;
-    const latestAllowanceTypes = allowanceTypes;
+  const openEmploymentContractPdf = React.useCallback(async (source?: FormValues) => {
     const values = source ?? form;
+    if (!companyId) {
+      toast.error('اختر الشركة أولاً');
+      return;
+    }
     if (!values.employeeId.trim()) {
       toast.error('اختر الموظف أولاً');
       return;
@@ -334,104 +318,69 @@ export function EmploymentContractsClient() {
       toast.error('حدّد تاريخ البداية لاستكمال نص العرض');
       return;
     }
+    if (values.contractType === 'fixed_term' && !values.endDate.trim()) {
+      toast.error('تاريخ الانتهاء مطلوب للعقود محددة المدة');
+      return;
+    }
 
-    const empFromList = employees.find((e) => e.id === values.employeeId);
-    const empAr =
-      employeeOverride?.nameAr?.trim()
-      || empFromList?.nameAr
-      || getEmpName(values.employeeId);
-    const genderRaw = employeeOverride?.gender ?? empFromList?.gender ?? null;
-    const employeeGender =
-      genderRaw === 'female' || genderRaw === 'male' ? genderRaw : null;
+    const toInt = (raw: string) => {
+      const n = parseInt(raw.trim(), 10);
+      return Number.isFinite(n) && n >= 0 ? n : undefined;
+    };
+    const contractNumber = values.contractNumber.trim();
+    const currency = values.currency.trim().toUpperCase();
+    const fileName = `employment-contract-${(contractNumber || 'draft').replace(/[^\w\-]+/g, '_')}.pdf`;
 
-    const allowanceRows = values.allowanceLines
-      .filter((l) => l.allowanceTypeId.trim())
-      .map((l) => ({
-        labelAr: latestAllowanceTypes.find((a) => a.id === l.allowanceTypeId)?.nameAr ?? l.allowanceTypeId,
-        amount: String(l.amount || '0'),
-      }));
-    const selectedArticles = values.articleIds
-      .map((id) => latestArticles.find((a) => a.id === id))
-      .filter(Boolean) as typeof latestArticles;
+    try {
+      await openContractPdfPreview({
+        title: 'معاينة — عقد العمل الحالي في النموذج',
+        fileName,
+        loadBlob: () =>
+          employeeContractsApi.previewPdf(
+            {
+              companyId,
+              employeeId: values.employeeId,
+              ...(contractNumber ? { contractNumber } : {}),
+              contractNature: values.contractType,
+              workArrangement: values.workArrangement,
+              startDate: values.startDate,
+              endDate: values.endDate || undefined,
+              probationDays: toInt(values.probationDays),
+              annualLeaveDays: toInt(values.annualLeaveDays),
+              baseSalary: Number(values.baseSalary) || 0,
+              ...(currency ? { currency } : {}),
+              allowancesNote: values.allowancesNote || undefined,
+              deductionsNote: values.deductionsNote || undefined,
+              articleIds: mergeEssentialArticleIds(values.articleIds, essentialArticleIds),
+              includeBasicArticles: panelMode === 'create',
+              allowanceLines: values.allowanceLines
+                .filter((l) => l.allowanceTypeId.trim())
+                .map((l, i) => ({ allowanceTypeId: l.allowanceTypeId, amount: Number(l.amount) || 0, sortOrder: i })),
+            },
+            fileName,
+          ),
+      });
+    } catch (err) {
+      const { displayMessage } = handleApiError(err, 'employment-contract.preview-pdf');
+      toast.error(displayMessage);
+    }
+  }, [form, companyId, essentialArticleIds, panelMode, openContractPdfPreview]);
 
-    selectedArticles.sort((a, b) => {
-      if (a!.isBasic !== b!.isBasic) return a!.isBasic ? -1 : 1;
-      return a!.code.localeCompare(b!.code);
-    });
+  /** A saved contract: its official PDF (the signed file once signed). */
+  const openContractPdfFromRecord = React.useCallback(async (record: HRContractRecord) => {
+    const fileName = `employment-contract-${(record.contractNumber || record.id).replace(/[^\w\-]+/g, '_')}.pdf`;
+    try {
+      await openContractPdfPreview({
+        title: `عقد العمل ${record.contractNumber || ''}`.trim(),
+        fileName,
+        loadBlob: () => employeeContractsApi.getPdf(record.id, fileName),
+      });
+    } catch (err) {
+      const { displayMessage } = handleApiError(err, 'employment-contract.pdf');
+      toast.error(displayMessage);
+    }
+  }, [openContractPdfPreview]);
 
-    const artLines = selectedArticles.map((a) => ({
-      code: a.code,
-      titleAr: a.title,
-      bodyAr: (a.body || '').trim(),
-      includesCompensation: a.includesCompensation,
-    }));
-
-    const company = getSessionCompanyDisplay(companyId);
-    const branchNameAr =
-      employeeOverride?.branchNameAr?.trim()
-      || empFromList?.branchNameAr
-      || null;
-    const workCityAr =
-      employeeOverride?.city?.trim()
-      || (empFromList as { city?: string | null } | undefined)?.city
-      || branchNameAr;
-
-    const printable = (
-      <EmploymentContractPrintHtml
-        company={company}
-        employeeNameAr={empAr}
-        employeeGender={employeeGender}
-        nationalId={employeeOverride?.nationalId ?? empFromList?.nationalId ?? null}
-        nationality={employeeOverride?.nationality ?? empFromList?.nationality ?? null}
-        employeePhone={employeeOverride?.phone ?? empFromList?.phone ?? null}
-        employeeEmail={employeeOverride?.email ?? empFromList?.email ?? null}
-        jobTitleAr={employeeOverride?.position ?? empFromList?.position ?? null}
-        workCityAr={workCityAr}
-        branchNameAr={branchNameAr}
-        contractNumber={values.contractNumber.trim() || '—'}
-        natureLabelAr={contractNatureLabel(values.contractType)}
-        arrangementLabelAr={workArrangementLabel(values.workArrangement)}
-        agreementDate={values.startDate}
-        startDate={values.startDate}
-        endDate={values.endDate}
-        probationDaysLabel={values.probationDays.trim() ? `${values.probationDays} يوم` : 'بدون'}
-        annualLeaveDaysLabel={`${values.annualLeaveDays || '—'} يوم`}
-        baseSalary={formatNumber(Number(values.baseSalary) || 0)}
-        currency={values.currency}
-        allowancesNote={values.allowancesNote}
-        deductionsNote={values.deductionsNote}
-        allowanceRows={allowanceRows}
-        articles={artLines}
-      />
-    );
-    setContractPrintable(printable);
-    setContractPdfOpen(true);
-  }, [
-    form,
-    articles,
-    allowanceTypes,
-    companyId,
-    employees,
-    ensureFormCatalogLoaded,
-    ensureFormEmployeesLoaded,
-    getEmpName,
-  ]);
-
-  const openContractPdfFromRecord = React.useCallback((record: HRContractRecord) => {
-    const emp = employees.find((e) => e.id === record.employeeId);
-    const formValues = recordToForm(record);
-    void openEmploymentContractPdf(formValues, {
-      nameAr: record.employeeNameAr || emp?.nameAr || getEmpName(record.employeeId, record.employeeNameAr),
-      nationalId: emp?.nationalId,
-      nationality: emp?.nationality,
-      phone: emp?.phone,
-      email: emp?.email,
-      gender: emp?.gender,
-      position: emp?.position,
-      branchNameAr: record.branchNameAr || emp?.branchNameAr,
-      city: (emp as { city?: string | null } | undefined)?.city,
-    });
-  }, [openEmploymentContractPdf, getEmpName, employees]);
 
   const syncContractInStore = React.useCallback((record: HRContractRecord) => {
     useHRContractsStore.setState((s) => ({
@@ -964,14 +913,16 @@ export function EmploymentContractsClient() {
         onRemoveAllowanceLine={removeAllowanceLine}
       />
 
-      <PdfPreviewExportDialog
-        open={contractPdfOpen}
-        onOpenChange={setContractPdfOpen}
-        title="معاينة — عقد العمل الحالي في النموذج"
-        fileName={`employment-contract-${(form.contractNumber || 'draft').replace(/[^\w\-]+/g, '_')}.pdf`}
-        printable={contractPrintable}
-        pageBreaks="flow"
-        emptyMessage="تعذر إعداد المعاينة — تحقق من بيانات النموذج."
+      <OfficialPdfPreviewDialog
+        open={contractPdf.open}
+        onOpenChange={contractPdf.setOpen}
+        title={contractPdf.title}
+        previewUrl={contractPdf.previewUrl}
+        mimeType={contractPdf.mimeType}
+        pageCount={contractPdf.pageCount}
+        loading={contractPdf.loading}
+        downloading={contractPdf.downloading}
+        onDownload={contractPdf.download}
       />
 
       {/* Terminate */}

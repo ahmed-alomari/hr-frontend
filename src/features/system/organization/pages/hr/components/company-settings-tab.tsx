@@ -415,7 +415,7 @@ export function CompanySettingsTab() {
           onChange={(pdfCompanyStampScale) => patch({ pdfCompanyStampScale })}
         />
 
-        <ContractPrintPreview form={form} />
+        {company ? <ContractPrintPreview companyId={company.id} form={form} /> : null}
 
         <div className="space-y-3">
           <p className="text-xs font-semibold text-muted-foreground">البيانات الأساسية</p>
