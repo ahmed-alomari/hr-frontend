@@ -1,27 +1,25 @@
 'use client';
 
+import { Plus } from 'lucide-react';
+import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
+import { Can } from '@/components/shared/can';
+import { ListToolsTable, useListTools, type ListToolsModel } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { Building2, Eye, Pencil, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { TableRowActions } from '@/components/ui/table-cells';
-import {
-  DirectoryGrid,
-  DirectoryGridCard,
-  DirectoryGridCardFooter,
-  DirectoryGridCardHeader,
-  DirectoryGridCardMeta,
-  DirectoryGridCardMetaRow,
-  DirectoryGridCardTitle,
-} from '@/components/ui/directory-grid-card';
+import { DirectoryGrid, DirectoryGridCard, DirectoryGridCardFooter, DirectoryGridCardHeader, DirectoryGridCardMeta, DirectoryGridCardMetaRow, DirectoryGridCardTitle } from '@/components/ui/directory-grid-card';
 import { EmptyState } from '@/components/ui/shared-dialogs';
 import { DirectoryPagedViews } from '@/components/ui/paged-list';
 import type { CompanyRow } from '@/features/system/organization/companies/constants/companies-directory';
 import type { CompaniesDirectoryModel } from '@/features/system/organization/companies/hooks/useCompaniesDirectoryModel';
 
-export function CompaniesListViews({ model }: { model: CompaniesDirectoryModel }) {
-  const { companies, layoutView, pagination, loading, setViewRow, openEdit, setConfirmId, perms } = model;
+/** Columns, sort, grouping, export and the page header: stays mounted while the list loads. */
+export function useCompaniesListTools(model: CompaniesDirectoryModel) {
+  const { companies, pagination, openEdit, setConfirmId, perms, openCreate } = model;
 
   const columns = React.useMemo((): ColumnDef<CompanyRow>[] => [
     {
@@ -89,15 +87,56 @@ export function CompaniesListViews({ model }: { model: CompaniesDirectoryModel }
     },
   ], [openEdit, perms.canDelete, perms.canUpdate, setConfirmId]);
 
+  const statusOf = (row: CompanyRow) => (row.isActive ? 'نشط' : 'غير نشط');
+  const tools = useListTools<CompanyRow>({
+    section: 'organization',
+    page: 'companies',
+    columns,
+    rows: companies,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      name: { kind: 'name', text: (row) => row.nameAr },
+      city: { text: (row) => row.city ?? '—', group: (row) => row.city ?? null },
+      contact: { kind: 'code', text: (row) => row.email ?? '—', sortable: false, alsoExport: [{ label: 'الهاتف', text: (row) => row.phone ?? '—' }] },
+      cr: { kind: 'code', text: (row) => row.commercialRegistrationNo ?? '—' },
+      status: { kind: 'status', text: statusOf, group: statusOf },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton />
+        {tools.buttons}
+        {tools.exportMenu('سجل الشركات', 'companies')}
+        <Can when={perms.canCreate}>
+          <Button variant="luxe" size="sm" className="h-8 gap-2" onClick={openCreate}>
+            <Plus className="h-4 w-4" /> شركة جديدة
+          </Button>
+        </Can>
+      </div>
+    ),
+    [openCreate, perms.canCreate, tools.depsKey],
+  );
+
+  return tools;
+}
+
+export function CompaniesListViews({ model, tools }: { model: CompaniesDirectoryModel; tools: ListToolsModel<CompanyRow> }) {
+  const { companies, layoutView, pagination, loading, setViewRow, openEdit, setConfirmId, perms } = model;
+
+
   if (!loading && companies.length === 0) {
     return <EmptyState icon={Building2} title="لا توجد شركات" description="أضف شركة جديدة للبدء." />;
   }
 
   return (
+    <ListToolsTable tools={tools} keyExtractor={(row) => row.id} onRowClick={(row) => setViewRow(row)}>
     <DirectoryPagedViews
-      items={companies}
-      serverPagination={pagination}
-      loading={loading}
+      items={tools.rows}
+      serverPagination={tools.pagination(pagination)}
+      loading={loading || tools.loading}
     >
       {(pageItems) => layoutView === 'grid' ? (
     <DirectoryGrid>
@@ -139,12 +178,14 @@ export function CompaniesListViews({ model }: { model: CompaniesDirectoryModel }
     <DataTable
       variant="directory"
       className="sys-table-host"
-      columns={columns}
+      columns={tools.columns}
+          {...tools.tableSort}
       data={pageItems}
       keyExtractor={(row) => row.id}
       onRowClick={(row) => setViewRow(row)}
     />
   )}
     </DirectoryPagedViews>
+    </ListToolsTable>
   );
 }

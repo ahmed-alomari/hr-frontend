@@ -1,20 +1,19 @@
 'use client';
 
+import { Plus } from 'lucide-react';
+import { USER_TYPE_LABELS as USER_TYPE_LABEL_MAP } from '@/features/system/organization/contacts/constants/users-directory';
+import { userStatusLabel } from '@/features/system/organization/contacts/hooks/useContactsDirectoryModel';
+import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
+import { Can } from '@/components/shared/can';
+import { ListToolsTable, useListTools, type ListToolsModel } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { UserCircle, Eye, Pencil, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { TableRowActions } from '@/components/ui/table-cells';
-import {
-  DirectoryGrid,
-  DirectoryGridCard,
-  DirectoryGridCardFooter,
-  DirectoryGridCardHeader,
-  DirectoryGridCardMeta,
-  DirectoryGridCardMetaRow,
-  DirectoryGridCardTitle,
-} from '@/components/ui/directory-grid-card';
+import { DirectoryGrid, DirectoryGridCard, DirectoryGridCardFooter, DirectoryGridCardHeader, DirectoryGridCardMeta, DirectoryGridCardMetaRow, DirectoryGridCardTitle } from '@/components/ui/directory-grid-card';
 import { ForbiddenState } from '@/components/shared/forbidden-state';
 import { EmptyState } from '@/components/ui/shared-dialogs';
 import { DirectoryPagedViews } from '@/components/ui/paged-list';
@@ -56,8 +55,9 @@ function primaryBranchLabel(row: UserRecord, model: ContactsDirectoryModel) {
   return '—';
 }
 
-export function ContactsListViews({ model, superuserIds }: Props) {
-  const { users, loading, pagination, listError, accessDenied, layoutView, setViewRow, openEdit, setConfirmId, formatDate, perms } = model;
+/** Columns, sort, grouping, export and the page header. */
+export function useContactsListTools(model: ContactsDirectoryModel, superuserIds: Props['superuserIds']) {
+  const { users, pagination, setViewRow, openEdit, setConfirmId, formatDate, perms, openCreate, usersFilterSummaryLine } = model;
 
   const columns = React.useMemo((): ColumnDef<UserRecord>[] => [
     {
@@ -125,6 +125,47 @@ export function ContactsListViews({ model, superuserIds }: Props) {
     },
   ], [formatDate, model, openEdit, perms.canDelete, perms.canUpdate, setConfirmId, setViewRow, superuserIds]);
 
+  const companyOf = (row: UserRecord) => primaryCompanyLabel(row, model);
+  const typeOf = (row: UserRecord) => USER_TYPE_LABEL_MAP[row.userType ?? ''] ?? row.userType ?? '—';
+  const tools = useListTools<UserRecord>({
+    section: 'organization',
+    page: 'users',
+    columns,
+    rows: users,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      name: { kind: 'name', text: (row) => row.fullNameAr ?? row.email },
+      email: { kind: 'code', text: (row) => row.email },
+      userType: { kind: 'status', text: typeOf, group: typeOf },
+      company: { text: companyOf, group: companyOf },
+      status: { kind: 'status', text: userStatusLabel, group: userStatusLabel },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton />
+        {tools.buttons}
+        {tools.exportMenu('سجل المستخدمين', 'users', [usersFilterSummaryLine])}
+        <Can when={perms.canCreate}>
+          <Button variant="luxe" size="sm" className="h-8 gap-2" onClick={openCreate}>
+            <Plus className="h-4 w-4" /> مستخدم جديد
+          </Button>
+        </Can>
+      </div>
+    ),
+    [openCreate, perms.canCreate, usersFilterSummaryLine, tools.depsKey],
+  );
+
+  return tools;
+}
+
+export function ContactsListViews({ model, tools, superuserIds }: Props & { tools: ListToolsModel<UserRecord> }) {
+  const { loading, pagination, listError, accessDenied, layoutView, setViewRow, openEdit, setConfirmId, formatDate, perms } = model;
+
+
   if (accessDenied) {
     return <ForbiddenState />;
   }
@@ -148,10 +189,11 @@ export function ContactsListViews({ model, superuserIds }: Props) {
   }
 
   return (
+    <ListToolsTable tools={tools} keyExtractor={(row) => row.id} onRowClick={(row) => setViewRow(row)}>
     <DirectoryPagedViews
-      items={users}
-      serverPagination={pagination}
-      loading={loading}
+      items={tools.rows}
+      serverPagination={tools.pagination(pagination)}
+      loading={loading || tools.loading}
       empty={<EmptyState icon={UserCircle} title="لا توجد مستخدمون" description="أضف حسابات مستخدمي النظام." />}
     >
       {(pageItems) => layoutView === 'grid' ? (
@@ -174,13 +216,15 @@ export function ContactsListViews({ model, superuserIds }: Props) {
         <DataTable
           variant="directory"
           className="sys-table-host"
-          columns={columns}
+          columns={tools.columns}
+          {...tools.tableSort}
           data={pageItems}
           keyExtractor={(row) => row.id}
           onRowClick={(row) => setViewRow(row)}
         />
       )}
     </DirectoryPagedViews>
+    </ListToolsTable>
   );
 }
 

@@ -92,16 +92,16 @@
 /* App launcher tiles — plain CSS outside @layer (Turbopack-safe).
    Previously inside @layer utilities and stopped applying, collapsing
    apps into a vertical text list without colored squares. */
-.odoo-app-tile {
+.launcher-tile {
   width: 6.5rem;
 }
 @media (min-width: 640px) {
-  .odoo-app-tile {
+  .launcher-tile {
     width: 7.25rem;
   }
 }
 
-.odoo-app-square {
+.launcher-square {
   display: flex;
   height: 4.5rem;
   width: 4.5rem;
@@ -116,24 +116,24 @@
   transition: transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease;
 }
 @media (min-width: 640px) {
-  .odoo-app-square {
+  .launcher-square {
     height: 5rem;
     width: 5rem;
   }
 }
-.group:hover .odoo-app-square:not(.odoo-app-square-muted) {
+.group:hover .launcher-square:not(.launcher-square-muted) {
   transform: translateY(-0.15rem);
   box-shadow:
     0 2px 4px hsl(var(--primary) / 0.1),
     0 14px 28px -12px hsl(var(--primary) / 0.35);
 }
 
-.odoo-app-square-muted {
+.launcher-square-muted {
   filter: grayscale(1);
   opacity: 0.55;
 }
 
-.odoo-app-icon {
+.launcher-icon {
   height: 1.85rem;
   width: 1.85rem;
   color: inherit;
@@ -147,7 +147,7 @@
     drop-shadow(10px 10px 0 rgb(0 0 0 / 0.03));
 }
 
-.odoo-app-label {
+.launcher-label {
   display: -webkit-box;
   min-height: 2.5rem;
   overflow: hidden;
@@ -159,7 +159,7 @@
   color: hsl(var(--foreground));
 }
 
-.odoo-app-grid {
+.launcher-grid {
   display: flex;
   width: 100%;
   max-width: 48rem;

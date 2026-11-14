@@ -34,6 +34,11 @@ export type InventoryCompanySettings = {
   notifyScrapPosted: boolean;
   notifyOperationUndone: boolean;
   notifySaleStockDeducted: boolean;
+  /** YYYY-MM-DD: nothing is posted dated on or before it. */
+  periodLockDate?: string | null;
+  periodLockSetAt?: string | null;
+  periodLockSetBy?: string | null;
+  periodLockSetByName?: string | null;
   createdAt: string;
   updatedAt: string;
   createdBy?: string | null;
@@ -62,6 +67,7 @@ export type UpdateInventoryCompanySettingsDto = Partial<
     | 'notifyScrapPosted'
     | 'notifyOperationUndone'
     | 'notifySaleStockDeducted'
+    | 'periodLockDate'
   >
 > & {
   updatedBy?: string;

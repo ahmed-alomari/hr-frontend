@@ -1,5 +1,9 @@
 import {
+  customerLabel,
+  MONEY_METHODS,
   PAYMENT_METHOD_LABELS,
+  type PosCollection,
+  type PosMoneyMethod,
   type PosPaymentMethod,
   type PosReturn,
   type PosSale,
@@ -58,6 +62,10 @@ export type LineFact = {
   sessionId: string;
   cashierName: string;
   customer: string;
+  /** A contact by its id (two contacts may share a name); others by name. */
+  customerKey: string;
+  /** How the invoice was paid, e.g. «نقد 300 + آجل 200». */
+  payment: string;
   productKey: string;
   productName: string;
   sku: string;
@@ -158,7 +166,9 @@ export function lineFacts(data: PosCompanyData, f: ReportFilters): LineFact[] {
         registerName: registers.get(sale.registerId) ?? '—',
         sessionId: sale.sessionId,
         cashierName: sale.cashierName,
-        customer: sale.customer.kind === 'named' ? sale.customer.name : 'عميل عابر',
+        customer: customerLabel(sale.customer),
+        customerKey: customerKeyOf(sale),
+        payment: paymentSummaryOf(sale),
         productKey: `${line.productId}|${line.variantId ?? ''}`,
         productName: name,
         sku: line.sku,
@@ -176,7 +186,13 @@ export function lineFacts(data: PosCompanyData, f: ReportFilters): LineFact[] {
         unitPrice: line.unitPrice,
         sourcePrice: line.sourcePrice,
         unitCost,
-        cost: unitCost == null ? null : round2(unitCost * netQty),
+        // What inventory charged, when kept: the unit cost is only its rounding.
+        cost:
+          typeof line.costTotal === 'number'
+            ? round2(line.costTotal * keep)
+            : unitCost == null
+              ? null
+              : round2(unitCost * netQty),
       });
     }
   }
@@ -261,11 +277,11 @@ export const GROUPINGS = {
     label: `${f.registerName} · ${f.cashierName}`,
     detail: f.sessionId.slice(0, 8),
   }),
-  customer: (f: LineFact) => ({ key: f.customer, label: f.customer }),
+  customer: (f: LineFact) => ({ key: f.customerKey, label: f.customer }),
   invoice: (f: LineFact) => ({
     key: f.saleId,
     label: f.saleNumber,
-    detail: `${f.day} · ${f.cashierName}`,
+    detail: `${f.day} · ${f.cashierName} · ${f.payment}`,
   }),
 } as const;
 
@@ -279,7 +295,10 @@ export function sortedForTime(grouping: Grouping, rows: GroupRow[]): GroupRow[] 
   return rows;
 }
 
-/** Collected per payment method, net of refunds, for the sales kept. */
+/**
+ * Collected per payment method, net of refunds, for the sales kept. «آجل» is
+ * what was sold on credit (owed, not taken), net of what returns took off it.
+ */
 export function paymentRows(
   data: PosCompanyData,
   f: ReportFilters,
@@ -296,7 +315,7 @@ export function paymentRows(
     const refunded = round2(refundedOnSale + refundedByReturns);
     return {
       method,
-      label: PAYMENT_METHOD_LABELS[method],
+      label: method === 'credit' ? 'آجل (على العملاء)' : PAYMENT_METHOD_LABELS[method],
       collected,
       refunded,
       net: round2(collected - refunded),
@@ -326,6 +345,219 @@ export function discountedLines(facts: LineFact[]): LineFact[] {
   return facts
     .filter((f) => f.discount > 0.004 || f.priceOverridden)
     .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function customerKeyOf(sale: PosSale): string {
+  if (sale.customer.kind === 'partner') return `partner:${sale.customer.partnerId}`;
+  return sale.customer.kind === 'named' ? `name:${sale.customer.name}` : 'walk_in';
+}
+
+type MethodAmount = { method: PosPaymentMethod; amount: number };
+
+/** Amounts per method, in the order the methods were first used. */
+function byMethodInOrder(payments: ReadonlyArray<MethodAmount>): MethodAmount[] {
+  const out: MethodAmount[] = [];
+  for (const p of payments) {
+    const same = out.find((x) => x.method === p.method);
+    if (same) same.amount = round2(same.amount + p.amount);
+    else out.push({ method: p.method, amount: p.amount });
+  }
+  return out;
+}
+
+/** The succeeded payments of a sale per method, in the order they were taken. */
+export function paymentSplitOf(sale: PosSale): MethodAmount[] {
+  return byMethodInOrder(sale.payments.filter((p) => p.kind === 'payment' && p.status === 'succeeded'));
+}
+
+/** «نقد» for one method; «نقد 300 + آجل 200» for a split one. */
+export function paymentSummaryOf(sale: PosSale): string {
+  return splitSummary(paymentSplitOf(sale));
+}
+
+export function splitSummary(payments: ReadonlyArray<MethodAmount>): string {
+  const split = byMethodInOrder(payments);
+  if (split.length === 0) return '—';
+  if (split.length === 1) return PAYMENT_METHOD_LABELS[split[0]!.method];
+  return split.map((s) => `${PAYMENT_METHOD_LABELS[s.method]} ${round2(s.amount)}`).join(' + ');
+}
+
+/** What a return gave back, as reports show it. */
+export function refundMethodLabel(method: PosPaymentMethod): string {
+  return method === 'credit' ? 'إلى حساب العميل' : PAYMENT_METHOD_LABELS[method];
+}
+
+/** A credit invoice of the period: what was sold on credit, and what is still owed on it today. */
+export type CreditInvoiceRow = {
+  saleId: string;
+  saleNumber: string;
+  date: string;
+  partnerId: string;
+  customer: string;
+  registerName: string;
+  cashierName: string;
+  total: number;
+  payment: string;
+  credit: number;
+  collected: number;
+  returned: number;
+  due: number;
+};
+
+export function creditInvoices(data: PosCompanyData, f: ReportFilters): CreditInvoiceRow[] {
+  const registers = new Map(data.registers.map((r) => [r.id, r.name]));
+  return data.sales
+    .filter((s) => s.credit && saleMatches(s, f))
+    .map((s) => ({
+      saleId: s.id,
+      saleNumber: s.number ?? s.id.slice(0, 8),
+      date: s.completedAt!,
+      partnerId: s.credit!.partnerId,
+      customer: s.credit!.partnerName,
+      registerName: registers.get(s.registerId) ?? '—',
+      cashierName: s.cashierName,
+      total: s.totals.total,
+      payment: paymentSummaryOf(s),
+      credit: s.credit!.amount,
+      collected: s.credit!.collected,
+      returned: s.credit!.returned,
+      due: s.credit!.due,
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Everything still owed today, whatever the period (the register and currency filters apply). */
+export function openReceivables(data: PosCompanyData, f: ReportFilters): CreditInvoiceRow[] {
+  return creditInvoices(data, { ...NO_FILTERS, currency: f.currency, registerId: f.registerId }).filter((r) => r.due > 0.004);
+}
+
+export type CollectionRow = PosCollection & { registerName: string; inShift: boolean };
+
+/**
+ * Payments on credit invoices made in the period (by their own date), on any
+ * invoice — also older ones. In a shift they went into its drawer; outside one
+ * (the contact's page) they did not.
+ */
+export function collectionsInPeriod(data: PosCompanyData, f: ReportFilters): CollectionRow[] {
+  const sessions = new Map(data.sessions.map((s) => [s.id, s.registerId]));
+  const sales = new Map(data.sales.map((s) => [s.id, s.registerId]));
+  const registers = new Map(data.registers.map((r) => [r.id, r.name]));
+  return (data.collections ?? [])
+    .filter((c) => {
+      const day = dayOf(c.createdAt);
+      if (f.from && day < f.from) return false;
+      if (f.to && day > f.to) return false;
+      if (f.currency && c.currency && c.currency !== f.currency) return false;
+      if (f.cashierName && c.createdBy !== f.cashierName) return false;
+      if (f.paymentMethod && c.method !== f.paymentMethod) return false;
+      if (f.registerId) {
+        const registerId = c.sessionId ? sessions.get(c.sessionId) : sales.get(c.saleId);
+        if (registerId !== f.registerId) return false;
+      }
+      return true;
+    })
+    .map((c) => {
+      const registerId = c.sessionId ? sessions.get(c.sessionId) : null;
+      return {
+        ...c,
+        inShift: Boolean(c.sessionId),
+        registerName: registerId ? registers.get(registerId) ?? '—' : 'خارج الوردية',
+      };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/** Collections per method: in a shift (in a drawer) and outside one. */
+export function collectionsByMethod(rows: CollectionRow[]): Array<{
+  method: PosMoneyMethod;
+  label: string;
+  inShift: number;
+  outside: number;
+  total: number;
+  count: number;
+}> {
+  return MONEY_METHODS.map((method) => {
+    const of = rows.filter((r) => r.method === method);
+    const inShift = round2(of.filter((r) => r.inShift).reduce((a, r) => a + r.amount, 0));
+    const outside = round2(of.filter((r) => !r.inShift).reduce((a, r) => a + r.amount, 0));
+    return { method, label: PAYMENT_METHOD_LABELS[method], inShift, outside, total: round2(inShift + outside), count: of.length };
+  });
+}
+
+/** A closed shift: what the drawer should have held, what was counted, why they differ. */
+export type ClosingRow = {
+  sessionId: string;
+  registerId: string;
+  registerName: string;
+  registerCode: string;
+  cashierName: string;
+  openedAt: string;
+  closedAt: string;
+  openingFloat: number;
+  expectedCash: number;
+  countedCash: number;
+  /** Counted − expected: negative is a shortage (عجز), positive an overage (زيادة). */
+  difference: number;
+  reason: string | null;
+};
+
+/** Shifts closed in the period (by their closing date), newest first. */
+export function closingsInPeriod(data: PosCompanyData, f: ReportFilters): ClosingRow[] {
+  const registers = new Map(data.registers.map((r) => [r.id, r]));
+  return data.sessions
+    .filter((s) => {
+      if (s.status !== 'closed' || !s.closedAt) return false;
+      const day = dayOf(s.closedAt);
+      if (f.from && day < f.from) return false;
+      if (f.to && day > f.to) return false;
+      if (f.registerId && s.registerId !== f.registerId) return false;
+      if (f.cashierName && s.cashierName !== f.cashierName) return false;
+      return true;
+    })
+    .map((s) => {
+      const register = registers.get(s.registerId);
+      return {
+        sessionId: s.id,
+        registerId: s.registerId,
+        registerName: register?.name ?? '—',
+        registerCode: register?.code ?? 'POS',
+        cashierName: s.cashierName,
+        openedAt: s.openedAt,
+        closedAt: s.closedAt!,
+        openingFloat: s.openingFloat,
+        expectedCash: round2(s.expectedCash ?? 0),
+        countedCash: round2(s.countedCash ?? 0),
+        difference: round2(s.difference ?? 0),
+        reason: s.differenceReason?.trim() || null,
+      };
+    })
+    .sort((a, b) => b.closedAt.localeCompare(a.closedAt));
+}
+
+/** Shortages and overages are summed apart: one never hides the other. */
+export function closingTotals(rows: ClosingRow[]) {
+  const shortRows = rows.filter((r) => r.difference < -0.004);
+  const overRows = rows.filter((r) => r.difference > 0.004);
+  const shortage = round2(shortRows.reduce((a, r) => a + r.difference, 0));
+  const overage = round2(overRows.reduce((a, r) => a + r.difference, 0));
+  return {
+    shifts: rows.length,
+    withDifference: shortRows.length + overRows.length,
+    shortage,
+    overage,
+    net: round2(shortage + overage),
+    expected: round2(rows.reduce((a, r) => a + r.expectedCash, 0)),
+    counted: round2(rows.reduce((a, r) => a + r.countedCash, 0)),
+  };
+}
+
+/** Closing differences per cashier: who is short, how often, how much. */
+export function closingsByCashier(rows: ClosingRow[]) {
+  const by = new Map<string, ClosingRow[]>();
+  for (const r of rows) by.set(r.cashierName, [...(by.get(r.cashierName) ?? []), r]);
+  return [...by.entries()]
+    .map(([cashierName, of]) => ({ cashierName, ...closingTotals(of) }))
+    .sort((a, b) => a.shortage - b.shortage || a.cashierName.localeCompare(b.cashierName, 'ar'));
 }
 
 export { dayOf };

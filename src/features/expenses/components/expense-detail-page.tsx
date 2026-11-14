@@ -14,7 +14,8 @@ import type { AttachmentMeta, Expense } from '../domain/types';
 import { expensesRoutes } from '../constants/routes';
 import { EmptyState, KeyValue, LoadingBlock, Money, PartyName, Section, StatusBadge } from './common';
 import { ExpenseFormDialog } from './expense-form-dialog';
-import { useDirectory, useExpensesData, useExpensesPermissions } from './expenses-provider';
+import { useBranches, useDirectory, useExpensesData, useExpensesPermissions } from './expenses-provider';
+import { ApprovalTimeline } from './group-policy';
 import { TxnActions } from './txn-actions';
 
 function AttachmentLink({ meta }: { meta: AttachmentMeta }) {
@@ -38,6 +39,7 @@ function AttachmentLink({ meta }: { meta: AttachmentMeta }) {
 export function ExpenseDetailPage({ id }: { id: string }) {
   const data = useExpensesData();
   const directory = useDirectory();
+  const branches = useBranches();
   const actorId = useExpensesStore((s) => s.actorId);
   const perms = useExpensesPermissions();
   const [editing, setEditing] = React.useState(false);
@@ -71,10 +73,12 @@ export function ExpenseDetailPage({ id }: { id: string }) {
           <KeyValue label="التاريخ">{expense.date}</KeyValue>
           <KeyValue label="الفئة"><span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: category?.color }} />{category?.name ?? '—'}</span></KeyValue>
           {group ? <KeyValue label="المجموعة">{group.name}</KeyValue> : null}
+          {branches.hasBranches || expense.branchId ? <KeyValue label="الفرع">{branches.nameOf(expense.branchId)}</KeyValue> : null}
           <KeyValue label="سجّله"><PartyName id={expense.createdBy} /></KeyValue>
           {expense.note ? <KeyValue label="ملاحظة">{expense.note}</KeyValue> : null}
           {expense.decidedBy ? <KeyValue label={expense.status === 'rejected' ? 'رفضه' : 'اعتمده'}><PartyName id={expense.decidedBy} link={false} />{expense.decisionNote ? ` — ${expense.decisionNote}` : ''}</KeyValue> : null}
           {expense.status === 'void' ? <KeyValue label="أُلغي">{directory.nameOf(expense.voidedBy)} — {expense.voidReason}</KeyValue> : null}
+          {expense.approval ? <div className="mt-3 border-t border-border pt-3"><ApprovalTimeline txn={expense} /></div> : null}
         </Section>
 
         <Section title="المرفقات">

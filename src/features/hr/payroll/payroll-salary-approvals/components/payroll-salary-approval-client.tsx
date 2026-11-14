@@ -1,31 +1,20 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import {
-  BarChart2, Bell, Loader2, Lock, Receipt,
-} from 'lucide-react';
+import { BarChart2, Bell, Loader2, Lock, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  dialogFormFooterClass,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, dialogFormFooterClass } from '@/components/ui/dialog';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
-import {
-  ListFilterBar,
-} from '@/components/ui/list-filter-bar';
+import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { DirectoryPagedViews, useServerDirectoryPagination } from '@/components/ui/paged-list';
 import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
@@ -33,60 +22,22 @@ import { TableRowActions } from '@/components/ui/table-cells';
 import { EmptyState } from '@/components/ui/shared-dialogs';
 import { useAuthStore } from '@/features/auth/lib/auth-store';
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
-import {
-  useHRPayrollPeriodsStore,
-  PERIOD_STATUS_LABELS,
-  PERIOD_STATUS_COLORS,
-  REVIEW_COMPLETED_LABEL,
-  REVIEW_STAGE_LABELS,
-} from '@/features/hr/payroll/lib/payroll-periods-store';
+import { useHRPayrollPeriodsStore, PERIOD_STATUS_LABELS, PERIOD_STATUS_COLORS, REVIEW_COMPLETED_LABEL, REVIEW_STAGE_LABELS } from '@/features/hr/payroll/lib/payroll-periods-store';
 import { formatLatinNumber } from '@/features/hr/payroll/lib/compensation-preview';
-import {
-  hrPayrollSalaryApprovalsQueryHref,
-  hrPayrollPeriodCompensationHref,
-  hrPayrollRoutes,
-} from '@/features/hr/payroll/constants/routes';
+import { hrPayrollSalaryApprovalsQueryHref, hrPayrollPeriodCompensationHref } from '@/features/hr/payroll/constants/routes';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import { hrFiltersKey } from '@/features/hr/lib/use-persisted-filter-state';
-import {
-  employeeStatusFilterLabelAr,
-  employeeStatusQuery,
-  isEmployeeStatusFilterActive,
-  useEmployeeStatusFilter,
-} from '@/features/hr/lib/employee-status-filter';
-import {
-  PAYSLIP_ACCEPTANCE_STATUS_COLORS,
-  PAYSLIP_ACCEPTANCE_STATUS_LABELS,
-  PAYSLIP_STATUS_COLORS,
-  PAYSLIP_STATUS_LABELS,
-  parsePayslipMoney,
-  payslipAcceptanceStatus,
-  payslipsApi,
-  type PayslipResponseDto,
-  type PayslipStatusDto,
-} from '@/features/hr/payroll/lib/api/payslips';
+import { employeeStatusFilterLabelAr, employeeStatusQuery, isEmployeeStatusFilterActive, useEmployeeStatusFilter } from '@/features/hr/lib/employee-status-filter';
+import { PAYSLIP_ACCEPTANCE_STATUS_COLORS, PAYSLIP_ACCEPTANCE_STATUS_LABELS, PAYSLIP_STATUS_COLORS, PAYSLIP_STATUS_LABELS, parsePayslipMoney, payslipAcceptanceStatus, payslipsApi, type PayslipResponseDto, type PayslipStatusDto } from '@/features/hr/payroll/lib/api/payslips';
 import { PayslipDetailDialog } from '@/features/hr/payroll/payroll-salary-approvals/components/payslip-detail-dialog';
 import { CompensationPeriodExportActions } from '@/features/hr/payroll/compensation/components/compensation-period-export-actions';
 import { SendNotificationDrawer } from '@/features/hr/notifications/components/send-notification-drawer';
-import {
-  usePayslipEmployeeDecision,
-} from '@/features/hr/payroll/components/payslip-employee-decision-actions';
+import { usePayslipEmployeeDecision } from '@/features/hr/payroll/components/payslip-employee-decision-actions';
 import { MinimalDropdown } from '@/components/ui/shared-dialogs';
 import type { EmployeePickerOption } from '@/components/ui/employee-picker';
 import { fetchEmployeeFilterPickerOptions } from '@/features/hr/lib/use-employee-filter-picker';
 import { cn } from '@/shared/utils';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
 
-const PAYSLIP_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الموظف', kind: 'name', weight: 1.6 },
-  { label: 'العقد', kind: 'code' },
-  { label: 'الأساسي', kind: 'number' },
-  { label: 'الإجمالي', kind: 'number' },
-  { label: 'حالة القسيمة', kind: 'status' },
-  { label: 'موافقة الموظف', kind: 'status' },
-];
 
 const PAYSLIP_STATUS_ORDER = ['all', 'draft', 'approved', 'paid'] as const;
 type StatusFilter = (typeof PAYSLIP_STATUS_ORDER)[number];
@@ -362,30 +313,6 @@ export function PayrollSalaryApprovalClient() {
     && period.isReviewCompleted
     && !['locked', 'closed', 'cancelled'].includes(period.status);
 
-  const getPayslipExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    if (!companyId || !periodId) return [];
-    const items = bulkMode
-      ? (await loadBulk()).items
-      : (await fetchAllPaginatedItems((page, limit) =>
-        payslipsApi.list({
-          companyId,
-          payrollPeriodId: periodId,
-          page,
-          limit,
-          ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
-          ...(selectedEmpIds.size === 1 ? { employeeId: [...selectedEmpIds][0] } : {}),
-          ...employeeStatusQuery(employeeStatus),
-        }),
-      )).items;
-    return items.map((row) => [
-      row.employeeNameAr,
-      row.contractNumber ?? '—',
-      money(row.baseSalary),
-      money(row.gross),
-      PAYSLIP_STATUS_LABELS[row.status] ?? row.status,
-      PAYSLIP_ACCEPTANCE_STATUS_LABELS[payslipAcceptanceStatus(row)],
-    ]);
-  });
 
   const payslipExportSubtitle = React.useMemo(
     () => [
@@ -395,55 +322,6 @@ export function PayrollSalaryApprovalClient() {
     [period, employeeStatus],
   );
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <RegisterExportMenu
-          title="سجل قسائم الرواتب"
-          fileName="payslips"
-          columns={PAYSLIP_EXPORT_COLUMNS}
-          getRows={getPayslipExportRows}
-          subtitleLines={payslipExportSubtitle}
-        />
-        <CompensationPeriodExportActions
-          periodId={periodId || null}
-          employeeIdsFilter={exportEmployeeIdsFilter}
-          lazyLoad
-          disabled={!periodId}
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 gap-1.5 text-xs"
-          disabled={!period || periodEmployees.length === 0 || !companyId}
-          title={
-            !period
-              ? undefined
-              : periodEmployees.length === 0
-                ? 'لا يوجد موظفون في هذه الفترة'
-                : 'إرسال إشعار لموظفي الفترة'
-          }
-          onClick={() => setNotificationOpen(true)}
-        >
-          <Bell className="h-3.5 w-3.5" />
-          إرسال إشعار
-        </Button>
-        <Button
-          size="sm"
-          variant="luxe"
-          className="h-8 gap-1.5 text-xs"
-          disabled={!canFinalize || busy !== null}
-          title={period && !period.isReviewCompleted ? 'أكمل المراجعات أولاً' : undefined}
-          onClick={() => { setReplaceExisting(false); setFinalizeOpen(true); }}
-        >
-          <Lock className="h-3.5 w-3.5" />
-          اعتماد الفترة
-        </Button>
-      </div>
-    ),
-    [canFinalize, busy, period?.isReviewCompleted, activeFilterCount, period, periodEmployees.length, companyId, periodId, exportEmployeeIdsFilter, getPayslipExportRows, payslipExportSubtitle],
-  );
 
   const handleFinalize = async () => {
     if (!period) return;
@@ -571,6 +449,69 @@ export function PayrollSalaryApprovalClient() {
     },
   ], [busy, employeeDecision]);
 
+  const acceptanceOf = (row: PayslipResponseDto) => PAYSLIP_ACCEPTANCE_STATUS_LABELS[payslipAcceptanceStatus(row)];
+  const tools = useListTools<PayslipResponseDto>({
+    section: 'hr',
+    page: 'payroll-approvals',
+    columns,
+    rows: payslips,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      employee: { kind: 'name', text: (row) => row.employeeNameAr, group: (row) => row.employeeNameAr || null },
+      contract: { kind: 'code', text: (row) => row.contractNumber ?? '—' },
+      base: { text: (row) => money(row.baseSalary), sort: (row) => Number(row.baseSalary) || 0, sum: (row) => Number(row.baseSalary) || 0, formatSum: (n) => money(String(n)) },
+      gross: { text: (row) => money(row.gross), sort: (row) => Number(row.gross) || 0, sum: (row) => Number(row.gross) || 0, formatSum: (n) => money(String(n)) },
+      status: { kind: 'status', text: (row) => PAYSLIP_STATUS_LABELS[row.status] ?? row.status, group: (row) => PAYSLIP_STATUS_LABELS[row.status] ?? row.status },
+      acceptanceStatus: { kind: 'status', text: acceptanceOf, group: acceptanceOf },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('سجل قسائم الرواتب', 'payslips', payslipExportSubtitle)}
+        <CompensationPeriodExportActions
+          periodId={periodId || null}
+          employeeIdsFilter={exportEmployeeIdsFilter}
+          lazyLoad
+          disabled={!periodId}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 gap-1.5 text-xs"
+          disabled={!period || periodEmployees.length === 0 || !companyId}
+          title={
+            !period
+              ? undefined
+              : periodEmployees.length === 0
+                ? 'لا يوجد موظفون في هذه الفترة'
+                : 'إرسال إشعار لموظفي الفترة'
+          }
+          onClick={() => setNotificationOpen(true)}
+        >
+          <Bell className="h-3.5 w-3.5" />
+          إرسال إشعار
+        </Button>
+        <Button
+          size="sm"
+          variant="luxe"
+          className="h-8 gap-1.5 text-xs"
+          disabled={!canFinalize || busy !== null}
+          title={period && !period.isReviewCompleted ? 'أكمل المراجعات أولاً' : undefined}
+          onClick={() => { setReplaceExisting(false); setFinalizeOpen(true); }}
+        >
+          <Lock className="h-3.5 w-3.5" />
+          اعتماد الفترة
+        </Button>
+      </div>
+    ),
+    [canFinalize, busy, period?.isReviewCompleted, activeFilterCount, period, periodEmployees.length, companyId, periodId, exportEmployeeIdsFilter, payslipExportSubtitle, tools.depsKey],
+  );
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <SetPageTitle
@@ -632,14 +573,16 @@ export function PayrollSalaryApprovalClient() {
           }
         />
       ) : (
+        <ListToolsTable tools={tools} keyExtractor={(row) => row.id} onRowClick={(row) => openDetail(row.id)}>
         <DirectoryPagedViews
-          items={payslips}
-          serverPagination={pagination}
-          loading={listLoading}
+          items={tools.rows}
+          serverPagination={tools.pagination(pagination)}
+          loading={listLoading || tools.loading}
         >
           {(pageItems) => (
         <DataTable
-          columns={columns}
+          columns={tools.columns}
+          {...tools.tableSort}
           data={pageItems}
           keyExtractor={row => row.id}
           loading={listLoading}
@@ -672,6 +615,7 @@ export function PayrollSalaryApprovalClient() {
         />
           )}
         </DirectoryPagedViews>
+        </ListToolsTable>
       )}
 
       <Dialog open={finalizeOpen} onOpenChange={setFinalizeOpen}>

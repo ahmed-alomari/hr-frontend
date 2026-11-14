@@ -1,14 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useSetPageTitle } from '@/components/layouts/page-title-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
-import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
-import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
-import { Can } from '@/components/shared/can';
 import { usePagePermissions } from '@/features/auth/permissions';
 import { JOB_TITLES_PAGE_PERMISSIONS } from '@/features/system/organization/job-titles/permissions';
 import { toast } from 'sonner';
@@ -17,35 +12,13 @@ import { resolveDirectoryLoadFailure } from '@/features/hr/lib/api/directory-loa
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
 import { useDefaultCompany } from '@/features/hr/organization/hooks/useActiveCompany';
 import { jobTitlesApi, type CreateJobTitleDto, type JobTitleResponseDto, type UpdateJobTitleDto } from '@/features/hr/organization/lib/api/jobTitles';
-import {
-  ORGANIZATION_ARCHIVE_SCOPE_DEFAULT,
-  ORGANIZATION_ARCHIVE_SCOPE_OPTIONS,
-  organizationListStatusQuery,
-  type OrganizationArchiveScope,
-} from '@/features/hr/organization/lib/archive-scope';
+import { ORGANIZATION_ARCHIVE_SCOPE_DEFAULT, ORGANIZATION_ARCHIVE_SCOPE_OPTIONS, organizationListStatusQuery, type OrganizationArchiveScope } from '@/features/hr/organization/lib/archive-scope';
 import { useServerDirectoryPagination } from '@/components/ui/paged-list';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
 import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
-import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
-import {
-  createJobTitle,
-  deleteJobTitle,
-  updateJobTitle,
-  type JobTitleTemplateRecord,
-} from '@/features/system/organization/job-titles/services/job-titles.service';
+import { createJobTitle, deleteJobTitle, updateJobTitle, type JobTitleTemplateRecord } from '@/features/system/organization/job-titles/services/job-titles.service';
 import { generateEntityCode } from '@/features/hr/requests/lib/types';
-import {
-  JOB_TITLE_EMPTY_FORM,
-  type JobTitleDraftForm,
-} from '@/features/system/organization/job-titles/constants/job-titles-directory';
+import { JOB_TITLE_EMPTY_FORM, type JobTitleDraftForm } from '@/features/system/organization/job-titles/constants/job-titles-directory';
 
-const JOB_TITLE_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الشركة', kind: 'text' },
-  { label: 'المسمى الوظيفي', kind: 'name' },
-  { label: 'الوصف', kind: 'text', weight: 2 },
-  { label: 'الحالة', kind: 'status' },
-];
 
 export function useJobTitlesDirectoryModel() {
   useSetPageTitle({
@@ -215,47 +188,9 @@ export function useJobTitlesDirectoryModel() {
     }
   }, [confirmId, perms.canDelete, reloadList]);
 
-  const getExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    if (!defaultCompanyId) return [];
-    const { items } = await fetchAllPaginatedItems((page, limit) =>
-      jobTitlesApi.getAll({
-        companyId: defaultCompanyId,
-        page,
-        limit,
-        ...organizationListStatusQuery(archiveScope),
-      }),
-    );
-    return items.map((row) => [
-      companyLabel(row.companyId),
-      row.nameAr,
-      row.description?.trim() || '—',
-      row.isActive ? 'نشط' : 'غير نشط',
-    ]);
-  });
 
   const archiveScopeLabel =
     ORGANIZATION_ARCHIVE_SCOPE_OPTIONS.find((o) => o.value === archiveScope)?.label ?? '';
-
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton />
-        <RegisterExportMenu
-          title="سجل المسميات الوظيفية"
-          fileName="job-titles"
-          columns={JOB_TITLE_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={[`العرض: ${archiveScopeLabel}`]}
-        />
-        <Can when={perms.canCreate}>
-          <Button variant="luxe" size="sm" className="h-8 gap-2" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> قالب جديد
-          </Button>
-        </Can>
-      </div>
-    ),
-    [openCreate, perms.canCreate, getExportRows, archiveScopeLabel],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -287,6 +222,7 @@ export function useJobTitlesDirectoryModel() {
   );
 
   return {
+    archiveScopeLabel,
     perms,
     accessDenied,
     templates: pagedTemplates,

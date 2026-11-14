@@ -193,7 +193,7 @@ export function CustomerInvoiceFormPage({ invoiceId }: CustomerInvoiceFormPagePr
           </div>
         </div>
 
-        {/* State Pipeline Badges (Odoo status bar) */}
+        {/* State Pipeline Badges (status bar) */}
         <div className="flex items-center gap-2">
           <div className="flex items-center rounded-lg border border-border/60 bg-muted/20 p-1 text-xs">
             <span
@@ -236,7 +236,7 @@ export function CustomerInvoiceFormPage({ invoiceId }: CustomerInvoiceFormPagePr
         </div>
       </div>
 
-      {/* Main Odoo Sheet */}
+      {/* Main Sheet */}
       <div className="rounded-xl border border-border/60 bg-card p-6 md:p-8 shadow-xs flex flex-col gap-6 relative">
         {/* Buttons Bar inside Sheet (Confirm, Register Payment, Print, Cancel) */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-4">
@@ -466,7 +466,7 @@ export function CustomerInvoiceFormPage({ invoiceId }: CustomerInvoiceFormPagePr
                 </Button>
               </div>
 
-              {/* Bottom Totals Summary Section (Odoo Style) */}
+              {/* Bottom Totals Summary Section */}
               <div className="flex flex-col md:flex-row items-start justify-between gap-6 border-t border-border/40 pt-4 mt-2">
                 <div className="flex-1 w-full max-w-md">
                   <label className="text-xs font-semibold text-muted-foreground mb-1 block">

@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Download, FileDown, FileSpreadsheet, Loader2 } from 'lucide-react';
@@ -494,31 +495,33 @@ export function useEmployeesListModel() {
         <PageHeaderPrimaryButton icon={Plus} label="موظف جديد" onClick={() => setNewEmpOpen(true)}>
           موظف جديد
         </PageHeaderPrimaryButton>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 w-8 shrink-0"
-              aria-label="تصدير سجل الموظفين"
-              disabled={exporting}
-              aria-busy={exporting}
-            >
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportPdf()}>
-              <FileDown className="h-4 w-4" />
-              PDF
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportExcel()}>
-              <FileSpreadsheet className="h-4 w-4" />
-              Excel
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <FoldedHeaderTool>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 shrink-0"
+                aria-label="تصدير سجل الموظفين"
+                disabled={exporting}
+                aria-busy={exporting}
+              >
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportPdf()}>
+                <FileDown className="h-4 w-4" />
+                PDF
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportExcel()}>
+                <FileSpreadsheet className="h-4 w-4" />
+                Excel
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </FoldedHeaderTool>
       </div>
     ),
     [

@@ -75,7 +75,7 @@ export function CurrenciesListPage() {
   const formatRate = (rate?: number) => {
     if (rate === undefined || rate === null) return '1.000000';
     if (rate === 1) return '1.000000';
-    // Format to 6 decimal places like Odoo
+    // Format to 6 decimal places
     return rate.toFixed(6);
   };
 
@@ -87,7 +87,7 @@ export function CurrenciesListPage() {
         iconName="Coins"
       />
 
-      {/* Top Controls Bar (Odoo Style) */}
+      {/* Top Controls Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-background p-2 border border-border/40 shadow-xs">
         {/* Right side in RTL (Title and Action) */}
         <div className="flex items-center gap-2 order-1 md:order-2">

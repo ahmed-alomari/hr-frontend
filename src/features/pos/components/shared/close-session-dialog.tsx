@@ -138,6 +138,11 @@ export function CloseSessionDialog({
             <div className="grid grid-cols-2 gap-1 rounded-md bg-muted/50 p-3">
               <span>العهدة</span><span className="text-end">{formatMoney(session.openingFloat)}</span>
               <span>نقد محصّل</span><span className="text-end">{formatMoney(summary.byMethod.cash ?? 0)}</span>
+              {summary.collectionsByMethod.cash ? (
+                <>
+                  <span>تحصيل آجل نقدًا</span><span className="text-end">{formatMoney(summary.collectionsByMethod.cash)}</span>
+                </>
+              ) : null}
               <span>نقد مردود</span><span className="text-end">{formatMoney(summary.refundsCash)}</span>
               <span>مقبوضات / مصروفات</span><span className="text-end">{formatMoney(summary.cashIn)} / {formatMoney(summary.cashOut)}</span>
               <b>المتوقع</b><b className="text-end">{formatMoney(summary.expectedCash, currency)}</b>

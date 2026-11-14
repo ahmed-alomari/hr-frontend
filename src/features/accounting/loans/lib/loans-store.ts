@@ -74,7 +74,7 @@ export const useLoansStore = create<LoansState>()(
       },
     }),
     {
-      name: 'odoo-accounting-loans-storage',
+      name: 'accounting-loans-storage',
     },
   ),
 );

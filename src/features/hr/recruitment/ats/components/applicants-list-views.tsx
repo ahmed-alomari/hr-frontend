@@ -1,5 +1,12 @@
 'use client';
 
+import { exportDateTime } from '@/features/hr/requests/lib/list-export-format';
+import type { AtsApplicant } from '@/features/hr/recruitment/lib/ats/types';
+import type { ColumnDef } from '@/components/ui/data-table';
+import { DirectoryPagedViews } from '@/components/ui/paged-list';
+import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { Users, Calendar } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -39,7 +46,53 @@ export function ApplicantsListViews({ model }: Props) {
     detailId,
     openApplicantDetail,
     closeApplicantDetail,
+    activeFilterCount,
+    exportSubtitleLines,
+    listQuery,
   } = model;
+
+  const nameOf = (app: AtsApplicant) => {
+    const form = formById.get(app.formId);
+    return form ? getApplicantName(app, form.fields) : 'متقدم';
+  };
+  const jobOf = (app: AtsApplicant) => jobs.find((j) => j.id === app.jobId)?.title ?? '—';
+  const stageOf = (app: AtsApplicant) => {
+    const stage = ATS_STAGE_TABS.find((s) => s.key === app.pipelineStage)?.label ?? app.pipelineStage;
+    return app.isArchived ? `${stage} — مؤرشف` : stage;
+  };
+  const scoreText = (app: AtsApplicant) => (app.score ? String(app.score.finalScore) : 'بدون تقييم');
+  const columns: ColumnDef<AtsApplicant>[] = [
+    { key: 'name', title: 'الاسم', render: nameOf },
+    { key: 'job', title: 'الوظيفة', render: jobOf },
+    { key: 'stage', title: 'المرحلة', render: stageOf },
+    { key: 'submittedAt', title: 'تاريخ التقديم', render: (app) => <DisplayDate value={app.submittedAt} mode="datetime" className="text-xs" /> },
+    { key: 'score', title: 'التقييم', render: (app) => (app.score ? <ScoreBar score={app.score.finalScore} /> : <span className="text-xs text-muted-foreground">بدون تقييم</span>) },
+  ];
+  const tools = useListTools<AtsApplicant>({
+    section: 'recruitment',
+    page: 'applicants',
+    columns,
+    rows: applicants,
+    resetKey: JSON.stringify(listQuery),
+    fields: {
+      name: { kind: 'name', text: nameOf },
+      job: { text: jobOf, group: jobOf },
+      stage: { kind: 'status', text: stageOf, group: stageOf },
+      submittedAt: { kind: 'date', text: (app) => exportDateTime(app.submittedAt), sort: (app) => app.submittedAt ?? '', group: (app) => (app.submittedAt ? app.submittedAt.slice(0, 7) : null) },
+      score: { text: scoreText, sort: (app) => app.score?.finalScore ?? -1 },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('سجل المتقدمين', 'recruitment-applicants', exportSubtitleLines)}
+      </div>
+    ),
+    [activeFilterCount, exportSubtitleLines, tools.depsKey],
+  );
 
   const stageLabel = ATS_STAGE_TABS.find((s) => s.key === stageFilter)?.label ?? '';
 
@@ -73,8 +126,11 @@ export function ApplicantsListViews({ model }: Props) {
           </CardContent>
         </Card>
       ) : (
+        <ListToolsTable tools={tools} keyExtractor={(app) => app.id} onRowClick={(app) => openApplicantDetail(app.id)}>
+        <DirectoryPagedViews items={tools.rows} resetDeps={[JSON.stringify(listQuery), tools.sort.sortKey]}>
+          {(pageItems) => (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {applicants.map((app) => {
+          {pageItems.map((app) => {
             const job = jobs.find((j) => j.id === app.jobId);
             const form = formById.get(app.formId);
             const name = form ? getApplicantName(app, form.fields) : 'متقدم';
@@ -123,6 +179,9 @@ export function ApplicantsListViews({ model }: Props) {
             );
           })}
         </div>
+          )}
+        </DirectoryPagedViews>
+        </ListToolsTable>
       )}
 
       <AtsApplicantDetailDialog

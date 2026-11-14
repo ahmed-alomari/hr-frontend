@@ -13,6 +13,9 @@ export const expensesRoutes = {
   reports: '/expenses/reports',
   reportCustody: '/expenses/reports/custody',
   reportCash: '/expenses/reports/cash',
+  reportPeople: '/expenses/reports/people',
+  periods: '/expenses/periods',
+  import: '/expenses/import',
   settings: '/expenses/settings',
 } as const;
 

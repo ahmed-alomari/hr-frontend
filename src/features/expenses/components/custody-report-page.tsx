@@ -1,39 +1,43 @@
 'use client';
 
+import { hrFiltersKey, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
+import { useExpensesStore } from '../data/store';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { Badge } from '@/components/ui/badge';
-import { DataTable, usePagination, type ColumnDef } from '@/components/ui/data-table';
-import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-list';
 import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
-import { downloadXlsxFromAoA, type XlsxCell } from '@/shared/export/download-xlsx';
+import { LocalListTable, LocalListToolbar, useLocalList, type LocalListField } from '@/components/ui/local-list';
 import { expensesRoutes } from '../constants/routes';
 import type { CustodyBalance } from '../domain/ledger';
-import { Money } from './common';
-import { ReportExportMenu, ReportSummaryCard } from './report-common';
-import { useCurrency, useDirectory, useLedger } from './expenses-provider';
+import { EmptyState, LoadingBlock, Money } from './common';
+import { ReportSummaryCard } from './report-common';
+import { useCurrency, useDirectory, useExpensesData, useLedger } from './expenses-provider';
 
 const ALL = 'all';
 
 function statusBadge(b: CustodyBalance) {
+  if (b.custody.archived) return <Badge variant="subtle">مؤرشفة</Badge>;
   return b.custody.status === 'open' ? <Badge variant="success">مفتوحة</Badge> : <Badge variant="subtle">مقفلة</Badge>;
 }
 
 export function CustodyReportPage() {
   const router = useRouter();
+  const data = useExpensesData();
   const ledger = useLedger();
   const currency = useCurrency();
   const directory = useDirectory();
-  const [searchInput, setSearchInput] = React.useState('');
-  const [search, setSearch] = React.useState('');
-  const [holderId, setHolderId] = React.useState(ALL);
-  const [status, setStatus] = React.useState(ALL);
+  const companyId = useExpensesStore((s) => s.companyId);
+  const filterKey = (field: string) => hrFiltersKey('expenses', 'custody-report', companyId, field);
+  const [searchInput, setSearchInput] = usePersistedFilterState(filterKey('search'), '');
+  const [search, setSearch] = React.useState(() => searchInput.trim().toLowerCase());
+  const [holderId, setHolderId] = usePersistedFilterState(filterKey('holder'), ALL);
+  const [status, setStatus] = usePersistedFilterState(filterKey('status'), ALL);
 
   React.useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 300);
@@ -50,59 +54,53 @@ export function CustodyReportPage() {
     () =>
       balances
         .filter((b) => holderId === ALL || b.custody.holderId === holderId)
-        .filter((b) => status === ALL || b.custody.status === status)
+        .filter((b) => (status === ALL ? !b.custody.archived : status === 'archived' ? b.custody.archived : b.custody.status === status && !b.custody.archived))
         .filter((b) => !search || directory.nameOf(b.custody.holderId).toLowerCase().includes(search) || b.custody.purpose.toLowerCase().includes(search))
         .sort((a, b) => (a.custody.status === b.custody.status ? b.actual - a.actual : a.custody.status === 'open' ? -1 : 1)),
     [balances, holderId, status, search, directory],
   );
 
-  const totals = React.useMemo(
-    () => ({
-      issued: rows.reduce((t, r) => t + r.issued + r.toppedUp, 0),
-      spent: rows.reduce((t, r) => t + r.spent, 0),
-      returned: rows.reduce((t, r) => t + r.returned, 0),
-      actual: rows.reduce((t, r) => t + r.actual, 0),
-    }),
-    [rows],
-  );
-
-  const { page, setPage, pageSize, setPageSize, slice: pagedRows, total } = usePagination(rows, DEFAULT_PAGE_SIZE);
+  const fields = React.useMemo<LocalListField<CustodyBalance>[]>(() => {
+    const money = (key: string, label: string, value: (r: CustodyBalance) => number, opts: Partial<LocalListField<CustodyBalance>> = {}): LocalListField<CustodyBalance> => ({
+      key,
+      label,
+      kind: 'number',
+      text: (r) => currency.format(value(r)),
+      sortValue: value,
+      sum: value,
+      formatSum: currency.format,
+      cell: (r) => <Money value={value(r)} />,
+      ...opts,
+    });
+    const groupName = (id: string | null) => data?.groups.find((g) => g.id === id)?.name ?? '—';
+    return [
+      { key: 'holder', label: 'الحامل', kind: 'name', text: (r) => directory.nameOf(r.custody.holderId), cell: (r) => <span className="font-medium">{directory.nameOf(r.custody.holderId)}</span>, groupKey: (r) => r.custody.holderId, groupLabel: (id) => directory.nameOf(id) },
+      { key: 'purpose', label: 'الغرض', text: (r) => r.custody.purpose },
+      { key: 'group', label: 'المجموعة', optional: true, hiddenByDefault: true, text: (r) => groupName(r.custody.groupId ?? null), groupKey: (r) => r.custody.groupId ?? null, groupLabel: groupName },
+      { key: 'openedAt', label: 'فُتحت', optional: true, hiddenByDefault: true, kind: 'date', text: (r) => r.custody.openedAt, groupKey: (r) => r.custody.openedAt.slice(0, 7) },
+      money('issued', 'مسلّم', (r) => r.issued + r.toppedUp),
+      money('spent', 'مصروف', (r) => r.spent),
+      money('returned', 'مرتجع', (r) => r.returned, { optional: true }),
+      money('pending', 'معلق', (r) => r.pendingOut, { optional: true, hiddenByDefault: true }),
+      money('actual', 'الرصيد', (r) => r.actual, { cell: (r) => <Money value={r.actual} className="font-semibold" /> }),
+      { key: 'status', label: 'الحالة', kind: 'status', text: (r) => (r.custody.archived ? 'مؤرشفة' : r.custody.status === 'open' ? 'مفتوحة' : 'مقفلة'), cell: statusBadge, groupKey: (r) => r.custody.status, groupLabel: (k) => (k === 'open' ? 'مفتوحة' : 'مقفلة') },
+    ];
+  }, [data, directory, currency]);
+  const list = useLocalList({ section: 'expenses', page: 'custody-report', fields, rows });
 
   const activeFilterCount = [holderId, status].filter((v) => v !== ALL).length + (search ? 1 : 0);
 
-  const exportExcel = React.useCallback(async () => {
-    if (rows.length === 0) {
-      toast.error('لا توجد عهد للتصدير ضمن الفلاتر الحالية.');
-      return;
-    }
-    const sheet: XlsxCell[][] = [['الحامل', 'الغرض', 'الحالة', 'مسلّم', 'مصروف', 'مرتجع', 'الرصيد']];
-    for (const r of rows) {
-      sheet.push([
-        directory.nameOf(r.custody.holderId),
-        r.custody.purpose,
-        r.custody.status === 'open' ? 'مفتوحة' : 'مقفلة',
-        currency.format(r.issued + r.toppedUp),
-        currency.format(r.spent),
-        currency.format(r.returned),
-        currency.format(r.actual),
-      ]);
-    }
-    try {
-      await downloadXlsxFromAoA('custody-report.xlsx', 'العهد', sheet);
-      toast.success('تم تنزيل ملف Excel.');
-    } catch {
-      toast.error('تعذر تصدير التقرير.');
-    }
-  }, [rows, directory, currency]);
-
   usePageHeaderActions(
     () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <ReportExportMenu onExcel={() => void exportExcel()} />
-      </div>
+      <LocalListToolbar
+        list={list}
+        title="تقرير العهد"
+        fileName="custody-report"
+        subtitleLines={['التسليم والتغذية والإرجاع تحويلات، لا تُحسب مصروفات.']}
+        before={<FilterToggleButton activeFilterCount={activeFilterCount} />}
+      />
     ),
-    [activeFilterCount, exportExcel],
+    [activeFilterCount, list.rows, list.visibleFields, list.groups, list.sort.sortKey],
   );
 
   useEntityFilterSlot(
@@ -129,6 +127,7 @@ export function CustodyReportPage() {
               { value: ALL, label: 'كل الحالات' },
               { value: 'open', label: 'مفتوحة' },
               { value: 'closed', label: 'مقفلة' },
+              { value: 'archived', label: 'المؤرشفة' },
             ],
           },
         ]}
@@ -137,70 +136,43 @@ export function CustodyReportPage() {
     [searchInput, holderId, status, holders],
   );
 
-  const columns: ColumnDef<CustodyBalance>[] = [
-    {
-      key: 'holder',
-      title: 'الحامل',
-      render: (r) => (
-        <div className="flex flex-col">
-          <span className="font-medium">{directory.nameOf(r.custody.holderId)}</span>
-          <span className="text-xs text-muted-foreground">{r.custody.purpose}</span>
-        </div>
-      ),
-    },
-    { key: 'issued', title: 'مسلّم', render: (r) => <Money value={r.issued + r.toppedUp} /> },
-    { key: 'spent', title: 'مصروف', render: (r) => <Money value={r.spent} /> },
-    { key: 'returned', title: 'مرتجع', hideOnMobile: true, render: (r) => <Money value={r.returned} /> },
-    { key: 'actual', title: 'الرصيد', render: (r) => <Money value={r.actual} className="font-semibold" /> },
-    { key: 'status', title: 'الحالة', render: statusBadge },
-  ];
-
-  const loading = !ledger;
+  if (!ledger) return <LoadingBlock />;
 
   return (
     <div className="flex flex-col gap-5">
       <SetPageTitle titleAr="تقرير العهد" descriptionAr="التسليم والتغذية والإرجاع تحويلات — لا تُحسب مصروفات." iconName="Wallet" />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        <ReportSummaryCard label="مسلّم" value={<Money value={totals.issued} />} hint={`${rows.length} عهدة`} />
-        <ReportSummaryCard label="مصروف" value={<Money value={totals.spent} />} />
-        <ReportSummaryCard label="مرتجع" value={<Money value={totals.returned} />} />
-        <ReportSummaryCard label="الرصيد" value={<Money value={totals.actual} />} />
-      </div>
+      <PhoneStatsFold summary={<>الرصيد <Money value={list.total.sums.actual ?? 0} /></>}>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+          <ReportSummaryCard label="مسلّم" value={<Money value={list.total.sums.issued ?? 0} />} hint={`${rows.length} عهدة`} />
+          <ReportSummaryCard label="مصروف" value={<Money value={list.total.sums.spent ?? 0} />} />
+          <ReportSummaryCard label="مرتجع" value={<Money value={list.total.sums.returned ?? 0} />} />
+          <ReportSummaryCard label="الرصيد" value={<Money value={list.total.sums.actual ?? 0} />} />
+        </div>
+      </PhoneStatsFold>
 
-      <DirectoryPagedViews
-        items={pagedRows}
-        loading={loading}
-        serverPagination={{ page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), setPage, setPageSize }}
-      >
-        {(rowsPage) => (
-          <DataTable
-            variant="directory"
-            columns={columns}
-            data={rowsPage}
-            keyExtractor={(r) => r.custody.id}
-            onRowClick={(r) => router.push(expensesRoutes.custodyDetail(r.custody.id))}
-            mobileCard={(r) => (
-              <div className="space-y-1.5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{directory.nameOf(r.custody.holderId)}</p>
-                    <p className="truncate text-xs text-muted-foreground">{r.custody.purpose}</p>
-                  </div>
-                  <div className="shrink-0">{statusBadge(r)}</div>
-                </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>مسلّم <Money value={r.issued + r.toppedUp} className="text-foreground" /></span>
-                  <span>مصروف <Money value={r.spent} className="text-foreground" /></span>
-                  <span>الرصيد <Money value={r.actual} className="font-semibold text-foreground" /></span>
-                </div>
+      <LocalListTable
+        list={list}
+        rowKey={(r) => r.custody.id}
+        onRowClick={(r) => router.push(expensesRoutes.custodyDetail(r.custody.id))}
+        empty={<EmptyState text="لا عهد ضمن الفلاتر الحالية." />}
+        card={(r) => (
+          <div className="space-y-1.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate font-medium">{directory.nameOf(r.custody.holderId)}</p>
+                <p className="truncate text-xs text-muted-foreground">{r.custody.purpose}</p>
               </div>
-            )}
-            loading={loading}
-            emptyText="لا عهد ضمن الفلاتر الحالية."
-          />
+              <div className="shrink-0">{statusBadge(r)}</div>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>مسلّم <Money value={r.issued + r.toppedUp} className="text-foreground" /></span>
+              <span>مصروف <Money value={r.spent} className="text-foreground" /></span>
+              <span>الرصيد <Money value={r.actual} className="font-semibold text-foreground" /></span>
+            </div>
+          </div>
         )}
-      </DirectoryPagedViews>
+      />
     </div>
   );
 }

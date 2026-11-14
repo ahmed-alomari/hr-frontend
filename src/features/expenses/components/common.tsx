@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { Inbox } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Inbox, Search, X } from 'lucide-react';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/shared/utils';
 import type { ExpensesCommand } from '../data/commands';
@@ -153,6 +154,93 @@ export function PartyChecklist({
   );
 }
 
+/** Pick from a searchable list; each pick drops below it as a row and leaves the list. */
+export function PickList({
+  options,
+  value,
+  onChange,
+  placeholder,
+  renderName,
+  ordered,
+  disabled,
+}: {
+  options: Array<{ id: string; name: string }>;
+  value: string[];
+  onChange: (ids: string[]) => void;
+  placeholder: string;
+  /** A picked row's name; defaults to its option's name. */
+  renderName?: (id: string) => React.ReactNode;
+  /** The order means something: rows are numbered and can be moved. */
+  ordered?: boolean;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState('');
+  const free = options.filter((o) => !value.includes(o.id));
+  const needle = query.trim().toLowerCase();
+  const shown = needle ? free.filter((o) => o.name.toLowerCase().includes(needle)) : free;
+  const move = (index: number, to: number) => {
+    const next = [...value];
+    const [id] = next.splice(index, 1);
+    next.splice(to, 0, id!);
+    onChange(next);
+  };
+  return (
+    <div className="space-y-1.5">
+      {disabled ? null : (
+        <Popover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery(''); }} modal={false}>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="outline" disabled={free.length === 0} aria-expanded={open} className="h-10 w-full justify-between font-normal">
+              <span className="truncate text-muted-foreground">{free.length === 0 ? 'اختير الجميع' : placeholder}</span>
+              <ChevronDown className={cn('h-4 w-4 shrink-0 opacity-60 transition-transform', open && 'rotate-180')} />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" side="bottom" collisionPadding={16} className="popover-match-trigger overflow-hidden p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
+            <div className="border-b border-border p-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="بحث في القائمة…" className="h-9 pr-9 text-sm" />
+              </div>
+            </div>
+            <div role="listbox" className="max-h-56 touch-pan-y overflow-y-auto overscroll-contain p-1">
+              {shown.length === 0 ? <p className="px-3 py-4 text-center text-sm text-muted-foreground">لا توجد نتائج</p> : shown.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  className="flex min-h-9 w-full items-center rounded-md px-2 py-1.5 text-start text-sm hover:bg-accent/70"
+                  // A second click while the list closes must not pick the row now under it.
+                  onClick={() => { if (!open) return; onChange([...value, o.id]); setOpen(false); setQuery(''); }}
+                >
+                  <span className="truncate">{o.name}</span>
+                </button>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
+      )}
+      {value.map((id, i) => (
+        <div key={id} className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-1">
+          {ordered ? <span className="w-4 text-center text-xs text-muted-foreground">{i + 1}</span> : null}
+          <span className="min-w-0 flex-1 truncate text-sm">{renderName ? renderName(id) : (options.find((o) => o.id === id)?.name ?? id)}</span>
+          {disabled ? null : (
+            <>
+              {ordered ? (
+                <>
+                  <Button type="button" size="icon" variant="ghost" className="h-7 w-7" aria-label="أعلى" disabled={i === 0} onClick={() => move(i, i - 1)}><ArrowUp className="h-3.5 w-3.5" /></Button>
+                  <Button type="button" size="icon" variant="ghost" className="h-7 w-7" aria-label="أسفل" disabled={i === value.length - 1} onClick={() => move(i, i + 1)}><ArrowDown className="h-3.5 w-3.5" /></Button>
+                </>
+              ) : null}
+              <Button type="button" size="icon" variant="ghost" className="h-7 w-7" aria-label="إزالة" onClick={() => onChange(value.filter((v) => v !== id))}><X className="h-3.5 w-3.5" /></Button>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Amount typed in major units; reports minor units of the app currency. */
 export function AmountInput({
   value,
@@ -169,13 +257,13 @@ export function AmountInput({
 }) {
   const { decimals, code } = useCurrency();
   return (
-    <div className="relative">
+    <div dir="rtl" className="flex items-stretch">
       <Input
         id={id}
         inputMode="decimal"
         dir="ltr"
         autoFocus={autoFocus}
-        className="h-11 pe-14 text-start text-base tabular-nums"
+        className="h-11 min-w-0 flex-1 rounded-l-none text-start text-base tabular-nums"
         placeholder={placeholder}
         value={value}
         onChange={(e) => {
@@ -183,7 +271,7 @@ export function AmountInput({
           onChange(text, toMinor(text || '0', decimals));
         }}
       />
-      <span className="pointer-events-none absolute inset-y-0 end-3 flex items-center text-xs text-muted-foreground">{code}</span>
+      <span className="flex shrink-0 items-center rounded-l-md border border-r-0 border-input bg-muted/50 px-3 text-xs font-medium text-muted-foreground">{code}</span>
     </div>
   );
 }
@@ -417,5 +505,41 @@ export function useRunCommand() {
       }
     },
     [exec],
+  );
+}
+
+/** Picks a branch from what the server allows ('' = the company, or every branch for setup rows). */
+export function BranchSelect({
+  value,
+  onChange,
+  options,
+  id = 'branch',
+  label = 'الفرع',
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  id?: string;
+  label?: string;
+  disabled?: boolean;
+}) {
+  // Radix Select reserves '': map it to a token of its own.
+  const NONE = '__company__';
+  return (
+    <Field label={label} htmlFor={id}>
+      <Select value={value || NONE} onValueChange={(v) => onChange(v === NONE ? '' : v)} disabled={disabled}>
+        <SelectTrigger id={id} className="h-9">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value || NONE} value={o.value || NONE}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
   );
 }

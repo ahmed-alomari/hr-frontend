@@ -1,3 +1,4 @@
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/shared/utils';
@@ -46,5 +47,9 @@ export function StatTile({ icon: Icon, label, value, hint, tone = 'primary', loa
 }
 
 export function StatTileGrid({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn('grid gap-3 sm:grid-cols-2 lg:grid-cols-3', className)}>{children}</div>;
+  return (
+    <PhoneStatsFold>
+      <div className={cn('grid gap-3 sm:grid-cols-2 lg:grid-cols-3', className)}>{children}</div>
+    </PhoneStatsFold>
+  );
 }

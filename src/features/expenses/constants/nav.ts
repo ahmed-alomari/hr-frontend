@@ -3,9 +3,11 @@ import {
   Banknote,
   BarChart3,
   CheckSquare,
+  FileSpreadsheet,
   FolderKanban,
   HandCoins,
   LayoutDashboard,
+  Lock,
   Receipt,
   Settings,
   Users,
@@ -48,6 +50,7 @@ export const expensesNavGroups: ExpensesNavGroup[] = [
     icon: BarChart3,
     items: [
       { labelAr: 'تحليل المصروفات', href: expensesRoutes.reports, icon: BarChart3 },
+      { labelAr: 'تقرير الأشخاص', href: expensesRoutes.reportPeople, icon: Users },
       { labelAr: 'تقرير العهد', href: expensesRoutes.reportCustody, icon: Wallet },
       { labelAr: 'حركة النقد', href: expensesRoutes.reportCash, icon: Banknote },
     ],
@@ -58,6 +61,8 @@ export const expensesNavGroups: ExpensesNavGroup[] = [
     icon: Settings,
     items: [
       { labelAr: 'الفئات والمجموعات ومراكز التكلفة', href: expensesRoutes.setup, icon: FolderKanban },
+      { labelAr: 'إقفال الفترات', href: expensesRoutes.periods, icon: Lock },
+      { labelAr: 'استيراد من Excel', href: expensesRoutes.import, icon: FileSpreadsheet },
       { labelAr: 'الإعدادات والسياسات', href: expensesRoutes.settings, icon: Settings },
     ],
   },

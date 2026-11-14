@@ -5,10 +5,11 @@
  * not an expense: it appears in the custody and cash reports only, so paying
  * from a custody is never counted twice.
  */
-import { effectsOf } from './ledger';
+import { computeLedger, effectsOf, partyBalance } from './ledger';
+import { txnGroupId } from './policy';
 import type { Minor } from './money';
 import { ORG } from './types';
-import type { Expense, ExpensesData, PartyId } from './types';
+import type { AnyTxn, Expense, ExpensesData, PartyId } from './types';
 
 export type Period = 'day' | 'week' | 'month';
 
@@ -193,6 +194,247 @@ export function cashReport(data: ExpensesData, filter: Pick<ReportFilter, 'curre
     }
   }
   return r;
+}
+
+export type CashMovementType =
+  | 'expense'
+  | 'custody_issue'
+  | 'custody_topup'
+  | 'custody_return'
+  | 'advance'
+  | 'settlement_paid'
+  | 'settlement_received';
+
+export const CASH_MOVEMENT_LABELS_AR: Record<CashMovementType, string> = {
+  expense: 'مصروف مدفوع من المنشأة',
+  custody_issue: 'تسليم عهدة',
+  custody_topup: 'تغذية عهدة',
+  custody_return: 'مرتجع عهدة',
+  advance: 'سلفة شخصية',
+  settlement_paid: 'تعويض أو سداد للشخص',
+  settlement_received: 'سداد مستلم من الشخص',
+};
+
+/** One approved record that moved the organization's cash. */
+export type CashMovement = {
+  id: string;
+  kind: AnyTxn['kind'];
+  type: CashMovementType;
+  direction: 'out' | 'in';
+  date: string;
+  createdAt: string;
+  /** Always positive; the direction says which way it went. */
+  amount: Minor;
+  /** The person on the other side (custody holder, borrower, or the non-organization side). */
+  partyId: PartyId | null;
+  description: string;
+  groupId: string | null;
+  /** Expenses only. */
+  categoryId: string | null;
+  /** Expenses only; several when the cost is split across centers. */
+  costCenterIds: string[];
+  createdBy: string;
+  /** Settlement method; null when the money left or entered the organization's own cash. */
+  method: 'cash' | 'transfer' | 'payroll' | 'other' | null;
+  note: string;
+};
+
+/**
+ * Every approved record that moved the organization's cash in the period,
+ * oldest first. Spending from a custody or paid personally does not move the
+ * organization's cash (the custody handover already did), so it is not listed.
+ * The sum of the movements equals `cashReport`.
+ */
+export function cashMovements(data: ExpensesData, filter: Pick<ReportFilter, 'currency' | 'from' | 'to'>): CashMovement[] {
+  const custodies = new Map(data.custodies.map((c) => [c.id, c]));
+  const all: AnyTxn[] = [...data.expenses, ...data.custodyMoves, ...data.advances, ...data.settlements];
+  const rows: CashMovement[] = [];
+  for (const t of all) {
+    if (t.status !== 'approved' || t.currency !== filter.currency) continue;
+    if ((filter.from && t.date < filter.from) || (filter.to && t.date > filter.to)) continue;
+    const net = effectsOf(t).reduce((sum, e) => (e.type === 'orgCash' ? sum + e.amount : sum), 0);
+    if (net === 0) continue;
+    const direction: CashMovement['direction'] = net < 0 ? 'out' : 'in';
+    const centers = t.kind === 'expense'
+      ? [...new Set([t.costCenterId, ...t.allocation.map((l) => l.costCenterId)].filter((id): id is string => Boolean(id)))]
+      : [];
+    const common = {
+      id: t.id,
+      kind: t.kind,
+      direction,
+      date: t.date,
+      createdAt: t.createdAt,
+      amount: Math.abs(net),
+      groupId: txnGroupId(data, t),
+      categoryId: t.kind === 'expense' ? t.categoryId : null,
+      costCenterIds: centers,
+      createdBy: t.createdBy,
+      method: t.kind === 'settlement' ? t.method : null,
+      note: t.kind === 'settlement' ? '' : (t.note ?? ''),
+    };
+    switch (t.kind) {
+      case 'expense':
+        rows.push({ ...common, type: 'expense', partyId: null, description: t.description });
+        break;
+      case 'custody_move': {
+        const custody = custodies.get(t.custodyId);
+        const type: CashMovementType = t.type === 'issue' ? 'custody_issue' : t.type === 'topup' ? 'custody_topup' : 'custody_return';
+        rows.push({ ...common, type, partyId: custody?.holderId ?? null, description: custody?.purpose ?? '' });
+        break;
+      }
+      case 'advance':
+        rows.push({ ...common, type: 'advance', partyId: t.personId, description: t.purpose });
+        break;
+      case 'settlement':
+        rows.push({
+          ...common,
+          type: direction === 'out' ? 'settlement_paid' : 'settlement_received',
+          partyId: t.fromId === ORG ? t.toId : t.fromId,
+          description: t.note ?? '',
+        });
+        break;
+    }
+  }
+  return rows.sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
+}
+
+export type PersonReportRow = {
+  partyId: PartyId;
+  /** Distinct days in the period with spending, custody, an advance or a settlement. */
+  days: number;
+  /** Paid from their own money, in the period. */
+  spentPersonal: Minor;
+  /** Spent from a custody they hold, in the period. */
+  spentCustody: Minor;
+  /** spentPersonal + spentCustody. Bearing a cost is separate, so it is not added twice. */
+  spent: Minor;
+  /** Cost charged to them in the period. */
+  borne: Minor;
+  /** Custody handed to them (issue and refill) in the period. */
+  custodyIn: Minor;
+  /** Custody they returned in the period. */
+  custodyOut: Minor;
+  /** Approved custody they hold now, whatever the period. */
+  custodyNow: Minor;
+  hasCustody: boolean;
+  /** Personal advances they received in the period. */
+  advances: Minor;
+  /** Settlements they paid in the period. */
+  paidOut: Minor;
+  /** Settlements they received in the period. */
+  paidIn: Minor;
+  /** Others owe them now (pair-netted, all dates). */
+  owedToThem: Minor;
+  /** They owe others now. */
+  theyOwe: Minor;
+};
+
+type PersonBucket = {
+  days: Set<string>;
+  spentPersonal: Minor;
+  spentCustody: Minor;
+  borne: Minor;
+  custodyIn: Minor;
+  custodyOut: Minor;
+  advances: Minor;
+  paidOut: Minor;
+  paidIn: Minor;
+};
+
+function inReportPeriod(date: string, filter: Pick<ReportFilter, 'from' | 'to'>): boolean {
+  return (!filter.from || date >= filter.from) && (!filter.to || date <= filter.to);
+}
+
+/**
+ * One row per person who spent, held custody, borrowed, settled, or still has
+ * a balance. Period columns follow the dates. «له» and «عليه» and the custody
+ * still held are the position now, so a settlement outside the period still
+ * shows in the balance.
+ */
+export function peopleReport(data: ExpensesData, filter: Pick<ReportFilter, 'currency' | 'from' | 'to'>): PersonReportRow[] {
+  const ledger = computeLedger(data, filter.currency);
+  const holderOf = new Map(data.custodies.map((c) => [c.id, c.holderId]));
+  const buckets = new Map<PartyId, PersonBucket>();
+  const bucket = (id: PartyId, date: string): PersonBucket | null => {
+    if (!id || id === ORG) return null;
+    let row = buckets.get(id);
+    if (!row) {
+      row = { days: new Set(), spentPersonal: 0, spentCustody: 0, borne: 0, custodyIn: 0, custodyOut: 0, advances: 0, paidOut: 0, paidIn: 0 };
+      buckets.set(id, row);
+    }
+    row.days.add(date);
+    return row;
+  };
+
+  for (const expense of data.expenses) {
+    if (expense.status !== 'approved' || expense.currency !== filter.currency || !inReportPeriod(expense.date, filter)) continue;
+    for (const part of expense.payments) {
+      if (part.amount <= 0) continue;
+      if (part.source === 'personal' && part.payerId) {
+        const row = bucket(part.payerId, expense.date);
+        if (row) row.spentPersonal += part.amount;
+      } else if (part.source === 'custody' && part.custodyId) {
+        const row = bucket(holderOf.get(part.custodyId) ?? '', expense.date);
+        if (row) row.spentCustody += part.amount;
+      }
+    }
+    for (const share of expense.bearing.shares) {
+      if (share.amount <= 0) continue;
+      const row = bucket(share.partyId, expense.date);
+      if (row) row.borne += share.amount;
+    }
+  }
+  for (const move of data.custodyMoves) {
+    if (move.status !== 'approved' || move.currency !== filter.currency || !inReportPeriod(move.date, filter)) continue;
+    const row = bucket(holderOf.get(move.custodyId) ?? '', move.date);
+    if (!row) continue;
+    if (move.type === 'return') row.custodyOut += move.amount;
+    else row.custodyIn += move.amount;
+  }
+  for (const advance of data.advances) {
+    if (advance.status !== 'approved' || advance.currency !== filter.currency || !inReportPeriod(advance.date, filter)) continue;
+    const row = bucket(advance.personId, advance.date);
+    if (row) row.advances += advance.amount;
+  }
+  for (const settlement of data.settlements) {
+    if (settlement.status !== 'approved' || settlement.currency !== filter.currency || !inReportPeriod(settlement.date, filter)) continue;
+    const from = bucket(settlement.fromId, settlement.date);
+    if (from) from.paidOut += settlement.amount;
+    const to = bucket(settlement.toId, settlement.date);
+    if (to) to.paidIn += settlement.amount;
+  }
+
+  const ids = new Set<PartyId>([...buckets.keys(), ...ledger.parties.keys()]);
+  ids.delete(ORG);
+  const rows: PersonReportRow[] = [];
+  for (const partyId of ids) {
+    const activity = buckets.get(partyId);
+    const balance = partyBalance(ledger, partyId);
+    const spentPersonal = activity?.spentPersonal ?? 0;
+    const spentCustody = activity?.spentCustody ?? 0;
+    const row: PersonReportRow = {
+      partyId,
+      days: activity?.days.size ?? 0,
+      spentPersonal,
+      spentCustody,
+      spent: spentPersonal + spentCustody,
+      borne: activity?.borne ?? 0,
+      custodyIn: activity?.custodyIn ?? 0,
+      custodyOut: activity?.custodyOut ?? 0,
+      custodyNow: balance.custodyActual,
+      hasCustody: balance.custodyActual > 0,
+      advances: activity?.advances ?? 0,
+      paidOut: activity?.paidOut ?? 0,
+      paidIn: activity?.paidIn ?? 0,
+      owedToThem: balance.entitlements,
+      theyOwe: balance.liabilities,
+    };
+    const empty = row.spent === 0 && row.borne === 0 && row.custodyIn === 0 && row.custodyOut === 0
+      && row.advances === 0 && row.paidOut === 0 && row.paidIn === 0 && row.days === 0
+      && row.owedToThem === 0 && row.theyOwe === 0 && row.custodyNow === 0;
+    if (!empty) rows.push(row);
+  }
+  return rows.sort((a, b) => b.spent - a.spent || b.custodyNow - a.custodyNow || (b.owedToThem + b.theyOwe) - (a.owedToThem + a.theyOwe) || a.partyId.localeCompare(b.partyId));
 }
 
 /** CSV (UTF-8 with BOM for Excel) of the filtered expenses. */

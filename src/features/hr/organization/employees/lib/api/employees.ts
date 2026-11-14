@@ -154,6 +154,14 @@ export type CreateEmployeeUserAccountDto = {
 };
 
 export const employeesApi = {
+  /** The signed-in user's employee in this company, or null (one row, not the company's list). */
+  mine(companyId: string) {
+    return apiRequest<EmployeeResponseDto | null>('/hr/employees/me', {
+      query: { companyId },
+      silent: true,
+      throwOnError: true,
+    });
+  },
   getAll(query?: EmployeeListQuery) {
     return apiRequest<PaginatedResult<EmployeeResponseDto>>('/hr/employees', { query });
   },

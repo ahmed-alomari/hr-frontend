@@ -23,6 +23,11 @@ export const inventoryAdminRoutes = {
   reportInbound: '/inventory/reports/inbound',
   reportMovesAnalysis: '/inventory/reports/moves-analysis',
   reportBatches: '/inventory/reports/batches',
+  reportStockMovement: '/inventory/reports/stock-movement',
+  reportValuation: '/inventory/reports/valuation',
+  reportItemCard: '/inventory/reports/item-card',
+  reportCountVariances: '/inventory/reports/count-variances',
+  reportSlowMoving: '/inventory/reports/slow-moving',
   /** التهيئة */
   warehouses: '/inventory/warehouses',
   warehouseDetail: (warehouseId: string) => `/inventory/warehouses/${warehouseId}`,

@@ -3,15 +3,23 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Ban, CheckCircle2, History, Printer, Search, Undo2 } from 'lucide-react';
+import { Ban, CheckCircle2, History, Printer, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
+import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
+import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
 import { Input } from '@/components/ui/input';
+import { ListFilterBar } from '@/components/ui/list-filter-bar';
+import { LocalListTable, LocalListToolbar, useLocalList, type LocalListField } from '@/components/ui/local-list';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
+  customerLabel,
+  MONEY_METHODS,
   PAYMENT_METHOD_LABELS,
   resolvePosInvoiceStyle,
   SALE_STATUS_LABELS,
@@ -20,13 +28,17 @@ import {
   type PosSaleStatus,
 } from '@/features/pos/domain/types';
 import { posRoutes } from '@/features/pos/constants/routes';
-import { usePosContext } from '@/features/pos/hooks/use-pos-context';
+import { PosDataScope, usePosContext } from '@/features/pos/hooks/use-pos-context';
 import { paidAmount, priceLines, round2, saleTaxSettings } from '@/features/pos/lib/calc';
 import { formatDateTime, formatMoney, parseAmount } from '@/features/pos/lib/format';
 import { saleToPrintable } from '@/features/pos/lib/receipt';
+import { paymentSummaryOf } from '@/features/pos/lib/sales-report';
+import { Badge } from '@/components/ui/badge';
 import {
   EmptyState,
   PosGate,
+  lastDaysPeriod,
+  type PosPeriod,
   PrintPreviewDialog,
   SaleStatusBadge,
 } from '@/features/pos/components/shared/pos-shared';
@@ -167,7 +179,7 @@ function ResolvePanel({ sale, onDone }: { sale: PosSale; onDone: () => void }) {
             <Select value={refundMethod} onValueChange={(v) => setRefundMethod(v as PosPaymentMethod)}>
               <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(Object.keys(PAYMENT_METHOD_LABELS) as PosPaymentMethod[]).map((m) => (
+                {MONEY_METHODS.map((m) => (
                   <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>
                 ))}
               </SelectContent>
@@ -245,6 +257,7 @@ function SaleDialog({ sale, onClose }: { sale: PosSale | null; onClose: () => vo
   if (!sale) return null;
   const register = data.registers.find((r) => r.id === sale.registerId);
   const returns = data.returns.filter((r) => r.saleId === sale.id);
+  const collections = data.collections.filter((c) => c.saleId === sale.id);
   const needsAction = sale.status === 'payment_exception' || sale.status === 'awaiting_payment';
 
   return (
@@ -259,6 +272,7 @@ function SaleDialog({ sale, onClose }: { sale: PosSale | null; onClose: () => vo
           </DialogHeader>
           <div className="max-h-[70vh] space-y-3 overflow-y-auto text-sm">
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
+              <span>العميل: {customerLabel(sale.customer)}</span>
               <span>نقطة البيع: {register?.name ?? '—'}</span>
               <span>الكاشير: {sale.cashierName}</span>
               <span>التاريخ: {formatDateTime(sale.completedAt ?? sale.createdAt)}</span>
@@ -335,6 +349,38 @@ function SaleDialog({ sale, onClose }: { sale: PosSale | null; onClose: () => vo
               </div>
             ) : null}
 
+            {sale.credit ? (
+              <div className="space-y-1 rounded-md border border-border p-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold">آجل على {sale.credit.partnerName}</span>
+                  {sale.credit.due > 0 ? (
+                    <Badge variant="warning">المتبقي {formatMoney(sale.credit.due, currency)}</Badge>
+                  ) : (
+                    <Badge variant="success">مسدّدة</Badge>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-x-4 text-muted-foreground">
+                  <span>آجل {formatMoney(sale.credit.amount)}</span>
+                  <span>حُصّل {formatMoney(sale.credit.collected)}</span>
+                  <span>مرتجع إلى الحساب {formatMoney(sale.credit.returned)}</span>
+                </div>
+                {collections.length > 0 ? (
+                  <ul className="space-y-0.5 border-t border-border/60 pt-1">
+                    {collections.map((c) => (
+                      <li key={c.id} className="flex justify-between gap-2">
+                        <span>
+                          تحصيل · {PAYMENT_METHOD_LABELS[c.method]}
+                          {c.reference ? ` · ${c.reference}` : ''} · {formatDateTime(c.createdAt)} · {c.createdBy}
+                          {c.sessionId ? '' : ' · خارج الوردية'}
+                        </span>
+                        <span>{formatMoney(c.amount)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
             {returns.length > 0 ? (
               <div className="text-xs">
                 <span className="font-semibold">المرتجعات: </span>
@@ -377,7 +423,7 @@ function SaleDialog({ sale, onClose }: { sale: PosSale | null; onClose: () => vo
   );
 }
 
-function Sales() {
+function Sales({ period, setPeriod }: { period: PosPeriod; setPeriod: (p: PosPeriod) => void }) {
   const { data, currency } = usePosContext();
   const params = useSearchParams();
   const [status, setStatus] = React.useState<PosSaleStatus | 'all'>(
@@ -387,110 +433,134 @@ function Sales() {
   const [search, setSearch] = React.useState('');
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
+  const q = search.trim().toLowerCase();
   const sales = data.sales.filter(
     (s) =>
       (status === 'all' || s.status === status) &&
       (registerId === 'all' || s.registerId === registerId) &&
-      (!search.trim() || (s.number ?? '').toLowerCase().includes(search.trim().toLowerCase())),
+      (!q || (s.number ?? '').toLowerCase().includes(q) || (s.customer.kind !== 'walk_in' && s.customer.name.toLowerCase().includes(q))),
   );
   const selected = data.sales.find((s) => s.id === selectedId) ?? null;
+
+  const [defaultPeriod] = React.useState(period);
+  const activeFilterCount =
+    (status !== 'all' ? 1 : 0) +
+    (registerId !== 'all' ? 1 : 0) +
+    (q ? 1 : 0) +
+    (period.from !== defaultPeriod.from || period.to !== defaultPeriod.to ? 1 : 0);
+
+  const registerName = React.useCallback((id: string) => data.registers.find((r) => r.id === id)?.name ?? '—', [data.registers]);
+  const fields = React.useMemo<LocalListField<PosSale>[]>(() => [
+    { key: 'number', label: 'الرقم', kind: 'code', text: (s) => s.number ?? '—', cell: (s) => <span className="font-medium" dir="ltr">{s.number ?? '—'}</span> },
+    { key: 'date', label: 'التاريخ', kind: 'date', text: (s) => formatDateTime(s.completedAt ?? s.createdAt), sortValue: (s) => s.completedAt ?? s.createdAt, groupKey: (s) => (s.completedAt ?? s.createdAt).slice(0, 7) },
+    { key: 'register', label: 'نقطة البيع', optional: true, text: (s) => registerName(s.registerId), groupKey: (s) => s.registerId, groupLabel: registerName },
+    { key: 'cashier', label: 'الكاشير', optional: true, text: (s) => s.cashierName, groupKey: (s) => s.cashierName },
+    { key: 'customer', label: 'العميل', optional: true, hiddenByDefault: true, text: (s) => (s.customer.kind === 'walk_in' ? 'عميل نقدي' : s.customer.name), groupKey: (s) => (s.customer.kind === 'walk_in' ? null : s.customer.name) },
+    { key: 'total', label: 'الإجمالي', kind: 'number', text: (s) => formatMoney(s.totals.total, currency), sortValue: (s) => s.totals.total, sum: (s) => (s.status === 'completed' ? s.totals.total : 0), formatSum: (n) => formatMoney(n, currency), cell: (s) => <span className="tabular-nums">{formatMoney(s.totals.total, currency)}</span> },
+    { key: 'payment', label: 'الدفع', optional: true, sortable: false, text: paymentSummaryOf, cell: (s) => (
+      <span className="text-xs">
+        {paymentSummaryOf(s)}
+        {(s.credit?.due ?? 0) > 0 ? <span className="block text-warning">على {s.credit!.partnerName}: {formatMoney(s.credit!.due, currency)}</span> : null}
+      </span>
+    ) },
+    { key: 'status', label: 'الحالة', kind: 'status', text: (s) => SALE_STATUS_LABELS[s.status], cell: (s) => <SaleStatusBadge status={s.status} />, groupKey: (s) => s.status, groupLabel: (k) => SALE_STATUS_LABELS[k as PosSaleStatus] ?? k },
+  ], [currency, registerName]);
+  const list = useLocalList({ section: 'pos', page: 'sales', fields, rows: sales });
+  const periodLine = `الفترة: ${period.from} إلى ${period.to}`;
+
+  usePageHeaderActions(
+    () => (
+      <LocalListToolbar
+        list={list}
+        title="مبيعات نقاط البيع"
+        fileName={`pos-sales-${period.from}-${period.to}`}
+        subtitleLines={[periodLine, 'الإجمالي للمكتمل فقط']}
+        before={<FilterToggleButton activeFilterCount={activeFilterCount} />}
+      />
+    ),
+    [activeFilterCount, periodLine, period.from, period.to, list.rows, list.visibleFields, list.groups, list.sort.sortKey],
+  );
+
+  useEntityFilterSlot(
+    () => (
+      <ListFilterBar
+        showStatusSection={false}
+        showEmployeePicker={false}
+        periodValue={period}
+        onPeriodChange={setPeriod}
+        defaultPeriod={defaultPeriod}
+        periodFilterActive={activeFilterCount > 0}
+        onClearAll={() => {
+          setSearch('');
+          setStatus('all');
+          setRegisterId('all');
+        }}
+        leadingFilters={<EntityFilterSearchField value={search} onChange={setSearch} placeholder="رقم الإيصال أو اسم العميل" />}
+        inlineSelects={[
+          {
+            id: 'status',
+            value: status,
+            onChange: (v) => setStatus(v as PosSaleStatus | 'all'),
+            placeholder: 'كل الحالات',
+            options: [{ value: 'all', label: 'كل الحالات' }, ...(Object.keys(SALE_STATUS_LABELS) as PosSaleStatus[]).map((s) => ({ value: s, label: SALE_STATUS_LABELS[s] }))],
+          },
+          {
+            id: 'register',
+            value: registerId,
+            onChange: setRegisterId,
+            placeholder: 'كل نقاط البيع',
+            options: [{ value: 'all', label: 'كل نقاط البيع' }, ...data.registers.map((r) => ({ value: r.id, label: r.name }))],
+          },
+        ]}
+      />
+    ),
+    [period, defaultPeriod, status, registerId, search, data.registers, activeFilterCount],
+  );
 
   return (
     <div className="space-y-4 sm:space-y-5">
       <SetPageTitle titleAr="مبيعات نقاط البيع" iconName="Receipt" />
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-52 flex-1">
-          <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="h-9 ps-9" placeholder="رقم الإيصال" value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-        <Select value={status} onValueChange={(v) => setStatus(v as PosSaleStatus | 'all')}>
-          <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">كل الحالات</SelectItem>
-            {(Object.keys(SALE_STATUS_LABELS) as PosSaleStatus[]).map((s) => (
-              <SelectItem key={s} value={s}>{SALE_STATUS_LABELS[s]}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={registerId} onValueChange={setRegisterId}>
-          <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">كل نقاط البيع</SelectItem>
-            {data.registers.map((r) => (
-              <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {sales.length === 0 ? (
-        <EmptyState title="لا مبيعات" description="تظهر هنا مستندات البيع من شاشة الكاشير." />
-      ) : (
-        <>
-        {/* Phone: one card per sale. */}
-        <div className="space-y-2 md:hidden">
-          {sales.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className="w-full rounded-xl border border-border bg-card p-3 text-start shadow-soft active:bg-muted/40"
-              onClick={() => setSelectedId(s.id)}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold" dir="ltr">{s.number ?? '—'}</span>
-                <SaleStatusBadge status={s.status} />
-              </div>
-              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span className="truncate">
-                  {data.registers.find((r) => r.id === s.registerId)?.name ?? '—'} · {s.cashierName}
-                </span>
-                <span className="shrink-0">{formatDateTime(s.completedAt ?? s.createdAt)}</span>
-              </div>
-              <div className="mt-1 text-base font-bold tabular-nums">{formatMoney(s.totals.total, currency)}</div>
-            </button>
-          ))}
-        </div>
-        <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-soft max-md:hidden">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead className="bg-muted/50 text-xs text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 text-start">الرقم</th>
-                <th className="px-3 py-2 text-start">التاريخ</th>
-                <th className="px-3 py-2 text-start">نقطة البيع</th>
-                <th className="px-3 py-2 text-start">الكاشير</th>
-                <th className="px-3 py-2 text-start">الإجمالي</th>
-                <th className="px-3 py-2 text-start">الحالة</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sales.map((s) => (
-                <tr
-                  key={s.id}
-                  className="cursor-pointer border-t border-border hover:bg-muted/40"
-                  onClick={() => setSelectedId(s.id)}
-                >
-                  <td className="px-3 py-2 font-medium" dir="ltr">{s.number ?? '—'}</td>
-                  <td className="px-3 py-2">{formatDateTime(s.completedAt ?? s.createdAt)}</td>
-                  <td className="px-3 py-2">{data.registers.find((r) => r.id === s.registerId)?.name ?? '—'}</td>
-                  <td className="px-3 py-2">{s.cashierName}</td>
-                  <td className="px-3 py-2 tabular-nums">{formatMoney(s.totals.total, currency)}</td>
-                  <td className="px-3 py-2"><SaleStatusBadge status={s.status} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        </>
-      )}
+      <LocalListTable
+        list={list}
+        rowKey={(s) => s.id}
+        onRowClick={(s) => setSelectedId(s.id)}
+        empty={<EmptyState title={activeFilterCount > 0 ? 'لا نتائج' : 'لا مبيعات'} description={activeFilterCount > 0 ? 'جرّب تعديل الفلاتر.' : 'تظهر هنا مستندات البيع من شاشة الكاشير.'} />}
+        card={(s) => (
+          <>
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-semibold" dir="ltr">{s.number ?? '—'}</span>
+            <SaleStatusBadge status={s.status} />
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span className="truncate">
+              {data.registers.find((r) => r.id === s.registerId)?.name ?? '—'} · {s.cashierName}
+            </span>
+            <span className="shrink-0">{formatDateTime(s.completedAt ?? s.createdAt)}</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <span className="text-base font-bold tabular-nums">{formatMoney(s.totals.total, currency)}</span>
+            <span className="text-xs text-muted-foreground">{paymentSummaryOf(s)}</span>
+          </div>
+          {(s.credit?.due ?? 0) > 0 ? (
+            <div className="mt-1 text-xs text-warning">
+              على {s.credit!.partnerName}: {formatMoney(s.credit!.due, currency)}
+            </div>
+          ) : null}
+          </>
+        )}
+      />
       <SaleDialog sale={selected} onClose={() => setSelectedId(null)} />
     </div>
   );
 }
 
 export function PosSalesPage() {
+  const [period, setPeriod] = React.useState<PosPeriod>(() => lastDaysPeriod(30));
   return (
-    <PosGate permission="pos.sales.read">
-      <Sales />
-    </PosGate>
+    <PosDataScope range={period}>
+      <PosGate permission="pos.sales.read">
+        <Sales period={period} setPeriod={setPeriod} />
+      </PosGate>
+    </PosDataScope>
   );
 }

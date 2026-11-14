@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
 import { FileDown, FileSpreadsheet, Plus, RefreshCw } from 'lucide-react';
@@ -490,33 +491,37 @@ export function useDailyAttendanceModel() {
           <Plus className="h-4 w-4" />
           تسجيل حضور
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 gap-2"
-          onClick={() => setRecomputeOpen(true)}
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          تحديث البيانات
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" variant="outline" size="sm" className="h-8 w-8 shrink-0" aria-label="تصدير الحضور">
-              <FileDown className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem onSelect={() => void openPdfExport()}>
-              <FileDown className="h-4 w-4" />
-              PDF
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void handleExportAttendanceExcel()}>
-              <FileSpreadsheet className="h-4 w-4" />
-              Excel
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <FoldedHeaderTool>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-2"
+            onClick={() => setRecomputeOpen(true)}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            تحديث البيانات
+          </Button>
+        </FoldedHeaderTool>
+        <FoldedHeaderTool>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="h-8 w-8 shrink-0" aria-label="تصدير الحضور">
+                <FileDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onSelect={() => void openPdfExport()}>
+                <FileDown className="h-4 w-4" />
+                PDF
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void handleExportAttendanceExcel()}>
+                <FileSpreadsheet className="h-4 w-4" />
+                Excel
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </FoldedHeaderTool>
       </div>
     ),
     [activeFilterCount, handleExportAttendanceExcel, openPdfExport],

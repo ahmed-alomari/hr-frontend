@@ -152,7 +152,7 @@ export function CustomerPaymentFormPage({ paymentId }: CustomerPaymentFormPagePr
         </div>
       </div>
 
-      {/* Main Odoo Form Card */}
+      {/* Main Form Card */}
       <div className="rounded-xl border border-border/60 bg-card p-6 md:p-8 shadow-xs flex flex-col gap-6 relative">
         {/* Header Smart Buttons */}
         <div className="flex items-center justify-start gap-2 border-b border-border/40 pb-4">

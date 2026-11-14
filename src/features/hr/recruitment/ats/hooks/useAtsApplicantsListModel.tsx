@@ -3,42 +3,14 @@
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
-import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
-import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
 import type { AtsPipelineStage } from '@/features/hr/recruitment/lib/ats/types';
-import {
-  RECRUITMENT_ARCHIVE_SCOPE_DEFAULT,
-  RECRUITMENT_ARCHIVE_SCOPE_OPTIONS,
-} from '@/features/hr/recruitment/lib/archive-scope';
+import { RECRUITMENT_ARCHIVE_SCOPE_DEFAULT, RECRUITMENT_ARCHIVE_SCOPE_OPTIONS } from '@/features/hr/recruitment/lib/archive-scope';
 import type { RecruitmentArchiveScope } from '@/features/hr/recruitment/lib/api/types';
-import {
-  ATS_APPLICANT_STAGE_LABELS,
-  ATS_APPLICANT_STAGE_ORDER,
-  type AtsApplicantStageFilter,
-} from '@/features/hr/recruitment/ats/constants/ats-applicants-list';
-import {
-  useRecruitmentApplicant,
-  useRecruitmentApplicantsList,
-  useRecruitmentJobDetail,
-  useRecruitmentJobFormsMap,
-  useRecruitmentJobsList,
-} from '@/features/hr/recruitment/hooks/useRecruitment';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
-import { getApplicantName } from '@/features/hr/recruitment/lib/ats/utils';
-import { ATS_STAGE_TABS } from '@/features/hr/recruitment/lib/ats/stage-styles';
-import { exportDateTime } from '@/features/hr/attendance/lib/attendance-export-format';
+import { ATS_APPLICANT_STAGE_LABELS, ATS_APPLICANT_STAGE_ORDER, type AtsApplicantStageFilter } from '@/features/hr/recruitment/ats/constants/ats-applicants-list';
+import { useRecruitmentApplicant, useRecruitmentApplicantsList, useRecruitmentJobDetail, useRecruitmentJobFormsMap, useRecruitmentJobsList } from '@/features/hr/recruitment/hooks/useRecruitment';
 
-const APPLICANT_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الاسم', kind: 'name' },
-  { label: 'الوظيفة', kind: 'text' },
-  { label: 'المرحلة', kind: 'status' },
-  { label: 'تاريخ التقديم', kind: 'date' },
-  { label: 'التقييم', kind: 'number' },
-];
 
 export function useAtsApplicantsListModel() {
   const router = useRouter();
@@ -140,17 +112,6 @@ export function useAtsApplicantsListModel() {
     + (archiveScope !== RECRUITMENT_ARCHIVE_SCOPE_DEFAULT ? 1 : 0);
 
   // Applicants are loaded whole for the current filters — export that same list.
-  const getExportRows = useLatestCallback((): string[][] => applicants.map((app) => {
-    const form = formById.get(app.formId);
-    const stage = ATS_STAGE_TABS.find((s) => s.key === app.pipelineStage)?.label ?? app.pipelineStage;
-    return [
-      form ? getApplicantName(app, form.fields) : 'متقدم',
-      jobs.find((j) => j.id === app.jobId)?.title ?? '—',
-      app.isArchived ? `${stage} — مؤرشف` : stage,
-      exportDateTime(app.submittedAt),
-      app.score ? String(app.score.finalScore) : 'بدون تقييم',
-    ];
-  }));
 
   const exportSubtitleLines = React.useMemo(() => {
     const parts = [
@@ -162,22 +123,6 @@ export function useAtsApplicantsListModel() {
     ].filter(Boolean);
     return [parts.join(' — ')];
   }, [archiveScope, dateBounds.from, dateBounds.to, debouncedSearch, jobFilter, jobSelectOptions, stageFilter]);
-
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <RegisterExportMenu
-          title="سجل المتقدمين"
-          fileName="recruitment-applicants"
-          columns={APPLICANT_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={exportSubtitleLines}
-        />
-      </div>
-    ),
-    [activeFilterCount, getExportRows, exportSubtitleLines],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -230,6 +175,9 @@ export function useAtsApplicantsListModel() {
   );
 
   return {
+    activeFilterCount,
+    exportSubtitleLines,
+    listQuery,
     jobFilter,
     applicants,
     jobs,

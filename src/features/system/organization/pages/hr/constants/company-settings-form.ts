@@ -13,6 +13,10 @@ export type CompanySettingsFormState = {
   baseCountryCode: string;
   /** Base currency (العملة الأساسية); sent only when changed. */
   currencyCode: string;
+  /** Sales tax: set once here, every app that sells prices with it. */
+  taxEnabled: boolean;
+  taxRate: number;
+  pricesIncludeTax: boolean;
   city: string;
   district: string;
   address: string;
@@ -64,6 +68,9 @@ export function companyToSettingsForm(company: CompanyResponseDto): CompanySetti
     country: company.country ?? '',
     baseCountryCode: company.baseCountryCode || 'YE',
     currencyCode: company.currencyCode,
+    taxEnabled: company.taxEnabled ?? false,
+    taxRate: company.taxRate ?? 0,
+    pricesIncludeTax: company.pricesIncludeTax ?? true,
     city: company.city ?? '',
     district: company.district ?? '',
     address: company.address ?? '',
@@ -118,6 +125,9 @@ export function settingsFormToUpdateDto(
     website: emptyToNull(form.website),
     country: emptyToNull(form.country),
     baseCountryCode: form.baseCountryCode,
+    taxEnabled: form.taxEnabled,
+    taxRate: Math.min(100, Math.max(0, Math.round((Number(form.taxRate) || 0) * 100) / 100)),
+    pricesIncludeTax: form.pricesIncludeTax,
     city: emptyToNull(form.city),
     district: emptyToNull(form.district),
     address: emptyToNull(form.address),

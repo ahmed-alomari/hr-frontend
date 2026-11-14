@@ -90,7 +90,7 @@ export function ReconciliationListPage() {
         iconName="CheckSquare"
       />
 
-      {/* Top Control Bar matching Odoo exact header */}
+      {/* Top Control Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-background p-2 border border-border/40 shadow-xs">
         {/* Right side (Action Button & Title) */}
         <div className="flex items-center gap-2">
@@ -111,7 +111,7 @@ export function ReconciliationListPage() {
           </div>
         </div>
 
-        {/* Center: Search with Odoo Badges */}
+        {/* Center: Search with Badges */}
         <div className="flex items-center gap-2 flex-1 max-w-xl mx-auto">
           <div className="relative w-full flex items-center">
             <div className="relative flex-1 flex items-center">

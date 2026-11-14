@@ -3,13 +3,13 @@
  * custody lifecycle and shortfall, shared expenses, settlements, advances,
  * approval, reports without double counting, policies and participants.
  */
-import { buildDemoData, DEMO, emptyData } from './fixtures/demo-seed';
+import { buildDemoData, DEMO, emptyData, homeGroup } from './fixtures/demo-seed';
 import { buildBearing, custodyPayments, singleAllocation, validateExpense } from '../domain/expense-builder';
 import { computeLedger, partyBalance, settlementSuggestions, statement } from '../domain/ledger';
 import { splitByWeights, splitEqual, sumMinor, toMinor } from '../domain/money';
 import { mergeParticipants } from '../domain/participants';
-import { canDecide, checkPolicies, statusOnSubmit } from '../domain/policy';
-import { bucketOf, cashReport, expenseReport, weekStart } from '../domain/reports';
+import { applyDecision, approvalPlan, canDecide, checkPolicies, currentDeciders } from '../domain/policy';
+import { bucketOf, cashMovements, cashReport, expenseReport, peopleReport, weekStart } from '../domain/reports';
 import { ORG } from '../domain/types';
 import type { Advance, CustodyMove, Expense, ExpensesData, PaymentPart, Settlement, TxnStatus } from '../domain/types';
 
@@ -114,6 +114,100 @@ describe('custody', () => {
   });
 });
 
+describe('cash movements (حركة النقد)', () => {
+  // Organization cash: out = 100000 + 20000 + 50000 + 40000 + 18000 = 228000; in = 70000 + 20000 = 90000.
+  const cashData = () =>
+    data({
+      custodyMoves: [
+        move('m1', 'issue', 100000, '2026-10-02'),
+        move('m2', 'topup', 20000, '2026-10-03'),
+        move('m3', 'return', 70000, '2026-10-08'),
+        move('m4', 'topup', 5000, '2026-10-05', 'submitted'), // pending: not cash yet
+      ],
+      advances: [{ id: 'adv1', kind: 'advance', personId: 'M', amount: 50000, purpose: 'سلفة سفر', ...meta('2026-10-04') }],
+      settlements: [
+        { id: 's1', kind: 'settlement', fromId: ORG, toId: 'A', amount: 18000, method: 'cash', ...meta('2026-10-07') },
+        { id: 's2', kind: 'settlement', fromId: 'M', toId: ORG, amount: 20000, method: 'transfer', ...meta('2026-10-09') },
+      ],
+      expenses: [
+        exp('e1', 30000, [{ source: 'custody', custodyId: 'C1', payerId: 'K', amount: 30000 }], undefined, { date: '2026-10-05' }), // from custody: not cash
+        exp('e2', 40000, [{ source: 'org', amount: 40000 }], undefined, { date: '2026-10-06' }), // org cash
+        exp('e3', 9000, [{ source: 'personal', payerId: 'A', amount: 9000 }], undefined, { date: '2026-10-06' }), // personal: not cash
+      ],
+    });
+
+  it('lists every approved record that moved the organization cash, in and out, oldest first', () => {
+    const rows = cashMovements(cashData(), { currency: CUR });
+    expect(rows.map((r) => [r.date, r.type, r.direction, r.amount, r.partyId])).toEqual([
+      ['2026-10-02', 'custody_issue', 'out', 100000, 'K'],
+      ['2026-10-03', 'custody_topup', 'out', 20000, 'K'],
+      ['2026-10-04', 'advance', 'out', 50000, 'M'],
+      ['2026-10-06', 'expense', 'out', 40000, null],
+      ['2026-10-07', 'settlement_paid', 'out', 18000, 'A'],
+      ['2026-10-08', 'custody_return', 'in', 70000, 'K'],
+      ['2026-10-09', 'settlement_received', 'in', 20000, 'M'],
+    ]);
+    expect(rows.find((r) => r.type === 'expense')).toMatchObject({ categoryId: 'cat:fuel', method: null, costCenterIds: [], groupId: null });
+    expect(rows.find((r) => r.type === 'settlement_received')?.method).toBe('transfer');
+    expect(rows.find((r) => r.type === 'settlement_paid')?.method).toBe('cash');
+  });
+
+  it('the movements add up to the cash report, in and out, with no double count', () => {
+    const d = cashData();
+    const rows = cashMovements(d, { currency: CUR });
+    const out = rows.filter((r) => r.direction === 'out').reduce((t, r) => t + r.amount, 0);
+    const inn = rows.filter((r) => r.direction === 'in').reduce((t, r) => t + r.amount, 0);
+    const cash = cashReport(d, { currency: CUR });
+    expect({ out, in: inn, net: out - inn }).toEqual({ out: 228000, in: 90000, net: 138000 });
+    expect(cash).toMatchObject({
+      expensesPaidDirect: 40000,
+      custodyFunding: 120000,
+      advancesPaid: 50000,
+      settlementsPaid: 18000,
+      custodyReturns: 70000,
+      settlementsReceived: 20000,
+      netOutflow: out - inn,
+    });
+  });
+
+  it('a date range keeps only the movements inside it', () => {
+    const rows = cashMovements(cashData(), { currency: CUR, from: '2026-10-04', to: '2026-10-07' });
+    expect(rows.map((r) => r.type)).toEqual(['advance', 'expense', 'settlement_paid']);
+  });
+});
+
+describe('people report (تقرير الأشخاص)', () => {
+  const peopleData = () =>
+    data({
+      custodyMoves: [move('m1', 'issue', 100000, '2026-10-02'), move('m2', 'return', 20000, '2026-10-08')],
+      expenses: [
+        exp('e1', 30000, [{ source: 'custody', custodyId: 'C1', payerId: 'K', amount: 30000 }], buildBearing('org', 30000, []), { date: '2026-10-05' }),
+        exp('e2', 40000, [{ source: 'personal', payerId: 'A', amount: 40000 }], buildBearing('org', 40000, []), { date: '2026-10-06' }),
+        exp('e3', 9000, [{ source: 'personal', payerId: 'A', amount: 9000 }], buildBearing('equal', 9000, ['A', 'S']), { date: '2026-10-06' }),
+      ],
+      advances: [{ id: 'adv1', kind: 'advance', personId: 'M', amount: 50000, purpose: 'سلفة', ...meta('2026-10-04') }],
+      settlements: [{ id: 's1', kind: 'settlement', fromId: 'M', toId: ORG, amount: 20000, method: 'cash', ...meta('2026-10-09') }],
+    });
+
+  it('splits what each person spent, holds, is owed and owes', () => {
+    const by = Object.fromEntries(peopleReport(peopleData(), { currency: CUR }).map((r) => [r.partyId, r]));
+    // K holds the custody: 100000 in, 30000 spent from it, 20000 back, 50000 still held, on 3 days.
+    expect(by.K).toMatchObject({ spent: 30000, spentCustody: 30000, spentPersonal: 0, custodyIn: 100000, custodyOut: 20000, custodyNow: 50000, hasCustody: true, days: 3, owedToThem: 0, theyOwe: 0 });
+    // A paid 49000. The organization owes him 40000, and S owes him 4500 of the shared 9000.
+    expect(by.A).toMatchObject({ spent: 49000, spentPersonal: 49000, borne: 4500, days: 1, owedToThem: 44500, theyOwe: 0, hasCustody: false });
+    expect(by.S).toMatchObject({ spent: 0, borne: 4500, theyOwe: 4500, owedToThem: 0, days: 1, hasCustody: false });
+    // M took 50000 and repaid 20000, so 30000 remains on him.
+    expect(by.M).toMatchObject({ advances: 50000, paidOut: 20000, theyOwe: 30000, owedToThem: 0, days: 2, hasCustody: false, spent: 0 });
+  });
+
+  it('the period limits the activity and keeps the balance as it is now', () => {
+    const by = Object.fromEntries(peopleReport(peopleData(), { currency: CUR, from: '2026-10-06', to: '2026-10-06' }).map((r) => [r.partyId, r]));
+    expect(by.A).toMatchObject({ spent: 49000, days: 1, owedToThem: 44500 });
+    expect(by.K).toMatchObject({ spent: 0, custodyIn: 0, days: 0, custodyNow: 50000, hasCustody: true });
+    expect(by.M).toMatchObject({ advances: 0, paidOut: 0, days: 0, theyOwe: 30000 });
+  });
+});
+
 describe('cost allocation vs obligations', () => {
   it('a shared dinner paid by one person: each other bearer owes the payer', () => {
     const bearing = buildBearing('equal', 27000, ['A', 'K', 'S']);
@@ -201,15 +295,56 @@ describe('approval', () => {
     expect(partyBalance(computeLedger(data({ expenses: [{ ...e, status: 'rejected' }] }), CUR), 'A').entitlements).toBe(0);
   });
 
-  it('submit status follows the settings, and nobody approves their own record', () => {
-    const s = { ...emptyData(CUR).settings, requireApproval: true, autoApproveBelow: 5000, approverIds: ['A'] };
-    expect(statusOnSubmit(4999, s)).toBe('approved');
-    expect(statusOnSubmit(5000, s)).toBe('submitted');
-    expect(statusOnSubmit(5000, { ...s, requireApproval: false })).toBe('approved');
-    const mine = exp('e1', 9000, [{ source: 'org', amount: 9000 }], undefined, { status: 'submitted', createdBy: 'A' });
-    expect(canDecide('A', mine, s)).toBe(false);
-    expect(canDecide('A', { ...mine, createdBy: 'K' }, s)).toBe(true);
-    expect(canDecide('K', { ...mine, createdBy: 'S' }, s)).toBe(false);
+  it('the group policy decides the status on submit, and nobody approves their own record', () => {
+    const policy = { ...homeGroup().policy, approval: 'above' as const, approvalAbove: 5000, approverIds: ['A'] };
+    expect(approvalPlan(policy, 4999, 'K').status).toBe('approved');
+    expect(approvalPlan(policy, 5000, 'K').status).toBe('submitted');
+    expect(approvalPlan({ ...policy, approval: 'none' }, 5000, 'K').status).toBe('approved');
+    const sent = (createdBy: string) => ({
+      ...exp('e1', 9000, [{ source: 'org', amount: 9000 }], undefined, { status: 'submitted', createdBy }),
+      approval: approvalPlan(policy, 9000, createdBy).approval,
+    });
+    expect(canDecide('A', sent('A'))).toBe(false);
+    expect(sent('A').approval?.steps[0]?.status).toBe('skipped');
+    expect(canDecide('B', sent('A'))).toBe(true); // no one left on the path: the approve permission decides
+    expect(canDecide('A', sent('K'))).toBe(true);
+    expect(canDecide('K', sent('S'))).toBe(false);
+  });
+
+  it('sequential path: manager, then approvers in order; any_one ends at the first', () => {
+    const policy = { ...homeGroup().policy, approval: 'always' as const, managerId: 'M', approverIds: ['A', 'B'], approvalMode: 'sequential' as const };
+    let txn = { ...exp('e1', 100, [{ source: 'org', amount: 100 }], undefined, { status: 'submitted', createdBy: 'K' }), approval: approvalPlan(policy, 100, 'K').approval };
+    expect(currentDeciders(txn)).toEqual(['M']);
+    txn = applyDecision(txn, 'M', 'approved', null, 'now');
+    expect(currentDeciders(txn)).toEqual(['A']);
+    txn = applyDecision(txn, 'A', 'approved', null, 'now');
+    expect(txn.status).toBe('submitted');
+    txn = applyDecision(txn, 'B', 'approved', null, 'now');
+    expect(txn.status).toBe('approved');
+
+    let any = { ...txn, status: 'submitted' as const, approval: approvalPlan({ ...policy, managerId: null, approvalMode: 'any_one' }, 100, 'K').approval };
+    expect(currentDeciders(any)).toEqual(['A', 'B']);
+    any = applyDecision(any, 'B', 'approved', null, 'now');
+    expect(any.status).toBe('approved');
+    expect(any.approval?.steps.map((s) => s.status)).toEqual(['skipped', 'approved']);
+  });
+
+  it('a parallel stage completes at the chosen count', () => {
+    const policy = {
+      ...homeGroup().policy,
+      approval: 'always' as const,
+      stages: [{ mode: 'parallel' as const, approverIds: ['A', 'B', 'C'], requiredCount: 2 }],
+    };
+    let txn = {
+      ...exp('e1', 100, [{ source: 'org', amount: 100 }], undefined, { status: 'submitted', createdBy: 'K' }),
+      approval: approvalPlan(policy, 100, 'K').approval,
+    };
+    expect(currentDeciders(txn)?.sort()).toEqual(['A', 'B', 'C']);
+    txn = applyDecision(txn, 'C', 'approved', null, 'now');
+    expect(txn.status).toBe('submitted');
+    txn = applyDecision(txn, 'A', 'approved', null, 'now');
+    expect(txn.status).toBe('approved');
+    expect(txn.approval?.steps.find((s) => s.partyId === 'B')?.status).toBe('skipped');
   });
 
   it('switching the mode changes no balance', () => {
@@ -223,18 +358,28 @@ describe('approval', () => {
 });
 
 describe('policies', () => {
-  it('category limit, attachment and monthly limit', () => {
+  it('category limit, attachment and the group monthly limits', () => {
     const d = data({
       categories: [{ id: 'cat:fuel', name: 'وقود', color: '#000', maxAmount: 20000 }],
-      settings: { ...emptyData(CUR).settings, requireAttachmentAbove: 15000, monthlyLimitPerPerson: 50000 },
-      expenses: [exp('old', 40000, [{ source: 'org', amount: 40000 }], undefined, { date: '2026-10-02', createdBy: 'K' })],
+      groups: [homeGroup({ attachment: 'above', attachmentAbove: 15000, monthlyLimit: 60000, monthlyLimitPerPerson: 50000 })],
+      expenses: [
+        exp('old', 40000, [{ source: 'org', amount: 40000 }], undefined, { date: '2026-10-02', createdBy: 'K' }),
+        exp('other', 10000, [{ source: 'org', amount: 10000 }], undefined, { date: '2026-10-03', createdBy: 'S' }),
+      ],
     });
     const codes = checkPolicies(
-      { id: 'new', amount: 25000, categoryId: 'cat:fuel', attachments: [], createdBy: 'K', date: '2026-10-20', currency: CUR },
+      { id: 'new', amount: 25000, categoryId: 'cat:fuel', attachments: [], createdBy: 'K', date: '2026-10-20', currency: CUR, groupId: null },
       d,
       String,
     ).map((v) => v.code);
-    expect(codes).toEqual(['category_limit', 'attachment_required', 'monthly_limit']);
+    // K: 40,000 + 25,000 > 50,000; the group: 50,000 + 25,000 > 60,000.
+    expect(codes).toEqual(['category_limit', 'attachment_required', 'group_monthly_limit', 'monthly_limit']);
+    const elsewhere = checkPolicies(
+      { id: 'new', amount: 15000, categoryId: 'cat:fuel', attachments: [], createdBy: 'K', date: '2026-10-20', currency: CUR, groupId: 'grp:x' },
+      { ...d, groups: [...d.groups, { id: 'grp:x', name: 'x', memberIds: [], policy: homeGroup().policy }] },
+      String,
+    );
+    expect(elsewhere).toEqual([]);
   });
 });
 

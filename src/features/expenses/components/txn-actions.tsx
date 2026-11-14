@@ -2,14 +2,25 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
-import { Ban, Check, Send, X } from 'lucide-react';
+import { Ban, Check, Lock, Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ExpensesCommand } from '../data/commands';
 import { useExpensesStore } from '../data/store';
-import { canDecide, canVoid } from '../domain/policy';
+import { periodLockMessage } from '../domain/periods';
+import { canDecide, canVoid, currentDeciders } from '../domain/policy';
 import type { AnyTxn } from '../domain/types';
 import { ReasonDialog } from './common';
-import { useExpensesData, useExpensesPermissions } from './expenses-provider';
+import { useDirectory, useExpensesData, useExpensesPermissions } from './expenses-provider';
+
+/**
+ * Whether the signed-in user decides this record now: its author never; a
+ * manager or approver named on its path in their turn (no permission
+ * needed); otherwise, with no one named, whoever holds exp.expenses.approve.
+ */
+export function mayDecideNow(actorId: string, txn: AnyTxn, canApprove: boolean): boolean {
+  if (!canDecide(actorId, txn)) return false;
+  return currentDeciders(txn) !== null || canApprove;
+}
 
 /**
  * Submit / approve / reject / void for any record. The buttons follow the
@@ -22,8 +33,18 @@ export function TxnActions({ txn, compact }: { txn: AnyTxn; compact?: boolean })
   const exec = useExpensesStore((s) => s.exec);
   const busy = useExpensesStore((s) => s.busy);
   const perms = useExpensesPermissions();
+  const directory = useDirectory();
   const [dialog, setDialog] = React.useState<'reject' | 'void' | null>(null);
   if (!data || !actorId) return null;
+  const locked = periodLockMessage(data, txn.date);
+  if (locked) {
+    return (
+      <span className="inline-flex items-center gap-1 self-center text-xs text-muted-foreground" title={locked}>
+        <Lock className="h-3.5 w-3.5" />
+        فترة مقفلة
+      </span>
+    );
+  }
 
   const attempt = async (command: ExpensesCommand, ok: string) => {
     try {
@@ -33,8 +54,17 @@ export function TxnActions({ txn, compact }: { txn: AnyTxn; compact?: boolean })
       toast.error(err instanceof Error ? err.message : 'تعذر التنفيذ');
     }
   };
-  const mayDecide = canDecide(actorId, txn, data.settings);
+  const mayDecide = mayDecideNow(actorId, txn, perms.approve);
+  const deciders = txn.status === 'submitted' ? currentDeciders(txn) : null;
   const size = compact ? 'sm' : 'default';
+  const waitingFor =
+    txn.createdBy === actorId
+      ? 'لا تعتمد عملية سجّلتها'
+      : deciders
+        ? `بانتظار ${deciders.map((id) => directory.nameOf(id)).join(' أو ')}`
+        : !perms.approve
+          ? 'لا تملك صلاحية الاعتماد (exp.expenses.approve)'
+          : 'بانتظار معتمِد آخر';
 
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -45,7 +75,7 @@ export function TxnActions({ txn, compact }: { txn: AnyTxn; compact?: boolean })
         </Button>
       ) : null}
       {txn.status === 'submitted' ? (
-        mayDecide && perms.approve ? (
+        mayDecide ? (
           <>
             <Button
               size={size}
@@ -61,9 +91,7 @@ export function TxnActions({ txn, compact }: { txn: AnyTxn; compact?: boolean })
             </Button>
           </>
         ) : (
-          <span className="self-center text-xs text-muted-foreground">
-            {!perms.approve ? 'لا تملك صلاحية الاعتماد (exp.expenses.approve)' : txn.createdBy === actorId ? 'لا تعتمد عملية سجّلتها' : 'بانتظار معتمِد آخر'}
-          </span>
+          <span className="self-center text-xs text-muted-foreground">{waitingFor}</span>
         )
       ) : null}
       {canVoid(txn) && perms.void && txn.status === 'approved' ? (

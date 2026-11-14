@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { ArrowDown, ArrowUp, Check, Layers, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -225,75 +226,77 @@ export function ListGroupMenu({ model }: { model: ListGroupModel }) {
   ];
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={cn('relative h-8 w-8 shrink-0', group && 'border-primary/40 text-primary')}
-          aria-label={model.label ?? 'تجميع'}
-          title={model.label ?? 'تجميع'}
-        >
-          <Layers className="h-4 w-4" />
-          {group ? <span className="absolute -top-1 -end-1 h-2 w-2 rounded-full bg-primary" /> : null}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-[70vh] w-60 overflow-y-auto">
-        <DropdownMenuLabel className="text-xs">تجميع حسب</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => setGroupBy(null)} className="justify-between text-sm">
-          بدون تجميع
-          {!group ? <Check className="h-3.5 w-3.5 text-primary" /> : null}
-        </DropdownMenuItem>
-        {options.map((o) => (
-          <DropdownMenuItem
-            key={o.key}
-            onSelect={() => setGroupBy(o.key)}
-            className={cn('justify-between text-sm', group?.by === o.key && 'font-semibold text-primary')}
+    <FoldedHeaderTool>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn('relative h-8 w-8 shrink-0', group && 'border-primary/40 text-primary')}
+            aria-label={model.label ?? 'تجميع'}
+            title={model.label ?? 'تجميع'}
           >
-            {o.label}
-            {group?.by === o.key ? <Check className="h-3.5 w-3.5" /> : null}
+            <Layers className="h-4 w-4" />
+            {group ? <span className="absolute -top-1 -end-1 h-2 w-2 rounded-full bg-primary" /> : null}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="max-h-[70vh] w-60 overflow-y-auto">
+          <DropdownMenuLabel className="text-xs">تجميع حسب</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setGroupBy(null)} className="justify-between text-sm">
+            بدون تجميع
+            {!group ? <Check className="h-3.5 w-3.5 text-primary" /> : null}
           </DropdownMenuItem>
-        ))}
-        {group ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs">ترتيب المجموعات</DropdownMenuLabel>
-            {orderItems.map((item) => (
-              <div key={item.by} className="flex items-center justify-between gap-1 px-2 py-1">
-                <span className={cn('truncate text-sm', group.order.by === item.by && 'font-semibold text-primary')}>
-                  {item.label}
-                </span>
-                <div className="flex shrink-0 gap-0.5">
-                  {(['asc', 'desc'] as const).map((dir) => {
-                    const selected = group.order.by === item.by && group.order.dir === dir;
-                    return (
-                      <DropdownMenuItem
-                        key={dir}
-                        onSelect={(e) => {
-                          e.preventDefault();
-                          setOrder({ by: item.by, dir });
-                        }}
-                        className={cn('h-7 gap-1 rounded-md px-1.5 text-[11px]', selected && 'bg-primary/10 text-primary')}
-                      >
-                        {dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                        {DIR_LABEL[dir]}
-                      </DropdownMenuItem>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setGroupBy(null)} className="gap-2 text-xs">
-              <RotateCcw className="h-3.5 w-3.5" />
-              إلغاء التجميع
+          {options.map((o) => (
+            <DropdownMenuItem
+              key={o.key}
+              onSelect={() => setGroupBy(o.key)}
+              className={cn('justify-between text-sm', group?.by === o.key && 'font-semibold text-primary')}
+            >
+              {o.label}
+              {group?.by === o.key ? <Check className="h-3.5 w-3.5" /> : null}
             </DropdownMenuItem>
-          </>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          ))}
+          {group ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs">ترتيب المجموعات</DropdownMenuLabel>
+              {orderItems.map((item) => (
+                <div key={item.by} className="flex items-center justify-between gap-1 px-2 py-1">
+                  <span className={cn('truncate text-sm', group.order.by === item.by && 'font-semibold text-primary')}>
+                    {item.label}
+                  </span>
+                  <div className="flex shrink-0 gap-0.5">
+                    {(['asc', 'desc'] as const).map((dir) => {
+                      const selected = group.order.by === item.by && group.order.dir === dir;
+                      return (
+                        <DropdownMenuItem
+                          key={dir}
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            setOrder({ by: item.by, dir });
+                          }}
+                          className={cn('h-7 gap-1 rounded-md px-1.5 text-[11px]', selected && 'bg-primary/10 text-primary')}
+                        >
+                          {dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                          {DIR_LABEL[dir]}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setGroupBy(null)} className="gap-2 text-xs">
+                <RotateCcw className="h-3.5 w-3.5" />
+                إلغاء التجميع
+              </DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </FoldedHeaderTool>
   );
 }
 

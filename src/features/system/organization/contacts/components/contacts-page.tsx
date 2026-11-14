@@ -19,7 +19,7 @@ import {
   useContactsDirectoryModel,
   USER_STATUS_OPTIONS,
 } from '@/features/system/organization/contacts/hooks/useContactsDirectoryModel';
-import { ContactsListViews } from '@/features/system/organization/contacts/components/contacts-list-views';
+import { ContactsListViews, useContactsListTools } from '@/features/system/organization/contacts/components/contacts-list-views';
 import { UserDetailDialog } from '@/features/system/organization/contacts/dialogs/user-detail-dialog';
 import { ForbiddenState } from '@/components/shared/forbidden-state';
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
@@ -34,6 +34,7 @@ export default function ContactsPage() {
   );
   const companyId = useDefaultCompanyId();
   const superusers = useCompanySuperusers(companyId, model.perms.canRead);
+  const tools = useContactsListTools(model, superusers.activeIds);
 
   if (model.accessDenied) {
     return <ForbiddenState />;
@@ -41,10 +42,7 @@ export default function ContactsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <ContactsListViews
-        model={model}
-        superuserIds={superusers.activeIds}
-      />
+      <ContactsListViews model={model} tools={tools} superuserIds={superusers.activeIds} />
 
       <HRSettingsFormDrawer
         open={model.drawerOpen}

@@ -1,48 +1,24 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import { Trash2, CalendarDays, FileDown, FileSpreadsheet, Plus, Loader2 } from 'lucide-react';
-import {
-  EntityActionCard,
-  EntityActionCardChip,
-  EntityActionCardGrid,
-  EntityActionCardGridSkeleton,
-} from '@/components/ui/entity-action-card';
+import { Trash2, CalendarDays, Plus } from 'lucide-react';
+import { EntityActionCard, EntityActionCardChip, EntityActionCardGrid, EntityActionCardGridSkeleton } from '@/components/ui/entity-action-card';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { ForbiddenState } from '@/components/shared/forbidden-state';
-import {
-  ConfirmationModal, HRSettingsFormDrawer, FormField,
-  EmptyState, MinimalDropdown, SearchableDropdown,
-} from '@/components/ui/shared-dialogs';
+import { ConfirmationModal, HRSettingsFormDrawer, FormField, EmptyState, MinimalDropdown, SearchableDropdown } from '@/components/ui/shared-dialogs';
 import { useDisciplineNoticesDirectoryModel, type NoticeRecord } from '@/features/hr/discipline/notices/hooks/useDisciplineNoticesDirectoryModel';
 import type { HRDisciplineNoticeKind } from '@/features/hr/discipline/lib/types';
 import { NOTICE_KIND_LABELS, NOTICE_KIND_FILTER_ORDER } from '@/features/hr/discipline/lib/types';
-import {
-  ListFilterBar,
-  type ListFilterBarHandle,
-} from '@/components/ui/list-filter-bar';
-import {
-  type DateFilterTab,
-} from '@/features/hr/discipline/lib/discipline-date-filter';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { ListFilterBar, type ListFilterBarHandle } from '@/components/ui/list-filter-bar';
+import { type DateFilterTab } from '@/features/hr/discipline/lib/discipline-date-filter';
 import { useDefaultCompany } from '@/features/hr/organization/hooks/useActiveCompany';
 import { PdfPreviewExportDialog } from '@/components/pdf/pdf-preview-export-dialog';
-import { GenericRegisterPrintHtml } from '@/components/pdf/print/generic-register-print-html';
 import { RoseDisciplineNoticePrintHtml } from '@/components/pdf/rose-trading/rose-discipline-notice-print-html';
 import { RelatedEmployeeAttachments } from '@/features/hr/organization/employees/components/related-employee-attachments';
-import { downloadXlsxFromAoA, type XlsxCell } from '@/shared/export/download-xlsx';
-import { disciplineNoticesApi } from '@/features/hr/discipline/lib/api/discipline-notices';
-import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
-import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
@@ -61,12 +37,6 @@ function noticeAttachmentsNote(value: string | null | undefined): string | null 
 type KindFilter = 'all' | HRDisciplineNoticeKind;
 
 /** Same raw notice_kind variants the list query sends (useDisciplineNoticesDirectoryModel). */
-const EXPORT_KIND_TO_RAW_VARIANTS: Record<HRDisciplineNoticeKind, string[]> = {
-  verbal: ['شفهي'],
-  first: ['إنذار أول'],
-  second: ['إنذار ثانٍ', 'إنذار ثاني'],
-  final: ['إنذار نهائي'],
-};
 type DisciplineViewMode = 'cards' | 'list';
 
 interface DraftForm {
@@ -117,7 +87,6 @@ export function NoticesClient() {
   const [saving, setSaving] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
-  const [pdfOpen, setPdfOpen] = React.useState(false);
   const [detailRow, setDetailRow] = React.useState<NoticeRecord | null>(null);
   const [letterOpen, setLetterOpen] = React.useState(false);
 
@@ -141,109 +110,6 @@ export function NoticesClient() {
   const activeFilterCount = (selectedEmpIds.size > 0 ? 1 : 0) + (kindFilter !== 'all' ? 1 : 0) + (dateRangeActive ? 1 : 0);
 
   // Exports cover every notice matching the current filters (same query as the list), not just the visible page.
-  const [noticesPdfRows, setNoticesPdfRows] = React.useState<string[][]>([]);
-  const [exporting, setExporting] = React.useState(false);
-
-  const fetchAllForExport = React.useCallback(async (): Promise<string[][] | null> => {
-    if (!companyId) { toast.error('تعذّر تحديد الشركة للتصدير.'); return null; }
-    setExporting(true);
-    try {
-      const empIds = [...selectedEmpIds];
-      const { items: all } = await fetchAllPaginatedItems((page, limit) =>
-        disciplineNoticesApi.getAll({
-          companyId,
-          page,
-          limit,
-          ...(empIds.length > 0 ? { employeeIds: empIds } : {}),
-          ...(kindFilter !== 'all' ? { noticeKinds: EXPORT_KIND_TO_RAW_VARIANTS[kindFilter] } : {}),
-          ...(dateBounds.from ? { dateFrom: dateBounds.from } : {}),
-          ...(dateBounds.to ? { dateTo: dateBounds.to } : {}),
-        }),
-      );
-      const empNames = new Map(employees.map((e) => [e.id, e.nameAr]));
-      return all.map((n) => [
-        n.employeeNameAr?.trim() || empNames.get(n.employeeId)?.trim() || '—',
-        n.noticeDate,
-        n.noticeKind?.trim() || '—',
-        n.reasonAr,
-        noticeAttachmentsNote(n.attachmentsNote) || '—',
-      ]);
-    } catch (err) {
-      const { displayMessage } = handleApiError(err, 'discipline-notices.export');
-      toast.error(displayMessage || 'تعذّر تحميل الإنذارات للتصدير.');
-      return null;
-    } finally {
-      setExporting(false);
-    }
-  }, [companyId, selectedEmpIds, kindFilter, dateBounds.from, dateBounds.to, employees]);
-
-  const handleExportNoticesPdf = useLatestCallback(async () => {
-    if (exporting) return;
-    const all = await fetchAllForExport();
-    if (!all) return;
-    if (all.length === 0) { toast.error('لا توجد إنذارات للتصدير ضمن الفلاتر الحالية.'); return; }
-    setNoticesPdfRows(all);
-    setPdfOpen(true);
-  });
-
-  const handleExportNoticesExcel = useLatestCallback(async () => {
-    if (exporting) return;
-    const all = await fetchAllForExport();
-    if (!all) return;
-    if (all.length === 0) { toast.error('لا توجد إنذارات للتصدير ضمن الفلاتر الحالية.'); return; }
-    const rows: XlsxCell[][] = [
-      ['الموظف', 'التاريخ', 'النوع', 'السبب', 'المرفقات'],
-      ...all,
-    ];
-    await downloadXlsxFromAoA('discipline-notices.xlsx', 'الإنذارات', rows);
-    toast.success('تم تنزيل ملف Excel.');
-  });
-
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" variant="outline" size="sm" className="h-8 w-8 shrink-0" aria-label="تصدير الإنذارات" disabled={exporting} aria-busy={exporting}>
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportNoticesPdf()}>
-              <FileDown className="h-4 w-4" />
-              PDF
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportNoticesExcel()}>
-              <FileSpreadsheet className="h-4 w-4" />
-              Excel
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
-          onClick={() => setDrawerOpen(true)}>
-          <Plus className="h-3.5 w-3.5" />
-          إضافة إنذار
-        </Button>
-      </div>
-    ),
-    [activeFilterCount, exporting, handleExportNoticesPdf, handleExportNoticesExcel],
-  );
-
-  const printable = React.useMemo(
-    () =>
-      noticesPdfRows.length === 0 ? null : (
-        <GenericRegisterPrintHtml
-          companyNameAr={companyNameAr}
-          companyNameEn={companyNameEn}
-          titleAr="سجل الإنذارات"
-          headers={['الموظف', 'التاريخ', 'النوع', 'السبب', 'المرفقات']}
-          rows={noticesPdfRows}
-          landscape
-        />
-      ),
-    [noticesPdfRows, companyNameAr, companyNameEn],
-  );
 
   const noticePrintFields = React.useMemo(() => {
     if (!detailRow) return null;
@@ -328,6 +194,38 @@ export function NoticesClient() {
     },
   ], []);
 
+  const tools = useListTools<NoticeRecord>({
+    section: 'hr',
+    page: 'discipline-notices',
+    columns,
+    rows: items,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      employee: { kind: 'name', text: (n) => n.employeeNameAr || '—', group: (n) => n.employeeNameAr || null },
+      kind: { text: (n) => n.kindLabel, group: (n) => n.kindLabel },
+      date: { kind: 'date', text: (n) => n.date || '—', group: (n) => (n.date ? n.date.slice(0, 7) : null) },
+      reason: { text: (n) => n.reasonAr || '—', sortable: false },
+      attachments: { text: (n) => noticeAttachmentsNote(n.attachmentsNote) || '—', sortable: false },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('سجل الإنذارات', 'discipline-notices')}
+        <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
+          onClick={() => setDrawerOpen(true)}>
+          <Plus className="h-3.5 w-3.5" />
+          إضافة إنذار
+        </Button>
+      </div>
+    ),
+    [activeFilterCount, tools.depsKey],
+  );
+
   const handleSave = async () => {
     setFormError(null);
     if (!draft.employeeId) { setFormError('الموظف مطلوب'); return; }
@@ -399,7 +297,6 @@ export function NoticesClient() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <PdfPreviewExportDialog open={pdfOpen} onOpenChange={setPdfOpen} title="معاينة تصدير الإنذارات" fileName="discipline-notices.pdf" printable={printable} orientation="landscape" />
       <PdfPreviewExportDialog
         open={letterOpen}
         onOpenChange={setLetterOpen}
@@ -427,10 +324,11 @@ export function NoticesClient() {
           <Button variant="link" size="sm" className="mt-2 text-xs" onClick={() => filterToolbarRef.current?.resetStatusFilter()}>عرض الكل</Button>
         </div>
       ) : (
-        <DisciplinePaginatedList pagination={pagination}>
+        <ListToolsTable tools={tools} keyExtractor={(n) => n.id} onRowClick={(n) => setDetailRow(n)}>
+        <DisciplinePaginatedList pagination={tools.pagination(pagination)}>
           {viewMode === 'cards' ? (
           <EntityActionCardGrid>
-            {items.map((n) => {
+            {tools.rows.map((n) => {
             const attachmentsNote = noticeAttachmentsNote(n.attachmentsNote);
             return (
             <EntityActionCard
@@ -465,13 +363,16 @@ export function NoticesClient() {
             variant="directory"
             alwaysShowTable
             tableClassName="min-w-[640px]"
-            columns={columns}
-            data={items}
+            columns={tools.columns}
+            {...tools.tableSort}
+            data={tools.rows}
+            loading={tools.loading}
             keyExtractor={(n) => n.id}
             onRowClick={(n) => setDetailRow(n)}
           />
           )}
         </DisciplinePaginatedList>
+        </ListToolsTable>
       )}
       </DisciplineListViewport>
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { ListToolsTable } from '@/components/ui/list-tools';
 import { Building2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -16,11 +17,12 @@ import {
 import { cn } from '@/shared/utils';
 import { ForbiddenState } from '@/components/shared/forbidden-state';
 import { useDepartmentsDirectoryModel } from '@/features/system/organization/departments/hooks/useDepartmentsDirectoryModel';
-import { DepartmentsListGrid } from '@/features/system/organization/departments/components/departments-list-grid';
+import { DepartmentsListGrid, useDepartmentsListTools } from '@/features/system/organization/departments/components/departments-list-grid';
 import { DirectoryPagedViews } from '@/components/ui/paged-list';
 
 export default function DepartmentsPage() {
   const model = useDepartmentsDirectoryModel();
+  const tools = useDepartmentsListTools(model);
 
   if (model.accessDenied) {
     return <ForbiddenState />;
@@ -35,10 +37,11 @@ export default function DepartmentsPage() {
       ) : model.filtered.length === 0 ? (
         <EmptyState icon={Building2} title="لا توجد أقسام" />
       ) : (
+        <ListToolsTable tools={tools} keyExtractor={(n) => n.dept.id} onRowClick={model.perms.canUpdate ? (n) => model.openEdit(n.dept) : undefined}>
         <DirectoryPagedViews
-          items={model.filtered}
-          serverPagination={model.pagination}
-          loading={model.loading}
+          items={tools.rows}
+          serverPagination={tools.pagination(model.pagination)}
+          loading={model.loading || tools.loading}
         >
           {(pageItems) => (
         <DepartmentsListGrid
@@ -53,6 +56,7 @@ export default function DepartmentsPage() {
         />
           )}
         </DirectoryPagedViews>
+        </ListToolsTable>
       )}
 
       <HRSettingsFormDrawer

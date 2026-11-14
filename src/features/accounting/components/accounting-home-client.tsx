@@ -140,7 +140,7 @@ export function AccountingHomeClient() {
         iconName="LayoutDashboard"
       />
 
-      {/* Top Controls Bar (Odoo Style) */}
+      {/* Top Controls Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-background p-2 border border-border/50 shadow-xs">
         {/* Right side in RTL (Title & Settings) */}
         <div className="flex items-center gap-2">

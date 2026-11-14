@@ -1,5 +1,7 @@
 'use client';
 
+import type { ColumnDef } from '@/components/ui/data-table';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { CalendarDays, Clock, Link2Off, Plus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -39,6 +41,8 @@ const ASSIGNMENT_EXPORT_COLUMNS: RegisterColumn[] = [
   { label: 'ساري من', kind: 'date' },
   { label: 'الحالة', kind: 'status' },
 ];
+
+type AssignmentBatch = ReturnType<typeof useAssignmentsPanelModel>['batches'][number];
 
 type AssignmentRow = {
   id: string;
@@ -126,11 +130,32 @@ export function AssignmentsPanel() {
       ),
   );
   const openNew = useLatestCallback(model.openNew);
+  const batchColumns: ColumnDef<AssignmentBatch>[] = [
+    { key: 'template', title: 'قالب الدوام', render: (b) => b.templateName },
+    { key: 'total', title: 'الموظفون', render: (b) => String(b.totalAssignments) },
+    { key: 'active', title: 'النشطون', render: (b) => String(b.activeAssignments) },
+    { key: 'from', title: 'يسري من', render: (b) => exportDate(b.effectiveFrom) },
+  ];
+  const tools = useListTools<AssignmentBatch>({
+    section: 'attendance',
+    page: 'shift-assignments',
+    columns: batchColumns,
+    rows: model.batches,
+    fetchAll: loadAllForExport,
+    resetKey: model.pagination.resetKey,
+    fields: {
+      template: { kind: 'name', text: (b) => b.templateName },
+      total: { text: (b) => String(b.totalAssignments), sort: (b) => b.totalAssignments, sum: (b) => b.totalAssignments },
+      active: { text: (b) => String(b.activeAssignments), sort: (b) => b.activeAssignments, sum: (b) => b.activeAssignments },
+      from: { kind: 'date', text: (b) => exportDate(b.effectiveFrom), sort: (b) => b.effectiveFrom ?? '', group: (b) => (b.effectiveFrom ? b.effectiveFrom.slice(0, 7) : null) },
+    },
+  });
 
   usePageHeaderActions(
     () => (
       <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
         <FilterToggleButton activeFilterCount={isEmployeeStatusFilterActive(employeeStatus) ? 1 : 0} />
+        {tools.buttons}
         <RegisterExportMenu
           title="ربط قوالب الدوام بالموظفين"
           fileName="shift-assignments"
@@ -144,7 +169,7 @@ export function AssignmentsPanel() {
         </Button>
       </div>
     ),
-    [employeeStatus, getExportRows, openNew],
+    [employeeStatus, getExportRows, openNew, tools.depsKey],
   );
 
   useEntityFilterSlot(
@@ -166,7 +191,8 @@ export function AssignmentsPanel() {
       {model.loading && model.batches.length === 0 ? null : model.batches.length === 0 && !model.loading ? (
         <EmptyStateCard icon={Users} title="لا توجد دفعات تعيين بعد" />
       ) : (
-        <DirectoryPagedViews items={model.batches} serverPagination={model.pagination} loading={model.loading}>
+        <ListToolsTable tools={tools} keyExtractor={(b) => b.batchId} onRowClick={(b) => setViewBatchId(b.batchId)}>
+        <DirectoryPagedViews items={tools.rows} serverPagination={tools.pagination(model.pagination)} loading={model.loading || tools.loading}>
           {(pageItems) => (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {pageItems.map((batch) => (
@@ -181,6 +207,7 @@ export function AssignmentsPanel() {
         </div>
           )}
         </DirectoryPagedViews>
+        </ListToolsTable>
       )}
 
       <AssignmentsBatchDialog model={model} />

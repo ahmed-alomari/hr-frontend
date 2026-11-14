@@ -1,5 +1,5 @@
 export const systemOwnerQueryKeys = {
-  companies: (search?: string) => ['system-owner', 'companies', search ?? ''] as const,
+  companies: () => ['system-owner', 'companies'] as const,
   company: (companyId: string) => ['system-owner', 'company', companyId] as const,
   companyUsers: (companyId: string) => ['system-owner', 'company-users', companyId] as const,
   companyApplications: (companyId: string) =>

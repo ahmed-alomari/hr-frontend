@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -134,55 +135,57 @@ export function ListSortMenu({ model }: { model: ListSortModel }) {
   if (options.length === 0) return null;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={cn('relative h-8 w-8 shrink-0', sort && 'border-primary/40 text-primary')}
-          aria-label={model.label ?? 'ترتيب'}
-          title={model.label ?? 'ترتيب'}
-        >
-          <ArrowUpDown className="h-4 w-4" />
-          {sort ? <span className="absolute -top-1 -end-1 h-2 w-2 rounded-full bg-primary" /> : null}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-[70vh] w-60 overflow-y-auto">
-        <DropdownMenuLabel className="text-xs">ترتيب حسب</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {options.map((o) => (
-          <div key={o.key} className="flex items-center justify-between gap-1 px-2 py-1">
-            <span className={cn('truncate text-sm', sort?.key === o.key && 'font-semibold text-primary')}>
-              {o.label}
-            </span>
-            <div className="flex shrink-0 gap-0.5">
-              {(['asc', 'desc'] as const).map((dir) => {
-                const selected = sort?.key === o.key && sort.dir === dir;
-                return (
-                  <DropdownMenuItem
-                    key={dir}
-                    onSelect={() => setSort({ key: o.key, dir })}
-                    className={cn(
-                      'h-7 gap-1 rounded-md px-1.5 text-[11px]',
-                      selected && 'bg-primary/10 text-primary',
-                    )}
-                  >
-                    {dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                    {DIR_LABEL[dir]}
-                    {selected ? <Check className="h-3 w-3" /> : null}
-                  </DropdownMenuItem>
-                );
-              })}
+    <FoldedHeaderTool>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn('relative h-8 w-8 shrink-0', sort && 'border-primary/40 text-primary')}
+            aria-label={model.label ?? 'ترتيب'}
+            title={model.label ?? 'ترتيب'}
+          >
+            <ArrowUpDown className="h-4 w-4" />
+            {sort ? <span className="absolute -top-1 -end-1 h-2 w-2 rounded-full bg-primary" /> : null}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="max-h-[70vh] w-60 overflow-y-auto">
+          <DropdownMenuLabel className="text-xs">ترتيب حسب</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {options.map((o) => (
+            <div key={o.key} className="flex items-center justify-between gap-1 px-2 py-1">
+              <span className={cn('truncate text-sm', sort?.key === o.key && 'font-semibold text-primary')}>
+                {o.label}
+              </span>
+              <div className="flex shrink-0 gap-0.5">
+                {(['asc', 'desc'] as const).map((dir) => {
+                  const selected = sort?.key === o.key && sort.dir === dir;
+                  return (
+                    <DropdownMenuItem
+                      key={dir}
+                      onSelect={() => setSort({ key: o.key, dir })}
+                      className={cn(
+                        'h-7 gap-1 rounded-md px-1.5 text-[11px]',
+                        selected && 'bg-primary/10 text-primary',
+                      )}
+                    >
+                      {dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                      {DIR_LABEL[dir]}
+                      {selected ? <Check className="h-3 w-3" /> : null}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem disabled={!sort} onSelect={() => setSort(null)} className="gap-2 text-xs">
-          <RotateCcw className="h-3.5 w-3.5" />
-          الترتيب الافتراضي
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={!sort} onSelect={() => setSort(null)} className="gap-2 text-xs">
+            <RotateCcw className="h-3.5 w-3.5" />
+            الترتيب الافتراضي
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </FoldedHeaderTool>
   );
 }

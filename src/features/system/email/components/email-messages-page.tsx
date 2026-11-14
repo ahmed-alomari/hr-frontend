@@ -1,28 +1,28 @@
 'use client';
 
+import { DataTable, type ColumnDef } from '@/components/ui/data-table';
+import { fetchAllPaginatedItems } from '@/shared/api/client';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
+import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
+import { PageHeaderPrimaryButton } from '@/components/layouts/page-header-primary-button';
+import { SetPageTitle } from '@/components/layouts/set-page-title';
+import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
+import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
+import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Mail, RefreshCw, RotateCw, Search, Send } from 'lucide-react';
+import { Mail, RefreshCw, RotateCw, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { MinimalDropdown, PageHeader, EmptyState, Pagination } from '@/components/ui/shared-dialogs';
+import { EmptyState, Pagination } from '@/components/ui/shared-dialogs';
 import { ForbiddenState } from '@/components/shared/forbidden-state';
 import { useCan } from '@/features/auth/hooks/use-can';
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
-import {
-  emailMessagesApi,
-  type EmailMessageResponseDto,
-  type EmailMessageStatus,
-} from '@/features/system/email/lib/api/email-messages';
-import {
-  EMAIL_STATUS_FILTER_OPTIONS,
-  EMAIL_STATUS_LABELS,
-  EMAIL_STATUS_TONE,
-  emailSkipReasonLabel,
-} from '@/features/system/email/constants/status-labels';
+import { emailMessagesApi, type EmailMessageResponseDto, type EmailMessageStatus } from '@/features/system/email/lib/api/email-messages';
+import { EMAIL_STATUS_FILTER_OPTIONS, EMAIL_STATUS_LABELS, EMAIL_STATUS_TONE, emailSkipReasonLabel } from '@/features/system/email/constants/status-labels';
 import { SendEmailDrawer } from '@/features/system/email/components/send-email-drawer';
 import { cn } from '@/shared/utils';
 
@@ -123,57 +123,150 @@ export function EmailMessagesPage() {
     },
   });
 
+  const activeFilterCount = (status ? 1 : 0) + (search.trim() ? 1 : 0) + (dateFrom || dateTo ? 1 : 0);
+
+  useEntityFilterSlot(
+    () => (
+      canRead ? <ListFilterBar
+        optionalDateRange
+        showStatusSection={false}
+        showEmployeePicker={false}
+        periodValue={{ from: dateFrom, to: dateTo }}
+        onPeriodChange={(p) => {
+          setDateFrom(p.from);
+          setDateTo(p.to);
+        }}
+        periodFilterActive={activeFilterCount > 0}
+        onClearAll={() => {
+          setSearch('');
+          setStatus('');
+          setDateFrom('');
+          setDateTo('');
+        }}
+        leadingFilters={<EntityFilterSearchField value={search} onChange={setSearch} placeholder="ابحث بالبريد أو الموضوع…" />}
+        inlineSelects={[
+          {
+            id: 'status',
+            value: status || 'all',
+            onChange: (v) => setStatus(v === 'all' ? '' : (v as EmailMessageStatus)),
+            placeholder: EMAIL_STATUS_FILTER_OPTIONS[0]?.label,
+            options: EMAIL_STATUS_FILTER_OPTIONS,
+          },
+        ]}
+      /> : null
+    ),
+    [canRead, search, status, dateFrom, dateTo, activeFilterCount],
+  );
+
+  const items = listQuery.data?.items ?? [];
+  const serverTotal = listQuery.data?.pagination?.total ?? 0;
+  const senderOf = (row: EmailMessageResponseDto) =>
+    row.triggeredByName ?? (row.sourceKind === 'manual_broadcast' ? '—' : 'النظام');
+  const statusOf = (row: EmailMessageResponseDto) => EMAIL_STATUS_LABELS[row.status] ?? row.status;
+  const columns: ColumnDef<EmailMessageResponseDto>[] = [
+    {
+      key: 'date',
+      title: 'التاريخ',
+      render: (row) => <span className="whitespace-nowrap tabular-nums text-muted-foreground" dir="ltr">{formatDateTime(row.createdAt)}</span>,
+    },
+    { key: 'to', title: 'المستلم', render: (row) => <span dir="ltr">{row.toEmail}</span> },
+    {
+      key: 'subject',
+      title: 'الموضوع',
+      render: (row) => <span className="block max-w-[18rem] truncate" title={row.subject}>{row.subject}</span>,
+    },
+    { key: 'status', title: 'الحالة', render: (row) => <StatusCell row={row} /> },
+    { key: 'sender', title: 'المرسل', render: (row) => <span className="text-muted-foreground">{senderOf(row)}</span> },
+    {
+      key: 'actions',
+      title: 'إجراء',
+      isActions: true,
+      render: (row) =>
+        canSend && (row.status === 'failed' || row.status === 'pending') ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={() => resend.mutate(row.id)}
+            disabled={resend.isPending}
+          >
+            <RotateCw className="h-3 w-3" />
+            إعادة إرسال
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+    },
+  ];
+  const tools = useListTools<EmailMessageResponseDto>({
+    section: 'system',
+    page: 'email-messages',
+    columns,
+    rows: items,
+    fetchAll: async () =>
+      (await fetchAllPaginatedItems((p, limit) =>
+        emailMessagesApi.list({
+          companyId: companyId!,
+          page: p,
+          limit,
+          status: status || undefined,
+          q: debouncedSearch || undefined,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+        }),
+      )).items,
+    resetKey: JSON.stringify([companyId, status, debouncedSearch, dateFrom, dateTo]),
+    fields: {
+      date: { kind: 'date', text: (row) => formatDateTime(row.createdAt), sort: (row) => row.createdAt, group: (row) => row.createdAt.slice(0, 7) },
+      to: { kind: 'code', text: (row) => row.toEmail, group: (row) => row.toEmail },
+      subject: { text: (row) => row.subject },
+      status: { kind: 'status', text: statusOf, group: statusOf },
+      sender: { text: senderOf, group: senderOf },
+    },
+  });
+  const paged = tools.pagination({
+    page,
+    pageSize: perPage,
+    total: serverTotal,
+    totalPages: Math.max(1, Math.ceil(serverTotal / perPage)),
+    setPage,
+    setPageSize: setPerPage,
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('سجل رسائل البريد', 'email-messages')}
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 px-3 text-xs"
+          aria-label="تحديث"
+          onClick={() => void listQuery.refetch()}
+          disabled={listQuery.isFetching}
+        >
+          <RefreshCw className={cn('h-3.5 w-3.5', listQuery.isFetching && 'animate-spin')} />
+          تحديث
+        </Button>
+        {canSend ? (
+          <PageHeaderPrimaryButton icon={Send} label="إرسال رسالة جديدة" onClick={() => setComposeOpen(true)} />
+        ) : null}
+      </div>
+    ),
+    [activeFilterCount, listQuery.isFetching, canSend, tools.depsKey],
+  );
+
   if (!canRead) {
     return <ForbiddenState title="لا تملك صلاحية الوصول إلى رسائل البريد" />;
   }
 
-  const items = listQuery.data?.items ?? [];
-  const pagination = listQuery.data?.pagination;
   const hasFilters = !!status || !!debouncedSearch || !!dateFrom || !!dateTo;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <PageHeader title="رسائل البريد" description="سجل كل بريد خرج من هذه الشركة — إلى من، متى، وهل وصل.">
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5 sm:gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 px-3 text-xs"
-            onClick={() => void listQuery.refetch()}
-            disabled={listQuery.isFetching}
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', listQuery.isFetching && 'animate-spin')} />
-            تحديث
-          </Button>
-          {canSend ? (
-            <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs" onClick={() => setComposeOpen(true)}>
-              <Send className="h-3.5 w-3.5" />
-              إرسال رسالة جديدة
-            </Button>
-          ) : null}
-        </div>
-      </PageHeader>
-
-      <div className="grid grid-cols-1 gap-2.5 rounded-xl border border-border/70 bg-card p-3 shadow-soft sm:grid-cols-2 lg:grid-cols-4">
-        <div className="relative lg:col-span-2">
-          <Search className="pointer-events-none absolute inset-y-0 right-3 my-auto h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="ابحث بالبريد المستلم أو الموضوع…"
-            className="pe-9"
-          />
-        </div>
-        <MinimalDropdown
-          value={status}
-          onChange={(v) => setStatus(v as EmailMessageStatus | '')}
-          options={EMAIL_STATUS_FILTER_OPTIONS}
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-        </div>
-      </div>
+      <SetPageTitle titleAr="رسائل البريد" descriptionAr="سجل كل بريد خرج من هذه الشركة — إلى من، متى، وهل وصل." iconName="Inbox" />
 
       {listQuery.isLoading ? (
         <div className="flex flex-1 items-center justify-center py-16 text-sm text-muted-foreground">
@@ -186,66 +279,27 @@ export function EmailMessagesPage() {
           description={hasFilters ? 'جرّب تغيير الفلاتر.' : 'ستظهر هنا كل رسالة تُرسل من هذه الشركة.'}
         />
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-border/70 bg-card shadow-soft">
-          <table className="w-full min-w-[860px] text-sm">
-            <thead className="sticky top-0 z-10 bg-muted/60 text-xs text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2.5 text-start font-medium">التاريخ</th>
-                <th className="px-3 py-2.5 text-start font-medium">المستلم</th>
-                <th className="px-3 py-2.5 text-start font-medium">الموضوع</th>
-                <th className="px-3 py-2.5 text-start font-medium">الحالة</th>
-                <th className="px-3 py-2.5 text-start font-medium">المرسل</th>
-                <th className="px-3 py-2.5 text-start font-medium">إجراء</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((row) => (
-                <tr key={row.id} className="border-t border-border/50 hover:bg-muted/20">
-                  <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground" dir="ltr">
-                    {formatDateTime(row.createdAt)}
-                  </td>
-                  <td className="px-3 py-2.5" dir="ltr">
-                    {row.toEmail}
-                  </td>
-                  <td className="max-w-[18rem] truncate px-3 py-2.5" title={row.subject}>
-                    {row.subject}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <StatusCell row={row} />
-                  </td>
-                  <td className="px-3 py-2.5 text-muted-foreground">
-                    {row.triggeredByName ?? (row.sourceKind === 'manual_broadcast' ? '—' : 'النظام')}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {canSend && (row.status === 'failed' || row.status === 'pending') ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 gap-1 px-2 text-xs"
-                        onClick={() => resend.mutate(row.id)}
-                        disabled={resend.isPending}
-                      >
-                        <RotateCw className="h-3 w-3" />
-                        إعادة إرسال
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ListToolsTable tools={tools} keyExtractor={(row) => row.id}>
+          <DataTable
+            variant="directory"
+            alwaysShowTable
+            tableClassName="min-w-[860px]"
+            columns={tools.columns}
+            {...tools.tableSort}
+            data={tools.rows}
+            keyExtractor={(row) => row.id}
+            loading={tools.loading}
+          />
+        </ListToolsTable>
       )}
 
-      {pagination && pagination.total > 0 ? (
+      {paged.total > 0 && !tools.group.groupBy ? (
         <Pagination
-          page={page}
-          perPage={perPage}
-          total={pagination.total}
-          onPage={setPage}
-          onPerPage={setPerPage}
+          page={paged.page}
+          perPage={paged.pageSize}
+          total={paged.total}
+          onPage={paged.setPage}
+          onPerPage={paged.setPageSize}
         />
       ) : null}
 

@@ -6,9 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { usePosContext } from '@/features/pos/hooks/use-pos-context';
+import { requestDiscountApproval, type PosDiscountApproval } from '@/features/pos/lib/pos-store';
 import { cn } from '@/shared/utils';
-import type { PosCustomer, PosDiscount, PosSaleLine, PosSaleTotals } from '@/features/pos/domain/types';
+import { customerLabel as customerLabelOf, type PosCustomer, type PosDiscount, type PosSaleLine, type PosSaleTotals } from '@/features/pos/domain/types';
 import { formatAmount, formatMoney, parseAmount } from '@/features/pos/lib/format';
+import { ContactCustomerPicker } from '@/features/pos/components/register/customer-picker';
 
 export type CartState = {
   lines: PosSaleLine[];
@@ -157,10 +161,12 @@ export function CustomerDialog({
   onSave: (c: PosCustomer) => void;
 }) {
   const named = value.kind === 'named' ? value : null;
+  const [mode, setMode] = React.useState<'contact' | 'named'>(value.kind === 'named' ? 'named' : 'contact');
   const [name, setName] = React.useState(named?.name ?? '');
   const [phone, setPhone] = React.useState(named?.phone ?? '');
   const [taxNumber, setTaxNumber] = React.useState(named?.taxNumber ?? '');
   React.useEffect(() => {
+    setMode(value.kind === 'named' ? 'named' : 'contact');
     setName(named?.name ?? '');
     setPhone(named?.phone ?? '');
     setTaxNumber(named?.taxNumber ?? '');
@@ -169,28 +175,54 @@ export function CustomerDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>بيانات العميل</DialogTitle>
+          <DialogTitle>العميل</DialogTitle>
         </DialogHeader>
-        <p className="text-xs text-muted-foreground">
-          اختيارية وتُطبع على الإيصال فقط، دون إنشاء جهة اتصال. البيع الافتراضي لعميل عابر.
-        </p>
-        <div className="space-y-2">
-          <Input placeholder="الاسم" value={name} onChange={(e) => setName(e.target.value)} />
-          <Input placeholder="الجوال" dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <Input placeholder="الرقم الضريبي (للمنشآت)" dir="ltr" value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} />
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant={mode === 'contact' ? 'default' : 'outline'} onClick={() => setMode('contact')}>
+            من جهات الاتصال
+          </Button>
+          <Button variant={mode === 'named' ? 'default' : 'outline'} onClick={() => setMode('named')}>
+            اسم على الإيصال فقط
+          </Button>
         </div>
+        {mode === 'contact' ? (
+          <>
+            {value.kind === 'partner' ? (
+              <p className="text-sm">
+                المختار: <b>{value.name}</b>
+              </p>
+            ) : null}
+            <ContactCustomerPicker
+              selectedId={value.kind === 'partner' ? value.partnerId : null}
+              onPick={(c) =>
+                onSave({ kind: 'partner', partnerId: c.id, name: c.name, phone: c.phone ?? undefined, taxNumber: c.taxNumber ?? undefined })
+              }
+            />
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">يُطبع على الإيصال فقط، دون جهة اتصال، ولا يُباع له آجلًا.</p>
+            <div className="space-y-2">
+              <Input placeholder="الاسم" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input placeholder="الجوال" dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Input placeholder="الرقم الضريبي (للمنشآت)" dir="ltr" value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} />
+            </div>
+          </>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onSave({ kind: 'walk_in' })}>عميل عابر</Button>
-          <Button
-            disabled={!name.trim()}
-            onClick={() =>
-              onSave({ kind: 'named', name: name.trim(), phone: phone.trim() || undefined, taxNumber: taxNumber.trim() || undefined })
-            }
-          >
-            حفظ
-          </Button>
+          {mode === 'named' ? (
+            <Button
+              disabled={!name.trim()}
+              onClick={() =>
+                onSave({ kind: 'named', name: name.trim(), phone: phone.trim() || undefined, taxNumber: taxNumber.trim() || undefined })
+              }
+            >
+              حفظ
+            </Button>
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -198,16 +230,47 @@ export function CustomerDialog({
 }
 
 /** Supervisor confirmation on the same device (the backend will verify the supervisor). */
-export function ApprovalDialog({
-  request,
-  onClose,
-}: {
-  request: { title: string; detail: string; onApprove: (supervisor: string) => void } | null;
-  onClose: () => void;
-}) {
-  const [supervisor, setSupervisor] = React.useState('');
-  React.useEffect(() => setSupervisor(''), [request]);
+export type ApprovalRequest = {
+  title: string;
+  detail: string;
+  /** The highest discount this approval has to cover, percent. */
+  percent: number;
+  onApproved: (approval: PosDiscountApproval) => void;
+};
+
+/**
+ * A supervisor chosen in the settings signs on this device with his password;
+ * the server checks him, and the cashier stays signed in.
+ */
+export function ApprovalDialog({ request, onClose }: { request: ApprovalRequest | null; onClose: () => void }) {
+  const { companyId, data } = usePosContext();
+  const supervisors = data.settings.discounts.supervisors ?? [];
+  const [supervisorId, setSupervisorId] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => {
+    setSupervisorId(supervisors.length === 1 ? supervisors[0]!.id : '');
+    setPassword('');
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request]);
   if (!request) return null;
+  const approve = async () => {
+    if (!companyId || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const approval = await requestDiscountApproval(companyId, { supervisorId, password, percent: request.percent });
+      onClose();
+      request.onApproved(approval);
+    } catch (e) {
+      setError((e as Error).message);
+      setPassword('');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-sm">
@@ -215,17 +278,40 @@ export function ApprovalDialog({
           <DialogTitle>{request.title}</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">{request.detail}</p>
-        <Input placeholder="اسم المشرف الموافق" value={supervisor} onChange={(e) => setSupervisor(e.target.value)} />
-        <p className="text-xs text-muted-foreground">في التشغيل الفعلي يُدخل المشرف رمزه، وتتحقق الخلفية من صلاحيته.</p>
+        {supervisors.length === 0 ? (
+          <p className="rounded-md bg-warning/10 px-3 py-2 text-sm">
+            لم يُحدَّد مشرفون. يحددهم المدير من إعدادات نقاط البيع ← الأسعار والخصومات.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <Select value={supervisorId} onValueChange={setSupervisorId}>
+              <SelectTrigger aria-label="المشرف">
+                <SelectValue placeholder="اختر المشرف" />
+              </SelectTrigger>
+              <SelectContent>
+                {supervisors.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              type="password"
+              autoComplete="off"
+              placeholder="كلمة مرور المشرف"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && supervisorId && password) void approve();
+              }}
+            />
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>رفض</Button>
-          <Button
-            disabled={!supervisor.trim()}
-            onClick={() => {
-              request.onApprove(supervisor.trim());
-              onClose();
-            }}
-          >
+          <Button disabled={!supervisorId || !password || busy} onClick={() => void approve()}>
             موافقة
           </Button>
         </DialogFooter>
@@ -271,7 +357,7 @@ export function CartPanel({
   className?: string;
 }) {
   const empty = cart.lines.length === 0;
-  const customerLabel = cart.customer.kind === 'named' ? cart.customer.name : 'عميل عابر';
+  const customerLabel = customerLabelOf(cart.customer);
 
   return (
     <div className={cn('flex min-h-0 flex-col rounded-xl border border-border bg-card shadow-soft', className)}>

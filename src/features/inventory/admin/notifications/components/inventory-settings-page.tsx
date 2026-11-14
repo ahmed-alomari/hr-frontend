@@ -16,6 +16,7 @@ import type {
   InventoryCompanySettings,
   UpdateInventoryCompanySettingsDto,
 } from '@/features/inventory/admin/notifications/lib/api/inventory-settings';
+import { InventoryPeriodLockPanel } from '@/features/inventory/admin/notifications/components/inventory-period-lock-panel';
 import { NotificationTogglesCard } from '@/features/system/organization/pages/_shared/components/notification-toggles-card';
 import {
   SettingsPageEmpty,
@@ -43,6 +44,7 @@ const SETTINGS_TABS = [
   { value: 'general', label: 'عام', icon: Settings2 },
   { value: 'batches', label: 'الدفعات', icon: Layers },
   { value: 'costing', label: 'التكلفة', icon: Coins },
+  { value: 'closing', label: 'إقفال الفترة', icon: Lock },
   { value: 'notifications', label: 'الإشعارات', icon: Bell },
 ] as const;
 
@@ -454,6 +456,19 @@ export function InventorySettingsPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        </TabsContent>
+
+        <TabsContent value="closing" className="mt-0 focus-visible:outline-none">
+          <SettingsPanel
+            title="إقفال فترة المخازن"
+            description="بعد مراجعة الجرد وتسليم الأرقام للمحاسب: أقفل الفترة حتى لا يُرحَّل فيها مستند بتاريخ قديم."
+          >
+            <InventoryPeriodLockPanel
+              settings={settings}
+              disabled={controlsDisabled}
+              save={(patch) => update.mutateAsync(patch)}
+            />
+          </SettingsPanel>
         </TabsContent>
 
         <TabsContent value="notifications" className="mt-0 focus-visible:outline-none">

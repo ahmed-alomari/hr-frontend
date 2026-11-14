@@ -1,5 +1,8 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
+import { fetchAllPaginatedItems } from '@/shared/api/client';
+import { warehouseLocationsApi } from '@/features/inventory/admin/locations/lib/api/warehouse-locations';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
@@ -15,13 +18,7 @@ import { getInventoryCompanyId } from '@/features/inventory/lib/company-id';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
 import { useWarehouseLocations } from '@/features/inventory/admin/locations/hooks/use-warehouse-locations';
 import { useWarehouseLocationMutations } from '@/features/inventory/admin/locations/hooks/use-warehouse-location-mutations';
-import {
-  LOCATION_TYPE_OPTIONS,
-  REMOVAL_STRATEGY_OPTIONS,
-  WAREHOUSE_LOCATION_FORM_DEFAULT_VALUES,
-  warehouseLocationFormSchema,
-  type WarehouseLocationFormValues,
-} from '@/features/inventory/admin/schemas/warehouse-schemas';
+import { LOCATION_TYPE_OPTIONS, REMOVAL_STRATEGY_OPTIONS, WAREHOUSE_LOCATION_FORM_DEFAULT_VALUES, warehouseLocationFormSchema, type WarehouseLocationFormValues } from '@/features/inventory/admin/schemas/warehouse-schemas';
 import { inventoryAdminRoutes } from '@/features/inventory/admin/constants/routes';
 import type { WarehouseLocation, WarehouseLocationType } from '@/features/inventory/domain/types/warehouse';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
@@ -33,16 +30,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-list';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  dialogMaxHeightClass,
-  dialogMobileFullScreenClass,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, dialogMaxHeightClass, dialogMobileFullScreenClass } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const NO_PARENT = '__none__';
@@ -230,33 +218,6 @@ export function LocationsListPage({ embeddedWarehouseId }: LocationsListPageProp
     setFormWarehouseId(formState.location?.warehouseId ?? warehouseIdFilter);
   }, [formState, form, warehouseIdFilter]);
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton />
-        {warehouseIdFilter && !embedded ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8"
-            onClick={() => router.push(inventoryAdminRoutes.warehouseDetail(warehouseIdFilter))}
-          >
-            <Warehouse className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">المستودع</span>
-          </Button>
-        ) : null}
-        <PageHeaderPrimaryButton
-          icon={Plus}
-          label="إضافة موقع"
-          disabled={!companyId || warehouses.length === 0}
-          onClick={() => setFormState({ open: true, location: null })}
-        >
-          إضافة موقع
-        </PageHeaderPrimaryButton>
-      </div>
-    ),
-    [warehouseIdFilter, companyId, warehouses.length, router, embedded],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -419,6 +380,56 @@ export function LocationsListPage({ embeddedWarehouseId }: LocationsListPageProp
     },
   ];
 
+  const tools = useListTools<WarehouseLocation>({
+    section: 'inventory',
+    page: 'locations',
+    columns,
+    rows: locations,
+    fetchAll: async () => {
+      const { items } = await fetchAllPaginatedItems((p, limit) =>
+        warehouseLocationsApi.getAll({ companyId, warehouseId: warehouseIdFilter || undefined, search: search || undefined, page: p, limit }),
+      );
+      return embedded || groupedByWarehouse ? items.filter((row) => row.locationType !== 'view') : items;
+    },
+    resetKey: JSON.stringify([companyId, warehouseIdFilter, search, embedded, groupedByWarehouse]),
+    fields: {
+      location: { kind: 'name', text: (row) => row.nameAr, alsoExport: [{ label: 'الرمز', text: (row) => row.code || '—' }] },
+      warehouse: { text: resolveWarehouseName, group: resolveWarehouseName },
+      parent: { text: (row) => (row.parentLocationId ? nameById.get(row.parentLocationId) ?? '—' : '—') },
+      type: { text: (row) => TYPE_LABEL[row.locationType] ?? row.locationType, group: (row) => TYPE_LABEL[row.locationType] ?? row.locationType },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton />
+        {groupedByWarehouse ? null : tools.buttons}
+        {tools.exportMenu('مواقع المستودعات', 'warehouse-locations')}
+        {warehouseIdFilter && !embedded ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            onClick={() => router.push(inventoryAdminRoutes.warehouseDetail(warehouseIdFilter))}
+          >
+            <Warehouse className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">المستودع</span>
+          </Button>
+        ) : null}
+        <PageHeaderPrimaryButton
+          icon={Plus}
+          label="إضافة موقع"
+          disabled={!companyId || warehouses.length === 0}
+          onClick={() => setFormState({ open: true, location: null })}
+        >
+          إضافة موقع
+        </PageHeaderPrimaryButton>
+      </div>
+    ),
+    [warehouseIdFilter, companyId, warehouses.length, router, embedded, tools.depsKey],
+  );
+
   return (
     <div className="flex flex-col gap-5">
       {!embedded ? <SetPageTitle titleAr="المواقع" iconName="MapPin" /> : null}
@@ -497,7 +508,7 @@ export function LocationsListPage({ embeddedWarehouseId }: LocationsListPageProp
                       <DataTable
                         variant="directory"
                         className="inv-table-host"
-                        columns={columns}
+                        columns={tools.columns}
                         data={warehouseLocations}
                         keyExtractor={(row) => row.id}
                         loading={false}
@@ -511,19 +522,20 @@ export function LocationsListPage({ embeddedWarehouseId }: LocationsListPageProp
           })}
         </div>
       ) : (
+      <ListToolsTable tools={tools} keyExtractor={(row) => row.id}>
       <DirectoryPagedViews
-        items={locations}
-        loading={isLoading}
+        items={tools.rows}
+        loading={isLoading || tools.loading}
         serverPagination={
           data
-            ? {
+            ? tools.pagination({
                 page,
                 pageSize,
                 total: data.pagination.total,
                 totalPages: Math.max(1, Math.ceil(data.pagination.total / pageSize)),
                 setPage: (nextPage) => updateParams({ page: nextPage }),
                 setPageSize: (size) => updateParams({ pageSize: size, page: 1 }),
-              }
+              })
             : undefined
         }
       >
@@ -531,7 +543,8 @@ export function LocationsListPage({ embeddedWarehouseId }: LocationsListPageProp
           <DataTable
             variant="directory"
             className="inv-table-host"
-            columns={columns}
+            columns={tools.columns}
+            {...tools.tableSort}
             data={rowsPage}
             keyExtractor={(row) => row.id}
             loading={isLoading}
@@ -590,6 +603,7 @@ export function LocationsListPage({ embeddedWarehouseId }: LocationsListPageProp
           />
         )}
       </DirectoryPagedViews>
+      </ListToolsTable>
       )}
 
       <Dialog

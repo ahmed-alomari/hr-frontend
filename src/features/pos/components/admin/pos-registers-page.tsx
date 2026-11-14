@@ -14,7 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { branchesApi } from '@/features/hr/organization/lib/api/branches';
 import { resolvePosInvoiceStyle, type PosInvoiceStyle, type PosRegister } from '@/features/pos/domain/types';
-import { usePosContext } from '@/features/pos/hooks/use-pos-context';
+import { MultiSelect } from '@/components/ui/multi-select';
+import { PosDataScope, usePosContext } from '@/features/pos/hooks/use-pos-context';
+import { fetchPosUserChoices } from '@/features/pos/lib/pos-store';
 import { usePosStockLink } from '@/features/pos/lib/pos-stock-link-api';
 import { readPairedDevice, writePairedDevice } from '@/features/pos/lib/pos-store';
 import { formatDateTime } from '@/features/pos/lib/format';
@@ -28,6 +30,7 @@ type Draft = {
   warehouseId: string | null;
   isActive: boolean;
   invoiceStyle: PosInvoiceStyle | 'company';
+  assignedUserIds: string[];
 };
 
 const NO_BRANCH = '__none__';
@@ -50,6 +53,12 @@ function RegisterDialog({
     enabled: !!companyId && !!draft,
   });
   const link = usePosStockLink(companyId, !!draft);
+  const users = useQuery({
+    queryKey: ['pos', 'user-choices', companyId],
+    queryFn: () => fetchPosUserChoices(companyId!),
+    enabled: !!companyId && !!draft,
+    staleTime: 60_000,
+  });
 
   if (!form) return null;
   // Receipts already carry this code and its sales this branch (server rule).
@@ -79,6 +88,8 @@ function RegisterDialog({
       warehouseName: data.registers.find((r) => r.id === form.id)?.warehouseName ?? null,
       isActive: form.isActive,
       invoiceStyle: form.invoiceStyle === 'company' ? null : form.invoiceStyle,
+      // The server checks each is the company's and sets the names.
+      assignedUsers: form.assignedUserIds.map((id) => ({ id, name: '' })),
     });
     if (!saved) return;
     toast.success('حُفظت نقطة البيع');
@@ -91,7 +102,7 @@ function RegisterDialog({
         <DialogHeader>
           <DialogTitle>{form.id ? 'تعديل نقطة بيع' : 'نقطة بيع جديدة'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="max-h-[60dvh] space-y-3 overflow-y-auto px-0.5">
           <div className="space-y-1.5">
             <Label>الاسم</Label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="الكاشير 1" />
@@ -181,6 +192,22 @@ function RegisterDialog({
               العادية تستخدم هوية الشركة، وتناسب نقطة تبيع بعرض سعر أو فاتورة بدل الإيصال الحراري.
             </p>
           </div>
+          <div className="space-y-1.5">
+            <Label>الموظفون المسندون إليها</Label>
+            <MultiSelect
+              options={(users.data ?? []).map((u) => ({ value: u.id, label: u.name }))}
+              value={form.assignedUserIds}
+              onChange={(assignedUserIds) => setForm({ ...form, assignedUserIds })}
+              placeholder={users.isError ? 'تعذّر تحميل الموظفين' : 'اختر الموظفين'}
+              disabled={users.isError}
+              emptyMessage="لا موظفين"
+            />
+            <p className="text-xs text-muted-foreground">
+              {form.assignedUserIds.length > 0
+                ? 'لا يدخلها غيرهم، إلا صاحب الشركة. المشرف يبقى قادرًا على إغلاق ورديتها ومعالجة استثناءاتها إن كان يملك الصلاحية.'
+                : 'لم يُسند أحد: لا يدخلها إلا صاحب الشركة.'}
+            </p>
+          </div>
           <label className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
             نشطة
             <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
@@ -220,6 +247,7 @@ function Registers() {
       branchId: r.branchId,
       warehouseId: r.warehouseId ?? null,
       isActive: r.isActive,
+      assignedUserIds: (r.assignedUsers ?? []).map((u) => u.id),
       invoiceStyle: r.invoiceStyle ?? 'company',
     });
 
@@ -243,6 +271,7 @@ function Registers() {
             size="sm"
             onClick={() =>
               setDraft({
+                assignedUserIds: [],
                 name: '',
                 code: `POS${data.registers.length + 1}`,
                 branchId: null,
@@ -278,6 +307,8 @@ function Registers() {
                       الرمز {r.code} · {r.branchName ?? 'بدون فرع'} · آخر رقم {r.nextSequence - 1}
                       {' · '}
                       {resolvePosInvoiceStyle(r, data.settings) === 'standard' ? 'فاتورة عادية' : 'إيصال حراري'}
+                      {' · '}
+                      {r.assignedUsers?.length ? `مسندة إلى: ${r.assignedUsers.map((u) => u.name).join('، ')}` : 'غير مسندة: لصاحب الشركة فقط'}
                       {data.settings.stockMode === 'inventory' ? ` · المستودع: ${r.warehouseName ?? 'غير محدد'}` : ''}
                     </div>
                   </div>
@@ -297,7 +328,7 @@ function Registers() {
                 <div className="mt-3 border-t border-border pt-3">
                   <div className="mb-1 text-xs font-semibold text-muted-foreground">الأجهزة المقترنة</div>
                   {devices.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">لا أجهزة. أي متصفح بصلاحية البيع يستطيع فتحها في نسخة التصميم.</p>
+                    <p className="text-xs text-muted-foreground">لا أجهزة مقترنة: تفتح من أي متصفح لموظف مسند. عند إقران جهاز لا تعمل إلا من أجهزتها المقترنة.</p>
                   ) : (
                     <ul className="space-y-1">
                       {devices.map((d) => (
@@ -340,8 +371,10 @@ function Registers() {
 
 export function PosRegistersPage() {
   return (
-    <PosGate permission="pos.devices.manage">
-      <Registers />
-    </PosGate>
+    <PosDataScope days={0}>
+      <PosGate permission="pos.devices.manage">
+        <Registers />
+      </PosGate>
+    </PosDataScope>
   );
 }

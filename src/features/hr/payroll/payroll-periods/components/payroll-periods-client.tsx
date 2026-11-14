@@ -1,12 +1,11 @@
 'use client';
 
+import type { ColumnDef } from '@/components/ui/data-table';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import {
-  Plus, CalendarRange, BarChart2,
-  ChevronRight, CheckCircle2,
-} from 'lucide-react';
+import { Plus, CalendarRange, BarChart2, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
@@ -18,43 +17,19 @@ import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-con
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { intervalOverlapsYmdRange } from '@/features/hr/discipline/lib/discipline-date-filter';
-import {
-  HRSettingsFormDrawer, FormField, ConfirmationModal, EmptyState,
-} from '@/components/ui/shared-dialogs';
-import {
-  useHRPayrollPeriodsStore,
-  PERIOD_STATUS_LABELS, PERIOD_STATUS_COLORS, PERIOD_STATUS_ORDER,
-  REVIEW_STAGE_LABELS, REVIEW_STAGE_BADGE, REVIEW_COMPLETED_LABEL,
-  isPayrollPeriodEditable,
-  type HRPayrollPeriodDraft, type HRPayrollPeriodStatus,
-} from '@/features/hr/payroll/lib/payroll-periods-store';
+import { HRSettingsFormDrawer, FormField, ConfirmationModal, EmptyState } from '@/components/ui/shared-dialogs';
+import { useHRPayrollPeriodsStore, PERIOD_STATUS_LABELS, PERIOD_STATUS_COLORS, PERIOD_STATUS_ORDER, REVIEW_STAGE_LABELS, REVIEW_STAGE_BADGE, REVIEW_COMPLETED_LABEL, isPayrollPeriodEditable, type HRPayrollPeriodDraft, type HRPayrollPeriodStatus } from '@/features/hr/payroll/lib/payroll-periods-store';
 import { hrPayrollPeriodCompensationHref } from '@/features/hr/payroll/constants/routes';
 import { DirectoryPagedViews, useServerDirectoryPagination } from '@/components/ui/paged-list';
 import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
 import { payrollPeriodsApi } from '@/features/hr/payroll/lib/api/payroll-periods';
 import { mapPayrollPeriodFromApi, type HRPayrollPeriodRecord } from '@/features/hr/payroll/lib/payroll-periods-store';
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
-import {
-  ORGANIZATION_ARCHIVE_SCOPE_DEFAULT,
-  ORGANIZATION_ARCHIVE_SCOPE_OPTIONS,
-  payrollListArchiveQuery,
-  type OrganizationArchiveScope,
-} from '@/features/hr/organization/lib/archive-scope';
+import { ORGANIZATION_ARCHIVE_SCOPE_DEFAULT, ORGANIZATION_ARCHIVE_SCOPE_OPTIONS, payrollListArchiveQuery, type OrganizationArchiveScope } from '@/features/hr/organization/lib/archive-scope';
 import { cn } from '@/shared/utils';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
 
 type StatusFilter = 'all' | HRPayrollPeriodStatus;
 
-const PERIODS_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الرمز', kind: 'code' },
-  { label: 'الاسم', kind: 'text', weight: 1.6 },
-  { label: 'الحالة', kind: 'status' },
-  { label: 'من', kind: 'date' },
-  { label: 'إلى', kind: 'date' },
-  { label: 'المراجعة', kind: 'status' },
-];
 
 const EMPTY_DRAFT: HRPayrollPeriodDraft = {
   code: '', nameAr: '', nameEn: '',
@@ -198,36 +173,56 @@ export function PayrollPeriodsClient() {
 
   const activeFilterCount = (statusFilter !== 'all' ? 1 : 0) + (dateBounds.from || dateBounds.to ? 1 : 0);
 
-  /** All pages with the same status/archive/date filters (loadBulk handles an empty date range too). */
-  const getExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    const { items } = await loadBulk();
-    return items.map((p) => [
-      p.code || '—',
-      p.nameAr,
-      PERIOD_STATUS_LABELS[p.status] ?? p.status,
-      p.periodStart || '—',
-      p.periodEnd || '—',
-      p.isReviewCompleted ? REVIEW_COMPLETED_LABEL : REVIEW_STAGE_LABELS[p.reviewStage],
-    ]);
+  const reviewOf = (p: HRPayrollPeriodRecord) =>
+    p.isReviewCompleted ? REVIEW_COMPLETED_LABEL : REVIEW_STAGE_LABELS[p.reviewStage];
+  const columns: ColumnDef<HRPayrollPeriodRecord>[] = [
+    { key: 'code', title: 'الرمز', render: (p) => <span className="font-mono text-xs">{p.code || '—'}</span> },
+    { key: 'name', title: 'الاسم', render: (p) => p.nameAr },
+    {
+      key: 'status',
+      title: 'الحالة',
+      render: (p) => (
+        <Badge className={cn('rounded-lg border px-2 py-0.5 text-[10px] font-semibold', PERIOD_STATUS_COLORS[p.status])}>
+          {PERIOD_STATUS_LABELS[p.status]}
+        </Badge>
+      ),
+    },
+    { key: 'start', title: 'من', render: (p) => <span className="font-mono text-xs">{p.periodStart || '—'}</span> },
+    { key: 'end', title: 'إلى', render: (p) => <span className="font-mono text-xs">{p.periodEnd || '—'}</span> },
+    { key: 'review', title: 'المراجعة', render: reviewOf },
+    { key: 'actions', title: '', isActions: true, render: (p) => <PeriodActions p={p} /> },
+  ];
+  const tools = useListTools<HRPayrollPeriodRecord>({
+    section: 'hr',
+    page: 'payroll-periods',
+    columns,
+    rows: filtered,
+    // Same status, archive and date filters as the list; handles an empty date range too.
+    fetchAll: async () => (await loadBulk()).items,
+    resetKey: pagination.resetKey,
+    fields: {
+      code: { kind: 'code', text: (p) => p.code || '—' },
+      name: { text: (p) => p.nameAr },
+      status: { kind: 'status', text: (p) => PERIOD_STATUS_LABELS[p.status] ?? p.status, group: (p) => PERIOD_STATUS_LABELS[p.status] ?? p.status },
+      start: { kind: 'date', text: (p) => p.periodStart || '—', group: (p) => (p.periodStart ? p.periodStart.slice(0, 4) : null) },
+      end: { kind: 'date', text: (p) => p.periodEnd || '—' },
+      review: { kind: 'status', text: reviewOf, group: reviewOf },
+    },
   });
 
   usePageHeaderActions(
     () => (
       <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
         <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <RegisterExportMenu
-          title="سجل فترات الراتب"
-          fileName="payroll-periods"
-          columns={PERIODS_EXPORT_COLUMNS}
-          getRows={getExportRows}
-        />
+        {tools.buttons}
+        {tools.exportMenu('سجل فترات الراتب', 'payroll-periods')}
         <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0" onClick={openCreate}>
           <Plus className="h-3.5 w-3.5" />
           فترة جديدة
         </Button>
       </div>
     ),
-    [activeFilterCount, openCreate, getExportRows],
+    [activeFilterCount, openCreate, tools.depsKey],
   );
   const openEdit   = (id: string) => {
     const p = filtered.find(x => x.id === id);
@@ -330,7 +325,8 @@ export function PayrollPeriodsClient() {
       {!listLoading && filtered.length === 0 && pagination.total === 0 ? (
         <EmptyState icon={CalendarRange} title="لا توجد فترات" description="أنشئ فترة راتب جديدة للبدء." />
       ) : (
-        <DirectoryPagedViews items={filtered} serverPagination={pagination} loading={listLoading}>
+        <ListToolsTable tools={tools} keyExtractor={(p) => p.id} onRowClick={(p) => router.push(hrPayrollPeriodCompensationHref(p.id))}>
+        <DirectoryPagedViews items={tools.rows} serverPagination={tools.pagination(pagination)} loading={listLoading || tools.loading}>
           {(pageItems) => (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {pageItems.map(p => (
@@ -376,6 +372,7 @@ export function PayrollPeriodsClient() {
         </div>
           )}
         </DirectoryPagedViews>
+        </ListToolsTable>
       )}
 
       <HRSettingsFormDrawer

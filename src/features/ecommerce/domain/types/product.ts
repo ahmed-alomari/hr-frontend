@@ -4,14 +4,14 @@ import type { StockStatus } from '@/features/ecommerce/domain/constants/stock-st
 
 export type { ProductStatus, StockStatus };
 
-/** Odoo-style product type. */
+/** Product type. */
 export type ProductType = 'goods' | 'service' | 'combo';
 
 /** Inventory tracking mode. */
 export type ProductTracking = 'none' | 'lot' | 'serial';
 
 /**
- * When to invoice the customer (Odoo invoice_policy):
+ * When to invoice the customer:
  * - ordered: invoice based on ordered quantities
  * - delivered: invoice based on delivered quantities
  */

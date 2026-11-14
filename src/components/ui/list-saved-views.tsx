@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { Bookmark, BookmarkCheck, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -133,82 +134,84 @@ export function ListSavedViews({
   const active = views.find((v) => v.id === activeId);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={cn('h-8 w-8 shrink-0', active && 'border-primary/40 text-primary')}
-          aria-label={active ? `العرض: ${active.name}` : 'العروض المحفوظة'}
-          title={active ? `العرض: ${active.name}` : 'العروض المحفوظة'}
-        >
-          {active ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 p-0" dir="rtl">
-        <div className="border-b border-border/60 px-3 py-2.5">
-          <p className="text-sm font-semibold">العروض المحفوظة</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            الفلاتر والفترة والترتيب والتجميع والأعمدة، تُحفظ في هذا المتصفح
-          </p>
-        </div>
-        <div className="max-h-64 space-y-0.5 overflow-y-auto p-2">
-          {views.length === 0 ? (
-            <p className="px-2 py-3 text-center text-xs text-muted-foreground">لا توجد عروض محفوظة بعد</p>
-          ) : (
-            views.map((view) => (
-              <div
-                key={view.id}
-                className={cn(
-                  'flex items-center justify-between gap-1 rounded-md px-1 transition-colors hover:bg-muted/50',
-                  view.id === activeId && 'bg-primary/5',
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => apply(view)}
+    <FoldedHeaderTool>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn('h-8 w-8 shrink-0', active && 'border-primary/40 text-primary')}
+            aria-label={active ? `العرض: ${active.name}` : 'العروض المحفوظة'}
+            title={active ? `العرض: ${active.name}` : 'العروض المحفوظة'}
+          >
+            {active ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-72 p-0" dir="rtl">
+          <div className="border-b border-border/60 px-3 py-2.5">
+            <p className="text-sm font-semibold">العروض المحفوظة</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              الفلاتر والفترة والترتيب والتجميع والأعمدة، تُحفظ في هذا المتصفح
+            </p>
+          </div>
+          <div className="max-h-64 space-y-0.5 overflow-y-auto p-2">
+            {views.length === 0 ? (
+              <p className="px-2 py-3 text-center text-xs text-muted-foreground">لا توجد عروض محفوظة بعد</p>
+            ) : (
+              views.map((view) => (
+                <div
+                  key={view.id}
                   className={cn(
-                    'min-w-0 flex-1 truncate px-1.5 py-1.5 text-start text-sm',
-                    view.id === activeId && 'font-semibold text-primary',
+                    'flex items-center justify-between gap-1 rounded-md px-1 transition-colors hover:bg-muted/50',
+                    view.id === activeId && 'bg-primary/5',
                   )}
                 >
-                  {view.name}
-                </button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                  aria-label={`حذف العرض ${view.name}`}
-                  onClick={() => remove(view)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))
-          )}
-        </div>
-        <form
-          className="flex items-center gap-1.5 border-t border-border/60 p-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            save();
-          }}
-        >
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="اسم العرض الحالي"
-            className="h-8 text-sm"
-            maxLength={60}
-          />
-          <Button type="submit" size="sm" className="h-8 shrink-0 gap-1" disabled={!name.trim()}>
-            <Plus className="h-3.5 w-3.5" />
-            حفظ
-          </Button>
-        </form>
-      </PopoverContent>
-    </Popover>
+                  <button
+                    type="button"
+                    onClick={() => apply(view)}
+                    className={cn(
+                      'min-w-0 flex-1 truncate px-1.5 py-1.5 text-start text-sm',
+                      view.id === activeId && 'font-semibold text-primary',
+                    )}
+                  >
+                    {view.name}
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                    aria-label={`حذف العرض ${view.name}`}
+                    onClick={() => remove(view)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+          <form
+            className="flex items-center gap-1.5 border-t border-border/60 p-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              save();
+            }}
+          >
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="اسم العرض الحالي"
+              className="h-8 text-sm"
+              maxLength={60}
+            />
+            <Button type="submit" size="sm" className="h-8 shrink-0 gap-1" disabled={!name.trim()}>
+              <Plus className="h-3.5 w-3.5" />
+              حفظ
+            </Button>
+          </form>
+        </PopoverContent>
+      </Popover>
+    </FoldedHeaderTool>
   );
 }

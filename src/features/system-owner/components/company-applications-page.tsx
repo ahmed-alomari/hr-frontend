@@ -38,7 +38,7 @@ import {
   resolveApplicationIcon,
   resolveApplicationTileClass,
 } from '@/features/system/applications/lib/application-tile-config';
-import { OdooAppTile } from '@/features/system/applications/components/odoo-app-tile';
+import { LauncherTile } from '@/features/system/applications/components/launcher-tile';
 
 type FilterId = 'all' | 'enabled' | 'available' | 'pending';
 
@@ -114,7 +114,7 @@ function MarketplaceTile({
         : 'غير مفعّل';
 
   const tile = (
-    <OdooAppTile
+    <LauncherTile
       icon={Icon}
       label={app.nameAr}
       caption={caption}
@@ -281,11 +281,11 @@ export function CompanyApplicationsPage() {
         ))}
       </div>
 
-      <section className="odoo-app-grid mx-auto flex w-full max-w-3xl flex-wrap items-start justify-center gap-x-7 gap-y-6">
+      <section className="launcher-grid mx-auto flex w-full max-w-3xl flex-wrap items-start justify-center gap-x-7 gap-y-6">
         {catalogQuery.isLoading
           ? Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="odoo-app-tile flex w-[6.5rem] flex-col items-center gap-2 sm:w-[7.25rem]">
-                <div className="odoo-app-square h-[4.5rem] w-[4.5rem] animate-pulse rounded-[0.85rem] bg-muted sm:h-20 sm:w-20" />
+              <div key={i} className="launcher-tile flex w-[6.5rem] flex-col items-center gap-2 sm:w-[7.25rem]">
+                <div className="launcher-square h-[4.5rem] w-[4.5rem] animate-pulse rounded-[0.85rem] bg-muted sm:h-20 sm:w-20" />
                 <div className="h-3 w-16 animate-pulse rounded-full bg-muted" />
               </div>
             ))

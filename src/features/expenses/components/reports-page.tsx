@@ -1,19 +1,19 @@
 'use client';
 
 import * as React from 'react';
-import { toast } from 'sonner';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
-import { DataTable, usePagination, type ColumnDef } from '@/components/ui/data-table';
-import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-list';
 import { ListFilterBar, type PeriodRange } from '@/components/ui/list-filter-bar';
-import { downloadXlsxFromAoA, type XlsxCell } from '@/shared/export/download-xlsx';
+import { LocalListTable, LocalListToolbar, useLocalList, type LocalListField } from '@/components/ui/local-list';
+import { hrFiltersKey, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
+import { useExpensesStore } from '../data/store';
 import { formatDisplayDate } from '@/shared/utils';
 import { cashReport, expenseReport, expensesCsv, filterExpenses, type ExpenseReport, type ReportFilter, type Row } from '../domain/reports';
 import { ORG } from '../domain/types';
-import { Money } from './common';
+import { EmptyState, LoadingBlock, Money } from './common';
 import { last30Days, ReportExportMenu, ReportSummaryCard, ShareBar } from './report-common';
 import { todayIso, useCurrency, useDirectory, useExpensesData } from './expenses-provider';
 
@@ -59,13 +59,15 @@ export function ReportsPage() {
   const currency = useCurrency();
   const directory = useDirectory();
   const defaultPeriod = React.useMemo(() => last30Days(todayIso()), []);
-  const [period, setPeriod] = React.useState<PeriodRange>(defaultPeriod);
-  const [groupBy, setGroupBy] = React.useState<GroupBy>('day');
-  const [personId, setPersonId] = React.useState(ALL);
-  const [categoryId, setCategoryId] = React.useState(ALL);
-  const [groupId, setGroupId] = React.useState(ALL);
-  const [centerId, setCenterId] = React.useState(ALL);
-  const [status, setStatus] = React.useState<'all' | 'pending'>(ALL);
+  const companyId = useExpensesStore((s) => s.companyId);
+  const filterKey = (field: string) => hrFiltersKey('expenses', 'reports', companyId, field);
+  const [period, setPeriod] = usePersistedFilterState<PeriodRange>(filterKey('period'), defaultPeriod);
+  const [groupBy, setGroupBy] = usePersistedFilterState<GroupBy>(filterKey('groupBy'), 'day');
+  const [personId, setPersonId] = usePersistedFilterState(filterKey('person'), ALL);
+  const [categoryId, setCategoryId] = usePersistedFilterState(filterKey('category'), ALL);
+  const [groupId, setGroupId] = usePersistedFilterState(filterKey('group'), ALL);
+  const [centerId, setCenterId] = usePersistedFilterState(filterKey('center'), ALL);
+  const [status, setStatus] = usePersistedFilterState<'all' | 'pending'>(filterKey('status'), ALL);
 
   const advanced = data?.settings.mode === 'advanced';
   const groups = React.useMemo(() => data?.groups ?? [], [data?.groups]);
@@ -122,34 +124,11 @@ export function ReportsPage() {
     [groupBy, categories, groups, centers, directory],
   );
 
-  const { page, setPage, pageSize, setPageSize, slice: pagedRows, total } = usePagination(rows, DEFAULT_PAGE_SIZE);
-
-  React.useEffect(() => {
-    setPage(1);
-  }, [groupBy, filter, setPage]);
-
   const isDefaultPeriod = period.from === defaultPeriod.from && period.to === defaultPeriod.to;
   const activeFilterCount =
     [personId, categoryId, groupId, centerId, status].filter((v) => v !== ALL).length
     + (groupBy !== 'day' ? 1 : 0)
     + (isDefaultPeriod ? 0 : 1);
-
-  const exportExcel = React.useCallback(async () => {
-    if (rows.length === 0) {
-      toast.error('لا توجد بيانات للتصدير ضمن الفلاتر الحالية.');
-      return;
-    }
-    const sheet: XlsxCell[][] = [[GROUP_BY_LABELS[groupBy], 'العمليات', 'المبلغ', 'النسبة %']];
-    for (const r of rows) {
-      sheet.push([labelOf(r.key), r.count, currency.format(r.amount), totalAmount > 0 ? Math.round((r.amount / totalAmount) * 100) : 0]);
-    }
-    try {
-      await downloadXlsxFromAoA(`expenses-report-${period.from || 'all'}-${period.to || 'all'}.xlsx`, 'المصروفات', sheet);
-      toast.success('تم تنزيل ملف Excel.');
-    } catch {
-      toast.error('تعذر تصدير التقرير.');
-    }
-  }, [rows, groupBy, labelOf, currency, totalAmount, period]);
 
   const exportCsv = React.useCallback(() => {
     if (!data) return;
@@ -166,14 +145,26 @@ export function ReportsPage() {
     URL.revokeObjectURL(url);
   }, [data, filter, categories, directory, currency]);
 
+  const fields = React.useMemo<LocalListField<Row>[]>(() => [
+    { key: 'label', label: GROUP_BY_LABELS[groupBy], kind: 'name', text: (r) => labelOf(r.key), cell: (r) => <span className="font-medium">{labelOf(r.key)}</span> },
+    { key: 'count', label: 'العمليات', kind: 'number', text: (r) => String(r.count), sortValue: (r) => r.count, sum: (r) => r.count, formatSum: String },
+    { key: 'amount', label: 'المبلغ', kind: 'number', text: (r) => currency.format(r.amount), sortValue: (r) => r.amount, sum: (r) => r.amount, formatSum: currency.format, cell: (r) => <Money value={r.amount} className="font-semibold" /> },
+    { key: 'share', label: 'النسبة', optional: true, kind: 'number', sortValue: (r) => r.amount, text: (r) => `${totalAmount > 0 ? Math.round((r.amount / totalAmount) * 100) : 0}%`, cell: (r) => <ShareBar value={r.amount} max={maxAmount} total={totalAmount} /> },
+  ], [groupBy, labelOf, currency, totalAmount, maxAmount]);
+  const list = useLocalList({ section: 'expenses', page: 'reports', fields, rows });
+  const periodLine = period.from || period.to ? `الفترة: ${period.from || '…'} إلى ${period.to || '…'}` : null;
+
   usePageHeaderActions(
     () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <ReportExportMenu onExcel={() => void exportExcel()} onCsv={exportCsv} />
-      </div>
+      <LocalListToolbar
+        list={list}
+        title={`تحليل المصروفات حسب ${GROUP_BY_LABELS[groupBy]}`}
+        fileName={`expenses-report-${period.from || 'all'}-${period.to || 'all'}`}
+        subtitleLines={periodLine ? [periodLine] : []}
+        before={<><FilterToggleButton activeFilterCount={activeFilterCount} /><ReportExportMenu onCsv={exportCsv} label="تصدير العمليات CSV" /></>}
+      />
     ),
-    [activeFilterCount, exportExcel, exportCsv],
+    [activeFilterCount, exportCsv, groupBy, period.from, period.to, periodLine, list.rows, list.visibleFields, list.groups, list.sort.sortKey],
   );
 
   useEntityFilterSlot(
@@ -245,71 +236,38 @@ export function ReportsPage() {
     [period, defaultPeriod, groupBy, personId, categoryId, groupId, centerId, status, advanced, groups, centers, categories, directory.choices],
   );
 
-  const columns: ColumnDef<Row>[] = [
-    {
-      key: 'label',
-      title: GROUP_BY_LABELS[groupBy],
-      render: (row) => <span className="font-medium">{labelOf(row.key)}</span>,
-    },
-    {
-      key: 'count',
-      title: 'العمليات',
-      render: (row) => <span className="tabular-nums">{row.count}</span>,
-    },
-    {
-      key: 'amount',
-      title: 'المبلغ',
-      render: (row) => <Money value={row.amount} className="font-semibold" />,
-    },
-    {
-      key: 'share',
-      title: 'النسبة',
-      hideOnMobile: true,
-      render: (row) => <ShareBar value={row.amount} max={maxAmount} total={totalAmount} />,
-    },
-  ];
-
-  const loading = !data;
+  if (!data) return <LoadingBlock />;
 
   return (
     <div className="flex flex-col gap-5">
       <SetPageTitle titleAr="تحليل المصروفات" descriptionAr="المصروفات حسب الفترة والأشخاص والمجموعات والفئات ومراكز التكلفة." iconName="BarChart3" />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        <ReportSummaryCard label="إجمالي المصروفات" value={<Money value={report?.total ?? 0} />} hint={`${report?.count ?? 0} عملية`} />
-        <ReportSummaryCard label="معلق (خارج الإجمالي)" value={<Money value={report?.pendingTotal ?? 0} />} valueClassName="text-warning" hint={`${report?.pendingCount ?? 0} عملية`} />
-        <ReportSummaryCard label="صافي خروج النقد" value={<Money value={cash?.netOutflow ?? 0} />} hint="يشمل تمويل العهد" />
-        <ReportSummaryCard label="متوسط العملية" value={<Money value={report?.count ? Math.round(report.total / report.count) : 0} />} />
-      </div>
+      <PhoneStatsFold summary={<Money value={report?.total ?? 0} />}>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+          <ReportSummaryCard label="إجمالي المصروفات" value={<Money value={report?.total ?? 0} />} hint={`${report?.count ?? 0} عملية`} />
+          <ReportSummaryCard label="معلق (خارج الإجمالي)" value={<Money value={report?.pendingTotal ?? 0} />} valueClassName="text-warning" hint={`${report?.pendingCount ?? 0} عملية`} />
+          <ReportSummaryCard label="صافي خروج النقد" value={<Money value={cash?.netOutflow ?? 0} />} hint="يشمل تمويل العهد" />
+          <ReportSummaryCard label="متوسط العملية" value={<Money value={report?.count ? Math.round(report.total / report.count) : 0} />} />
+        </div>
+      </PhoneStatsFold>
 
-      <DirectoryPagedViews
-        items={pagedRows}
-        loading={loading}
-        serverPagination={{ page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), setPage, setPageSize }}
-      >
-        {(rowsPage) => (
-          <DataTable
-            variant="directory"
-            columns={columns}
-            data={rowsPage}
-            keyExtractor={(row) => row.key}
-            mobileCard={(row) => (
-              <div className="space-y-1.5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="min-w-0 truncate font-medium">{labelOf(row.key)}</p>
-                  <Money value={row.amount} className="shrink-0 font-semibold" />
-                </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span>{row.count} عملية</span>
-                  <div className="flex-1"><ShareBar value={row.amount} max={maxAmount} total={totalAmount} /></div>
-                </div>
-              </div>
-            )}
-            loading={loading}
-            emptyText="لا مصروفات ضمن الفلاتر الحالية."
-          />
+      <LocalListTable
+        list={list}
+        rowKey={(row) => row.key}
+        empty={<EmptyState text="لا مصروفات ضمن الفلاتر الحالية." />}
+        card={(row) => (
+          <div className="space-y-1.5">
+            <div className="flex items-start justify-between gap-2">
+              <p className="min-w-0 truncate font-medium">{labelOf(row.key)}</p>
+              <Money value={row.amount} className="shrink-0 font-semibold" />
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span>{row.count} عملية</span>
+              <div className="flex-1"><ShareBar value={row.amount} max={maxAmount} total={totalAmount} /></div>
+            </div>
+          </div>
         )}
-      </DirectoryPagedViews>
+      />
     </div>
   );
 }

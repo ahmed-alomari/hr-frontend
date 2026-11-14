@@ -1,42 +1,26 @@
 'use client';
 
+import type { ColumnDef } from '@/components/ui/data-table';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
-import {
-  Plus, Loader2, ChevronDown,
-} from 'lucide-react';
+import { Plus, Loader2, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/shared/utils';
 import { themeAvatarClassFromKey } from '@/shared/theme-avatar-palette';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  dialogFormFooterClass,
-} from '@/components/ui/dialog';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, dialogFormFooterClass } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
 import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
-import {
-  leaveBalancesApi,
-  type EmployeeLeaveBalanceGroupDto,
-  type EmployeeLeaveBalanceTypeItemDto,
-  type CreateLeaveBalanceDto,
-} from '@/features/hr/leaves/lib/api/leave-balances';
+import { leaveBalancesApi, type EmployeeLeaveBalanceGroupDto, type EmployeeLeaveBalanceTypeItemDto, type CreateLeaveBalanceDto } from '@/features/hr/leaves/lib/api/leave-balances';
 import type { LeaveTypeResponseDto } from '@/features/hr/leaves/leave-types/lib/api/leave-types';
-import {
-  loadCompanyLeaveTypes,
-  resolveDefaultLeaveTypeId,
-} from '@/features/hr/leaves/lib/leave-types-utils';
+import { loadCompanyLeaveTypes, resolveDefaultLeaveTypeId } from '@/features/hr/leaves/lib/leave-types-utils';
 import { DirectoryPagedViews, useServerDirectoryPagination } from '@/components/ui/paged-list';
 import { employeesApi, type EmployeeResponseDto } from '@/features/hr/organization/employees/lib/api/employees';
 
@@ -329,13 +313,6 @@ function EmployeeBalanceGroupCard({
   );
 }
 
-const BALANCE_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الموظف', kind: 'name' },
-  { label: 'نوع الإجازة', kind: 'text' },
-  { label: 'الإجمالي', kind: 'number' },
-  { label: 'المستخدم', kind: 'number' },
-  { label: 'المتبقي', kind: 'number' },
-];
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -440,44 +417,51 @@ export function AnalyticsClient() {
 
   const activeFilterCount = selectedEmpIds.size > 0 ? 1 : 0;
 
-  const getExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    if (!companyId) return [];
-    const res = await fetchAllPaginatedItems((page, limit) =>
-      leaveBalancesApi.getAll({
-        companyId,
-        page,
-        limit,
-        ...(selectedEmpIds.size === 1 ? { employeeId: [...selectedEmpIds][0] } : {}),
-      }),
-    );
-    return applyEmployeeFilter(res.items).flatMap((g) =>
-      g.leaveTypes.map((lt) => [
-        g.employeeNameAr,
-        lt.leaveTypeNameAr || '—',
-        String(lt.totalDays),
-        String(lt.usedDays),
-        String(lt.remainingDays),
-      ]),
-    );
+  const usageOf = (g: EmployeeLeaveBalanceGroupDto) => {
+    if (g.totalDays <= 0) return 'بلا رصيد';
+    const used = pct(g.usedDays, g.totalDays);
+    return used >= 90 ? '90% فأكثر' : used >= 70 ? 'من 70% إلى 89%' : 'أقل من 70%';
+  };
+  const typesOf = (g: EmployeeLeaveBalanceGroupDto) =>
+    g.leaveTypes.map((lt) => `${lt.leaveTypeNameAr || '—'}: ${lt.totalDays} / ${lt.usedDays} / ${lt.remainingDays}`).join(' · ') || '—';
+  const columns: ColumnDef<EmployeeLeaveBalanceGroupDto>[] = [
+    { key: 'employee', title: 'الموظف', render: (g) => g.employeeNameAr },
+    { key: 'types', title: 'الأنواع (الإجمالي / المستخدم / المتبقي)', render: (g) => <span className="text-xs text-muted-foreground">{typesOf(g)}</span> },
+    { key: 'total', title: 'الإجمالي', render: (g) => <span className="font-mono text-xs">{g.totalDays}</span> },
+    { key: 'used', title: 'المستخدم', render: (g) => <span className="font-mono text-xs">{g.usedDays}</span> },
+    { key: 'remaining', title: 'المتبقي', render: (g) => <span className="font-mono text-xs">{g.remainingDays}</span> },
+    { key: 'usage', title: 'الاستهلاك', render: usageOf },
+  ];
+  const tools = useListTools<EmployeeLeaveBalanceGroupDto>({
+    section: 'hr',
+    page: 'leave-balances',
+    columns,
+    rows: groups,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      employee: { kind: 'name', text: (g) => g.employeeNameAr },
+      types: { text: typesOf, sortable: false },
+      total: { text: (g) => String(g.totalDays), sort: (g) => g.totalDays, sum: (g) => g.totalDays },
+      used: { text: (g) => String(g.usedDays), sort: (g) => g.usedDays, sum: (g) => g.usedDays },
+      remaining: { text: (g) => String(g.remainingDays), sort: (g) => g.remainingDays, sum: (g) => g.remainingDays },
+      usage: { kind: 'status', text: usageOf, sort: (g) => (g.totalDays > 0 ? pct(g.usedDays, g.totalDays) : -1), group: usageOf },
+    },
   });
 
   usePageHeaderActions(
     () => (
       <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
         <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <RegisterExportMenu
-          title="أرصدة الإجازات"
-          fileName="leave-balances"
-          columns={BALANCE_EXPORT_COLUMNS}
-          getRows={getExportRows}
-        />
+        {tools.buttons}
+        {tools.exportMenu('أرصدة الإجازات', 'leave-balances')}
         <Button type="button" variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs" onClick={openCreate}>
           <Plus className="h-3.5 w-3.5" />
           إضافة رصيد
         </Button>
       </div>
     ),
-    [activeFilterCount, openCreate],
+    [activeFilterCount, openCreate, tools.depsKey],
   );
 
   useEntityFilterSlot(
@@ -507,7 +491,8 @@ export function AnalyticsClient() {
           </p>
         </div>
       ) : (
-        <DirectoryPagedViews items={groups} serverPagination={pagination} loading={loading} resetDeps={[selectedEmpKey]}>
+        <ListToolsTable tools={tools} keyExtractor={(g) => g.employeeId}>
+        <DirectoryPagedViews items={tools.rows} serverPagination={tools.pagination(pagination)} loading={loading || tools.loading} resetDeps={[selectedEmpKey]}>
           {(pageItems) => (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {pageItems.map((group) => (
@@ -520,6 +505,7 @@ export function AnalyticsClient() {
         </div>
           )}
         </DirectoryPagedViews>
+        </ListToolsTable>
       )}
 
       <BalanceFormDialog

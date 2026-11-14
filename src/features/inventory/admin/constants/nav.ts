@@ -28,6 +28,10 @@ import {
   FileSpreadsheet,
   Undo2,
   Redo2,
+  CalendarRange,
+  Coins,
+  ScrollText,
+  Hourglass,
 } from 'lucide-react';
 import { inventoryAdminRoutes } from '@/features/inventory/admin/constants/routes';
 import { WAREHOUSE_OPERATION_KIND_META } from '@/features/inventory/domain/constants/warehouse-operation-kinds';
@@ -172,6 +176,24 @@ export const inventoryAdminNavGroups: InventoryAdminNavGroup[] = [
             href: inventoryAdminRoutes.reportMovesAnalysis,
             icon: BarChart3,
           },
+        ],
+      },
+      {
+        labelAr: 'تقارير دورية',
+        items: [
+          {
+            labelAr: 'حركة المخزون الدورية',
+            href: inventoryAdminRoutes.reportStockMovement,
+            icon: CalendarRange,
+          },
+          { labelAr: 'تقييم المخزون', href: inventoryAdminRoutes.reportValuation, icon: Coins },
+          { labelAr: 'كرت الصنف', href: inventoryAdminRoutes.reportItemCard, icon: ScrollText },
+          {
+            labelAr: 'فروقات الجرد',
+            href: inventoryAdminRoutes.reportCountVariances,
+            icon: ClipboardList,
+          },
+          { labelAr: 'الأصناف الراكدة', href: inventoryAdminRoutes.reportSlowMoving, icon: Hourglass },
         ],
       },
     ],

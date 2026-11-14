@@ -4,6 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeftRight, CheckSquare, HandCoins, Hourglass, Plus, Receipt, Users, Wallet } from 'lucide-react';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { PageHeaderPrimaryButton } from '@/components/layouts/page-header-primary-button';
@@ -17,6 +18,13 @@ import { expensesRoutes } from '../constants/routes';
 import { EmptyState, LoadingBlock, Money, PartyName, Section, StatusBadge } from './common';
 import { ExpenseFormDialog } from './expense-form-dialog';
 import { todayIso, useCurrency, useDirectory, useExpensesData, useExpensesPermissions, useLedger } from './expenses-provider';
+
+export const TXN_KIND_LABELS: Record<AnyTxn['kind'], string> = {
+  expense: 'مصروف',
+  custody_move: 'حركة عهدة',
+  advance: 'سلفة',
+  settlement: 'سداد',
+};
 
 export function txnTitle(t: AnyTxn, nameOf: (id: string) => string): string {
   switch (t.kind) {
@@ -49,6 +57,7 @@ function MiniStat({ icon: Icon, label, value, hint, tone }: { icon: React.Elemen
 }
 
 export function DashboardPage() {
+  const fullAccess = useExpensesStore((s) => s.fullAccess);
   const data = useExpensesData();
   const ledger = useLedger();
   const currency = useCurrency();
@@ -85,12 +94,16 @@ export function DashboardPage() {
     <div className="space-y-4">
       <SetPageTitle titleAr="المصاريف والعهد المالية" descriptionAr="المصروفات والعهد والمستحقات في مكان واحد" iconName="Wallet" />
 
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <MiniStat icon={Receipt} label="مصروفات هذا الشهر" value={currency.format(month.total)} hint={`${month.count} عملية معتمدة`} />
-        <MiniStat icon={Hourglass} tone="text-warning" label="بانتظار الاعتماد" value={currency.format(ledger.pending.amount)} hint={`${ledger.pending.count} عملية — خارج الأرصدة`} />
-        <MiniStat icon={Wallet} label="أرصدة العهد" value={currency.format(custodyActual)} hint={`المتوقع: ${currency.format(custodyExpected)}`} />
-        <MiniStat icon={HandCoins} tone="text-destructive" label="على المنشأة للأشخاص" value={currency.format(org.liabilities)} hint={`لها عليهم: ${currency.format(org.entitlements)}`} />
-      </div>
+      <PhoneStatsFold summary={currency.format(month.total)}>
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          <MiniStat icon={Receipt} label="مصروفات هذا الشهر" value={currency.format(month.total)} hint={`${month.count} عملية معتمدة`} />
+          <MiniStat icon={Hourglass} tone="text-warning" label="بانتظار الاعتماد" value={currency.format(ledger.pending.amount)} hint={`${ledger.pending.count} عملية — خارج الأرصدة`} />
+          <MiniStat icon={Wallet} label="أرصدة العهد" value={currency.format(custodyActual)} hint={`المتوقع: ${currency.format(custodyExpected)}`} />
+          <MiniStat icon={HandCoins} tone="text-destructive" label="على المنشأة للأشخاص" value={currency.format(org.liabilities)} hint={`لها عليهم: ${currency.format(org.entitlements)}`} />
+        </div>
+      </PhoneStatsFold>
+
+      {fullAccess ? null : <p className="rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">تعرض هذه الصفحة عملياتك أنت فقط.</p>}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Button className="h-11 justify-start gap-2" disabled={!perms.create} onClick={() => setAdding(true)}><Plus className="h-4 w-4" />مصروف جديد</Button>

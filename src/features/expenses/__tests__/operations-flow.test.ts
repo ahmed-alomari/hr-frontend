@@ -97,7 +97,6 @@ describe('an expense from a custody, through approval', () => {
 describe('custody operations (approver is not the creator)', () => {
   it('open, refill, return within the available balance, then close', () => {
     let data = buildDemoData(CUR, TODAY);
-    data = { ...data, settings: { ...data.settings, approverIds: [DEMO.ahmed] } };
     const opened = openCustody(data, { holderId: DEMO.mona, purpose: 'عهدة فعالية', limit: 5_000_000, amount: 3_000_000, date: TODAY }, ctx(DEMO.sara));
     data = opened.data;
     const id = opened.custody.id;
@@ -128,7 +127,7 @@ describe('custody operations (approver is not the creator)', () => {
 describe('advances and settlements', () => {
   it('an advance is a liability (not custody); a settlement clears a pair and its suggestion', () => {
     let data = buildDemoData(CUR, TODAY);
-    data = { ...data, settings: { ...data.settings, requireApproval: false } };
+    data = { ...data, groups: data.groups.map((g) => (g.isDefault ? { ...g, policy: { ...g.policy, approval: 'none' as const } } : g)) };
     const monaBefore = partyBalance(computeLedger(data, CUR), DEMO.mona);
     data = addAdvance(data, { personId: DEMO.mona, amount: 1_000_000, purpose: 'سلفة', date: TODAY }, ctx(DEMO.ahmed));
     const monaAfter = partyBalance(computeLedger(data, CUR), DEMO.mona);
@@ -159,7 +158,7 @@ describe('drafts', () => {
 
   it('a group split charges members, not the organization', () => {
     let data = buildDemoData(CUR, TODAY);
-    data = { ...data, settings: { ...data.settings, requireApproval: false } };
+    data = { ...data, groups: data.groups.map((g) => (g.isDefault ? { ...g, policy: { ...g.policy, approval: 'none' as const } } : g)) };
     const members = data.groups.find((g) => g.id === 'grp:housing')!.memberIds;
     const amount = 1_000_001; // not divisible by 3
     const saved = saveExpense(

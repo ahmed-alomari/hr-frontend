@@ -1,5 +1,6 @@
 'use client';
 
+import { useListTools } from '@/components/ui/list-tools';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
@@ -11,7 +12,7 @@ import { Pencil, Plus, Trash2, Tag } from 'lucide-react';
 import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
 import { useBrands } from '@/features/catalog/brands/hooks/use-brands';
 import { useBrandMutations } from '@/features/catalog/brands/hooks/use-brand-mutations';
-import { BrandFormDialog } from '@/features/catalog/brands/components/brand-form-dialog';
+import { lazyDialog } from '@/shared/lib/lazy-dialog';
 import { DeleteBrandDialog } from '@/features/catalog/brands/components/delete-brand-dialog';
 import type { Brand } from '@/features/ecommerce/domain/types/brand';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
@@ -27,6 +28,11 @@ import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
 import type { RegisterExportColumn } from '@/components/pdf/lib/register-export-rows';
 import { fetchAllPaginatedItems } from '@/shared/api/client';
 import { brandsApi } from '@/features/catalog/brands/lib/api/brands';
+
+// Loads on first open: keeps the form's code (and zod) out of the page's first load.
+const BrandFormDialog = lazyDialog(() =>
+  import('@/features/catalog/brands/components/brand-form-dialog').then((m) => m.BrandFormDialog),
+);
 
 /** Server keys (list-screens skill); default: the display order. */
 const BRANDS_SORT_OPTIONS: readonly ListSortOption[] = [
@@ -123,30 +129,6 @@ export function BrandsListPage() {
     setBrandToDelete(null);
   };
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton />
-        <ListSortMenu model={sort} />
-        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
-        <PageHeaderPrimaryButton
-          icon={Plus}
-          label="إضافة علامة تجارية"
-          disabled={!companyId}
-          onClick={openCreateDialog}
-        />
-        <RegisterExportMenu
-          title="سجل العلامات التجارية"
-          fileName="brands"
-          columns={BRANDS_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={filterSummary}
-          emptyMessage="لا توجد علامات تجارية للتصدير."
-        />
-      </div>
-    ),
-    [companyId, sort.sortKey, sort.label, search, stateKeys.views],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -214,6 +196,34 @@ export function BrandsListPage() {
     },
   ];
 
+  const tools = useListTools<Brand>({ section: 'catalog', page: 'brands', columns: columns, rows: [], fields: {}, savedViews: false });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton />
+        {tools.buttons}
+        <ListSortMenu model={sort} />
+        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
+        <PageHeaderPrimaryButton
+          icon={Plus}
+          label="إضافة علامة تجارية"
+          disabled={!companyId}
+          onClick={openCreateDialog}
+        />
+        <RegisterExportMenu
+          title="سجل العلامات التجارية"
+          fileName="brands"
+          columns={BRANDS_EXPORT_COLUMNS}
+          getRows={getExportRows}
+          subtitleLines={filterSummary}
+          emptyMessage="لا توجد علامات تجارية للتصدير."
+        />
+      </div>
+    ),
+    [companyId, sort.sortKey, sort.label, search, stateKeys.views, tools.depsKey],
+  );
+
   return (
     <div className="flex flex-col gap-5">
       <SetPageTitle
@@ -244,7 +254,7 @@ export function BrandsListPage() {
           <DataTable
             variant="directory"
             className="sto-table-host"
-            columns={columns}
+            columns={tools.columns}
             data={rowsPage}
             keyExtractor={(brand) => brand.id}
             loading={isLoading}

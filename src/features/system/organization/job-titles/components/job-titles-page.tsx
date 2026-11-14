@@ -6,11 +6,12 @@ import { Switch } from '@/components/ui/switch';
 import { HRSettingsFormDrawer, FormField, ConfirmationModal, EmptyState } from '@/components/ui/shared-dialogs';
 import { ForbiddenState } from '@/components/shared/forbidden-state';
 import { useJobTitlesDirectoryModel } from '@/features/system/organization/job-titles/hooks/useJobTitlesDirectoryModel';
-import { JobTitlesListViews } from '@/features/system/organization/job-titles/components/job-titles-list-views';
+import { JobTitlesListViews, useJobTitlesListTools } from '@/features/system/organization/job-titles/components/job-titles-list-views';
 import { JobTitleTemplateDetailDialog } from '@/features/system/organization/job-titles/dialogs/job-title-template-detail-dialog';
 
 export default function JobTitlesPage() {
   const model = useJobTitlesDirectoryModel();
+  const tools = useJobTitlesListTools(model);
 
   if (model.accessDenied) {
     return <ForbiddenState />;
@@ -23,7 +24,7 @@ export default function JobTitlesPage() {
       ) : model.listError ? (
         <EmptyState title="تعذر تحميل المسميات" description={model.listError} />
       ) : (
-        <JobTitlesListViews model={model} />
+        <JobTitlesListViews model={model} tools={tools} />
       )}
 
       <HRSettingsFormDrawer

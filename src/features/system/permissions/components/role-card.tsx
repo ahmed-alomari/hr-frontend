@@ -40,6 +40,10 @@ export function RoleCard({ role, grantedCount, onEdit, onDelete }: Props) {
               <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                 نظامي
               </span>
+            ) : role.isDefault ? (
+              <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                جاهز
+              </span>
             ) : null}
           </div>
           {role.description ? (

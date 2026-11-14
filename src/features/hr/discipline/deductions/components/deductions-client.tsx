@@ -1,5 +1,6 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { Send } from 'lucide-react';
 import {
@@ -162,20 +163,6 @@ export function DeductionsClient() {
       ]),
   );
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <RegisterExportMenu
-          title="سجل الاستقطاعات"
-          fileName="discipline-deductions"
-          columns={DEDUCTION_EXPORT_COLUMNS}
-          getRows={getExportRows}
-        />
-      </div>
-    ),
-    [activeFilterCount, getExportRows],
-  );
 
   const handleSendToPayroll = React.useCallback(
     async (id: string) => {
@@ -250,6 +237,39 @@ export function DeductionsClient() {
       ),
     },
   ], [handleSendToPayroll]);
+
+  const tools = useListTools<HRDisciplinePayrollDeductionRecord>({
+    section: 'hr',
+    page: 'discipline-deductions',
+    columns,
+    rows: items,
+    fetchAll: loadAllForExport,
+    resetKey: JSON.stringify([[...selectedEmpIds], statusFilter, kindFilter, dateBounds]),
+    fields: {
+      caseNumber: { kind: 'code', text: (d) => d.caseNumber },
+      employee: { kind: 'name', text: (d) => d.employeeNameAr, group: (d) => d.employeeNameAr },
+      kind: { text: (d) => DEDUCTION_KIND_LABELS[d.deductionKind], group: (d) => DEDUCTION_KIND_LABELS[d.deductionKind] },
+      month: { kind: 'date', text: (d) => d.month, group: (d) => d.month },
+      status: { kind: 'status', text: (d) => DEDUCTION_STATUS_LABELS[d.status], group: (d) => DEDUCTION_STATUS_LABELS[d.status] },
+      amount: { kind: 'number', text: (d) => formatNumber(d.amount), sort: (d) => d.amount, sum: (d) => d.amount, formatSum: formatNumber },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        <RegisterExportMenu
+          title="سجل الاستقطاعات"
+          fileName="discipline-deductions"
+          columns={DEDUCTION_EXPORT_COLUMNS}
+          getRows={getExportRows}
+        />
+      </div>
+    ),
+    [activeFilterCount, getExportRows, tools.depsKey],
+  );
 
   const kindSelect = (
     <div className="flex min-w-0 items-center gap-2">
@@ -349,20 +369,22 @@ export function DeductionsClient() {
           ) : listFiltered.length === 0 ? (
             <EmptyState title="لا توجد استقطاعات مطابقة للفلاتر المحددة." />
           ) : (
-            <DisciplinePaginatedList pagination={pagination}>
+            <ListToolsTable tools={tools} keyExtractor={(d) => d.id} onRowClick={(d) => setDetailRow(d)}>
+            <DisciplinePaginatedList pagination={tools.pagination(pagination)}>
               {viewMode === 'list' ? (
               <DataTable
                 variant="directory"
                 alwaysShowTable
                 tableClassName="min-w-[640px]"
-                columns={columns}
-                data={items}
+                columns={tools.columns}
+                {...tools.tableSort}
+                data={tools.rows}
                 keyExtractor={(d) => d.id}
                 onRowClick={(d) => setDetailRow(d)}
               />
               ) : (
               <EntityActionCardGrid>
-                {items.map((d) => (
+                {tools.rows.map((d) => (
                 <EntityActionCard
                   key={d.id}
                   reference={d.caseNumber}
@@ -399,6 +421,7 @@ export function DeductionsClient() {
               </EntityActionCardGrid>
               )}
             </DisciplinePaginatedList>
+            </ListToolsTable>
           )}
         </>
       )}

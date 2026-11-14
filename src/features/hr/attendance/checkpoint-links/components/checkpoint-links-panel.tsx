@@ -1,5 +1,7 @@
 'use client';
 
+import type { ColumnDef } from '@/components/ui/data-table';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import { Link2, Link2Off, Plus, Search, Trash2, Pencil, Users, MapPin, CalendarDays, AlertTriangle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -47,6 +49,8 @@ const CHECKPOINT_LINK_EXPORT_COLUMNS: RegisterColumn[] = [
   { label: 'ساري من', kind: 'date' },
   { label: 'الحالة', kind: 'status' },
 ];
+
+type LinkBatch = ReturnType<typeof useCheckpointLinksPanelModel>['batches'][number];
 
 type CheckpointLinkRow = {
   id: string;
@@ -134,11 +138,31 @@ export function CheckpointLinksPanel() {
       ),
   );
   const openBatchDialog = useLatestCallback(m.openBatchDialog);
+  const activeOf = (b: LinkBatch) => b.rows.filter((row) => row.linkActive).length;
+  const batchColumns: ColumnDef<LinkBatch>[] = [
+    { key: 'checkpoint', title: 'نقطة التسجيل', render: (b) => b.checkInPointName },
+    { key: 'total', title: 'الموظفون', render: (b) => String(b.rows.length) },
+    { key: 'active', title: 'النشطون', render: (b) => String(activeOf(b)) },
+  ];
+  const tools = useListTools<LinkBatch>({
+    section: 'attendance',
+    page: 'checkpoint-links',
+    columns: batchColumns,
+    rows: m.batches,
+    fetchAll: loadAllForExport,
+    resetKey: m.pagination.resetKey,
+    fields: {
+      checkpoint: { kind: 'name', text: (b) => b.checkInPointName },
+      total: { text: (b) => String(b.rows.length), sort: (b) => b.rows.length, sum: (b) => b.rows.length },
+      active: { text: (b) => String(activeOf(b)), sort: activeOf, sum: activeOf },
+    },
+  });
 
   usePageHeaderActions(
     () => (
       <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
         <FilterToggleButton activeFilterCount={isEmployeeStatusFilterActive(employeeStatus) ? 1 : 0} />
+        {tools.buttons}
         <RegisterExportMenu
           title="ربط نقاط التسجيل بالموظفين"
           fileName="checkpoint-links"
@@ -151,7 +175,7 @@ export function CheckpointLinksPanel() {
         </Button>
       </div>
     ),
-    [employeeStatus, getExportRows, openBatchDialog],
+    [employeeStatus, getExportRows, openBatchDialog, tools.depsKey],
   );
 
   useEntityFilterSlot(
@@ -190,7 +214,8 @@ export function CheckpointLinksPanel() {
           </Button>
         </EmptyStateCard>
       ) : (
-        <DirectoryPagedViews items={m.batches} serverPagination={m.pagination} loading={m.loading}>
+        <ListToolsTable tools={tools} keyExtractor={(b) => b.batchId} onRowClick={(b) => setViewBatchId(b.batchId)}>
+        <DirectoryPagedViews items={tools.rows} serverPagination={tools.pagination(m.pagination)} loading={m.loading || tools.loading}>
           {(pageItems) => (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {pageItems.map((batch) => {
@@ -286,6 +311,7 @@ export function CheckpointLinksPanel() {
         </div>
           )}
         </DirectoryPagedViews>
+        </ListToolsTable>
       )}
 
       {/* ── Detail dialog ── */}

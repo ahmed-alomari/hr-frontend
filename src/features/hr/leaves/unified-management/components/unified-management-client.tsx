@@ -1,12 +1,10 @@
 'use client';
 
+import type { ListToolsModel } from '@/components/ui/list-tools';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
-import {
-  Plus,
-  Clock, CalendarDays,
-} from 'lucide-react';
+import { Plus, Clock, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -19,19 +17,9 @@ import { usePageHeaderActions } from '@/components/layouts/page-header-actions-c
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { ListFilterBar, type ListFilterInlineSelect } from '@/components/ui/list-filter-bar';
 import { intervalOverlapsYmdRange } from '@/features/hr/discipline/lib/discipline-date-filter';
-import {
-  hrFiltersKey,
-  usePersistedEmpIdSet,
-  usePersistedFilterState,
-} from '@/features/hr/lib/use-persisted-filter-state';
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-  dialogFormFooterClass,
-} from '@/components/ui/dialog';
-import {
-  canShowLeaveApprovalActions, getApprovalStage,
-  LEAVE_TYPE_LABELS,
-} from '@/features/hr/leaves/unified-management/lib/leaves-utils';
+import { hrFiltersKey, usePersistedEmpIdSet, usePersistedFilterState } from '@/features/hr/lib/use-persisted-filter-state';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, dialogFormFooterClass } from '@/components/ui/dialog';
+import { canShowLeaveApprovalActions, getApprovalStage, LEAVE_TYPE_LABELS } from '@/features/hr/leaves/unified-management/lib/leaves-utils';
 import { employeesApi, type EmployeeResponseDto } from '@/features/hr/organization/employees/lib/api/employees';
 import { branchesApi, type BranchResponseDto } from '@/features/hr/organization/lib/api/branches';
 import { departmentsApi, type DepartmentResponseDto } from '@/features/hr/organization/lib/api/departments';
@@ -40,34 +28,15 @@ import type { UnifiedLeaveRecord, UnifiedLeaveType, LeaveStatus, UnifiedFilterSt
 import type { LeaveTypeResponseDto } from '@/features/hr/leaves/leave-types/lib/api/leave-types';
 import { loadCompanyLeaveTypes } from '@/features/hr/leaves/lib/leave-types-utils';
 import { pickDefaultLeaveRequestTypeId, loadLeaveRequestTypes } from '@/features/hr/requests/lib/load-leave-request-types';
-import {
-  leaveRequestsNewApi,
-  type ApiLeaveRequest,
-} from '@/features/hr/requests/lib/api/correction-requests';
+import { leaveRequestsNewApi, type ApiLeaveRequest } from '@/features/hr/requests/lib/api/correction-requests';
 import type { ApiRequestType } from '@/features/hr/requests/lib/api/request-types';
-import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import {
-  CREATE_PICKER_ACTIVE_ONLY,
-  employeeMatchesStatus,
-  employeeStatusFilterLabelAr,
-  employeeStatusQuery,
-  isEmployeeStatusFilterActive,
-  useEmployeeStatusFilter,
-} from '@/features/hr/lib/employee-status-filter';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
+import { CREATE_PICKER_ACTIVE_ONLY, employeeMatchesStatus, employeeStatusFilterLabelAr, employeeStatusQuery, isEmployeeStatusFilterActive, useEmployeeStatusFilter } from '@/features/hr/lib/employee-status-filter';
 import { exportDate, exportDateTime, exportText } from '@/features/hr/requests/lib/list-export-format';
 import { useAuthStore } from '@/features/auth/lib/auth-store';
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
 import { useCurrentEmployee } from '@/features/hr/organization/employees/hooks/useCurrentEmployee';
 import { checkRequestApprovalAccess } from '@/features/hr/requests/lib/request-approval-access';
-import {
-  buildRequestApproverStatesFromListItem,
-  buildRequestCorrectionDecisionPayload,
-  isRequestFullyApproved,
-  normalizeRequestApproverStates,
-} from '@/features/hr/requests/lib/request-approver-states';
+import { buildRequestApproverStatesFromListItem, buildRequestCorrectionDecisionPayload, isRequestFullyApproved, normalizeRequestApproverStates } from '@/features/hr/requests/lib/request-approver-states';
 import type { RequestApprovalAssignmentCatalogDto } from '@/features/hr/requests/types/api/request-approver-states-types';
 import { RequestApproverStatesPanel } from '@/features/hr/requests/components/request-approver-states-panel';
 import { RequestApproversInline } from '@/features/hr/requests/components/request-approvers-inline';
@@ -77,16 +46,7 @@ import { cn } from '@/shared/utils';
 import { AR_LEAVE_STATUS_LABELS } from '@/shared/i18n/ar';
 import { toast } from 'sonner';
 import { DirectoryPagedViews, useServerDirectoryPagination } from '@/components/ui/paged-list';
-import {
-  EntityActionCard,
-  EntityActionCardChip,
-  EntityActionCardGrid,
-  EntityActionCardMetric,
-  EntityActionCardMetricDivider,
-  EntityActionCardMetricsRow,
-  EntityActionCardStatusBlock,
-  type WorkflowStatusTone,
-} from '@/components/ui/entity-action-card';
+import { EntityActionCard, EntityActionCardChip, EntityActionCardGrid, EntityActionCardMetric, EntityActionCardMetricDivider, EntityActionCardMetricsRow, EntityActionCardStatusBlock, type WorkflowStatusTone } from '@/components/ui/entity-action-card';
 
 // ─── Style config ─────────────────────────────────────────────────────────────
 
@@ -134,17 +94,6 @@ function formatIsoDate(iso?: string | null): string | null {
   return iso.slice(0, 10);
 }
 
-const LEAVE_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الموظف', kind: 'name' },
-  { label: 'القسم', kind: 'text' },
-  { label: 'النوع', kind: 'status' },
-  { label: 'الحالة', kind: 'status' },
-  { label: 'من', kind: 'date' },
-  { label: 'إلى', kind: 'date' },
-  { label: 'أيام', kind: 'number', weight: 0.6 },
-  { label: 'تاريخ التقديم', kind: 'date' },
-  { label: 'سبب الطلب', kind: 'text', weight: 1.6 },
-];
 
 function employeeDisplayName(l: UnifiedLeaveRecord, employees: { id: string; nameAr: string }[]): string {
   return l.employeeNameAr || employees.find((e) => e.id === l.employeeId)?.nameAr || l.employeeId;
@@ -790,46 +739,34 @@ export function UnifiedManagementClient() {
     if (addOpen) void ensureAddDialogData();
   }, [addOpen, ensureAddDialogData]);
 
-  const getExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    if (!companyId) return [];
-    let leaves: UnifiedLeaveRecord[];
-    if (bulkMode) {
-      leaves = (await loadBulk()).items;
-    } else {
-      const catalogById = new Map<string, RequestApprovalAssignmentCatalogDto>();
-      const { items } = await fetchAllPaginatedItems(async (page, limit) => {
-        const res = await leaveRequestsNewApi.list(buildListQuery(page, limit));
-        for (const assignment of res.approvalAssignments) catalogById.set(assignment.id, assignment);
-        const catalog = [...catalogById.values()];
-        return { items: res.items.map((r) => mapApiLeave(r, leaveTypesRef.current, catalog)), pagination: res.pagination };
-      });
-      leaves = items;
-    }
-    return leaves.map((l) => [
-      employeeDisplayName(l, employeesList),
-      exportText(l.departmentNameAr),
-      leaveTypeDisplayLabel(l),
-      LEAVE_STATUS_LABELS[l.status] ?? l.status,
-      exportDate(l.start),
-      exportDate(l.end),
-      exportText(l.workingDays),
-      exportDateTime(l.submittedAt),
-      exportText(l.noteAr),
-    ]);
+  const nameOf = (l: UnifiedLeaveRecord) => employeeDisplayName(l, employeesList);
+  const daysOf = (l: UnifiedLeaveRecord) => Number(l.workingDays) || 0;
+  const tools = useListTools<UnifiedLeaveRecord>({
+    section: 'hr',
+    page: 'leaves-unified',
+    columns: leaveTableColumns({ employees: employeesList, currentEmployeeId, onApprove: handleApprove, onReject: handleReject }),
+    rows: filtered,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      employee: { kind: 'name', text: nameOf, group: nameOf },
+      type: { kind: 'status', text: leaveTypeDisplayLabel, group: leaveTypeDisplayLabel },
+      status: { kind: 'status', text: (l) => LEAVE_STATUS_LABELS[l.status] ?? l.status, group: (l) => LEAVE_STATUS_LABELS[l.status] ?? l.status },
+      start: { kind: 'date', text: (l) => exportDate(l.start), sort: (l) => l.start ?? '', group: (l) => (l.start ? l.start.slice(0, 7) : null) },
+      end: { kind: 'date', text: (l) => exportDate(l.end), sort: (l) => l.end ?? '' },
+      days: { text: (l) => exportText(l.workingDays), sort: daysOf, sum: daysOf },
+      submitted: { kind: 'date', text: (l) => exportDateTime(l.submittedAt), sort: (l) => l.submittedAt ?? '' },
+      department: { text: (l) => exportText(l.departmentNameAr), group: (l) => l.departmentNameAr || null },
+      note: { text: (l) => exportText(l.noteAr), sortable: false },
+    },
   });
 
   usePageHeaderActions(
     () => (
       <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
         <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <RegisterExportMenu
-          title="سجل طلبات الإجازات"
-          fileName="leave-requests"
-          columns={LEAVE_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={[`حالة الموظفين: ${employeeStatusFilterLabelAr(employeeStatus)}`]}
-          landscape
-        />
+        {tools.buttons}
+        {tools.exportMenu('سجل طلبات الإجازات', 'leave-requests', [`حالة الموظفين: ${employeeStatusFilterLabelAr(employeeStatus)}`])}
         <Button
           variant="luxe"
           size="sm"
@@ -841,7 +778,7 @@ export function UnifiedManagementClient() {
         </Button>
       </div>
     ),
-    [activeFilterCount, employeeStatus],
+    [activeFilterCount, employeeStatus, tools.depsKey],
   );
 
   useEntityFilterSlot(
@@ -884,18 +821,20 @@ export function UnifiedManagementClient() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 animate-fade-in">
 
+      <ListToolsTable tools={tools} keyExtractor={(l) => l.id} onRowClick={setDetailLeave}>
       <DirectoryPagedViews
-        items={filtered}
-        serverPagination={pagination}
-        loading={listLoading}
+        items={tools.rows}
+        serverPagination={tools.pagination(pagination)}
+        loading={listLoading || tools.loading}
         resetDeps={[view, filters.branchId, filters.departmentId, filters.status, filters.type, filters.approvalStage, selectedEmpKey, dateBounds.from, dateBounds.to, employeeStatus]}
       >
         {(pageItems) => (
           view === 'table'
-            ? <LeaveTable leaves={pageItems} employees={employeesList} branches={branches} currentEmployeeId={currentEmployeeId} onDetail={setDetailLeave} onApprove={handleApprove} onReject={handleReject} />
+            ? <LeaveTable leaves={pageItems} columns={tools.columns} tableSort={tools.tableSort} employees={employeesList} currentEmployeeId={currentEmployeeId} onDetail={setDetailLeave} onApprove={handleApprove} onReject={handleReject} />
             : <LeaveCardGrid leaves={pageItems} employees={employeesList} currentEmployeeId={currentEmployeeId} onDetail={setDetailLeave} onApprove={handleApprove} onReject={handleReject} />
         )}
       </DirectoryPagedViews>
+      </ListToolsTable>
 
       {/* Detail dialog */}
       {detailLeave && (
@@ -929,16 +868,14 @@ export function UnifiedManagementClient() {
 
 // ─── Leave table ──────────────────────────────────────────────────────────────
 
-function LeaveTable({ leaves, employees, branches, currentEmployeeId, onDetail, onApprove, onReject }: {
-  leaves: UnifiedLeaveRecord[];
+/** The leave table's columns. */
+function leaveTableColumns({ employees, currentEmployeeId, onApprove, onReject }: {
   employees: { id: string; nameAr: string }[];
-  branches: BranchResponseDto[];
   currentEmployeeId: string | null;
-  onDetail: (l: UnifiedLeaveRecord) => void;
   onApprove: (l: UnifiedLeaveRecord) => void;
   onReject: (l: UnifiedLeaveRecord) => void;
-}) {
-  const columns: ColumnDef<UnifiedLeaveRecord>[] = [
+}): ColumnDef<UnifiedLeaveRecord>[] {
+  return [
     {
       key: 'employee',
       title: 'الموظف',
@@ -1030,10 +967,23 @@ function LeaveTable({ leaves, employees, branches, currentEmployeeId, onDetail, 
       render: (l) => <LeaveDecisionCell leave={l} currentEmployeeId={currentEmployeeId} onApprove={onApprove} onReject={onReject} />,
     },
   ];
+}
+
+function LeaveTable({ leaves, columns, tableSort, employees, currentEmployeeId, onDetail, onApprove, onReject }: {
+  leaves: UnifiedLeaveRecord[];
+  columns: ColumnDef<UnifiedLeaveRecord>[];
+  tableSort: ListToolsModel<UnifiedLeaveRecord>['tableSort'];
+  employees: { id: string; nameAr: string }[];
+  currentEmployeeId: string | null;
+  onDetail: (l: UnifiedLeaveRecord) => void;
+  onApprove: (l: UnifiedLeaveRecord) => void;
+  onReject: (l: UnifiedLeaveRecord) => void;
+}) {
 
   return (
     <DataTable
       columns={columns}
+      {...tableSort}
       data={leaves}
       keyExtractor={(l) => l.id}
       emptyText="لا توجد إجازات بهذه الفلاتر"

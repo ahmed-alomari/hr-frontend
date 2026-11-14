@@ -2,7 +2,9 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Boxes, CreditCard, PackageX, Percent, Printer, Save, Undo2, Wallet } from 'lucide-react';
+import { Boxes, CreditCard, PackageX, Percent, Printer, Save, Undo2, Wallet,
+  FolderTree,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { Button } from '@/components/ui/button';
@@ -14,6 +16,7 @@ import { cn } from '@/shared/utils';
 import { PRINT_PAPERS } from '@/features/print-templates/domain/types';
 import { usePrintTemplateSettings } from '@/features/print-templates/lib/print-template-store';
 import {
+  MONEY_METHODS,
   PAYMENT_METHOD_LABELS,
   type PosInvoiceStyle,
   type PosPaymentMethod,
@@ -21,11 +24,15 @@ import {
   type PosStockMode,
   type PosStockTiming,
 } from '@/features/pos/domain/types';
-import { usePosContext } from '@/features/pos/hooks/use-pos-context';
+import { PosDataScope, usePosContext } from '@/features/pos/hooks/use-pos-context';
 import { usePosStockLink } from '@/features/pos/lib/pos-stock-link-api';
 import { parseAmount } from '@/features/pos/lib/format';
 import { PosGate } from '@/features/pos/components/shared/pos-shared';
+import { useQuery } from '@tanstack/react-query';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { PosMenuCategoriesCard } from '@/features/pos/components/admin/pos-menu-categories';
+import { PosMenuCategoriesReport } from '@/features/pos/components/admin/pos-menu-categories-report';
+import { fetchPosUserChoices } from '@/features/pos/lib/pos-store';
 
 function Card({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -89,12 +96,13 @@ const STOCK_TIMINGS: ReadonlyArray<{ id: PosStockTiming; title: string; descript
   },
 ];
 
-type SettingsTab = 'stock' | 'pricing' | 'payment' | 'returns' | 'shifts' | 'print';
+type SettingsTab = 'stock' | 'categories' | 'pricing' | 'payment' | 'returns' | 'shifts' | 'print';
 
 /** The tabs, and the settings each one edits (for its unsaved mark). */
 const TABS: ReadonlyArray<{ id: SettingsTab; label: string; icon: typeof Boxes; keys: ReadonlyArray<keyof PosSettings> }> = [
   { id: 'stock', label: 'المنتجات والمخزون', icon: Boxes, keys: ['onlyPosAvailableProducts', 'stockTiming'] },
-  { id: 'pricing', label: 'الأسعار والضريبة', icon: Percent, keys: ['tax', 'discounts'] },
+  { id: 'categories', label: 'فئات نقاط البيع', icon: FolderTree, keys: [] },
+  { id: 'pricing', label: 'الأسعار والخصومات', icon: Percent, keys: ['discounts'] },
   { id: 'payment', label: 'الدفع', icon: CreditCard, keys: ['paymentMethods'] },
   { id: 'returns', label: 'المرتجعات', icon: Undo2, keys: ['returns'] },
   { id: 'shifts', label: 'الورديات والنقد', icon: Wallet, keys: ['shifts'] },
@@ -109,6 +117,12 @@ function Settings() {
 
   const canEdit = can('pos.settings.manage');
   const link = usePosStockLink(companyId);
+  const userChoices = useQuery({
+    queryKey: ['pos', 'user-choices', companyId],
+    queryFn: () => fetchPosUserChoices(companyId!),
+    enabled: !!companyId && canEdit,
+    staleTime: 60_000,
+  });
   const linked = data.settings.stockMode === 'inventory';
   const openSessions = data.sessions.filter((s) => s.status === 'open').length;
   const unsettledSales = data.sales.filter(
@@ -133,8 +147,8 @@ function Settings() {
 
   const save = async () => {
     if (!actions) return;
-    if (!Object.values(draft.paymentMethods).some(Boolean)) {
-      toast.error('فعّل وسيلة دفع واحدة على الأقل');
+    if (!MONEY_METHODS.some((m) => draft.paymentMethods[m])) {
+      toast.error('فعّل وسيلة دفع واحدة على الأقل غير الآجل');
       return;
     }
     if (!(await actions.saveSettings(draft))) return;
@@ -197,8 +211,7 @@ function Settings() {
             {change ? (
               <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs leading-relaxed">
                 <p className="font-semibold">
-                  تبديل قيد التنفيذ: من «{modeTitle(data.settings.stockMode)}» إلى «{modeTitle(change.to)}» (طلبه{' '}
-                  {change.requestedBy}).
+                  تبديل قيد التنفيذ: من «{modeTitle(data.settings.stockMode)}» إلى «{modeTitle(change.to)}».
                 </p>
                 <p>
                   لا تُفتح ورديات جديدة الآن. الورديات المفتوحة ({openSessions}) تكمل بوضعها، والمبيعات بانتظار الدفع
@@ -283,18 +296,27 @@ function Settings() {
               onChange={(v) => setDraft((d) => ({ ...d, onlyPosAvailableProducts: v }))}
             />
           </Card>
+        </TabsContent>
+
+        <TabsContent value="categories" className="space-y-4">
           <PosMenuCategoriesCard />
+          <PosMenuCategoriesReport />
         </TabsContent>
 
         <TabsContent value="pricing" className="grid gap-4 lg:grid-cols-2">
-          <Card title="الضريبة" description="تُحفظ نسبتها ومبلغها على كل سطر بيع. الفوترة الإلكترونية تُضاف لكل دولة على حدة.">
-            <Toggle label="تطبيق ضريبة على المبيعات" checked={draft.tax.enabled} onChange={(v) => set('tax', { enabled: v })} />
-            {draft.tax.enabled ? (
-              <>
-                <NumberField label="النسبة" value={draft.tax.rate} onChange={(v) => set('tax', { rate: v })} suffix="%" />
-                <Toggle label="الأسعار شاملة الضريبة" checked={draft.tax.pricesIncludeTax} onChange={(v) => set('tax', { pricesIncludeTax: v })} />
-              </>
-            ) : null}
+          <Card title="الضريبة" description="من إعدادات الشركة: تُحدَّد مرة واحدة هناك لكل التطبيقات التي تبيع.">
+            <p className="text-sm">
+              {data.settings.tax.enabled
+                ? `${data.settings.tax.rate}% — ${data.settings.tax.pricesIncludeTax ? 'الأسعار شاملة الضريبة' : 'تُضاف فوق السعر'}`
+                : 'لا ضريبة على المبيعات'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              تُحفظ النسبة ومبلغها على كل سطر بيع، فتغييرها يسري على المبيعات الجديدة فقط. للتغيير:{' '}
+              <Link href="/system/organization/pages/company" className="text-primary underline">
+                إعدادات الشركة
+              </Link>
+              .
+            </p>
           </Card>
 
           <Card title="الخصومات والأسعار">
@@ -310,6 +332,29 @@ function Settings() {
               checked={draft.discounts.supervisorApprovalAbove}
               onChange={(v) => set('discounts', { supervisorApprovalAbove: v })}
             />
+            {draft.discounts.supervisorApprovalAbove ? (
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">مشرفو الموافقة</p>
+                <MultiSelect
+                  options={(userChoices.data ?? []).map((u) => ({ value: u.id, label: u.name }))}
+                  value={(draft.discounts.supervisors ?? []).map((s) => s.id)}
+                  onChange={(ids) =>
+                    set('discounts', {
+                      supervisors: ids.map((id) => ({
+                        id,
+                        name: userChoices.data?.find((u) => u.id === id)?.name ?? '',
+                      })),
+                    })
+                  }
+                  placeholder={userChoices.isError ? 'تعذّر تحميل الموظفين' : 'اختر المشرفين'}
+                  disabled={userChoices.isError}
+                  emptyMessage="لا موظفين"
+                />
+                <p className="text-xs text-muted-foreground">
+                  يختار الكاشير أحدهم، ويكتب المشرف كلمة مروره على الجهاز. بلا مشرفين يُرفض كل خصم فوق الحد.
+                </p>
+              </div>
+            ) : null}
             <Toggle
               label="السماح بتغيير سعر الصنف"
               hint="لمن يملك صلاحية «تغيير سعر الصنف» فقط، ويُسجَّل."
@@ -325,6 +370,11 @@ function Settings() {
               <Toggle
                 key={m}
                 label={PAYMENT_METHOD_LABELS[m]}
+                hint={
+                  m === 'credit'
+                    ? 'بيع على حساب عميل من جهات الاتصال، يظهر في حسابه (عليه) ويُحصّل لاحقًا من الكاشير أو من صفحة العميل. إيقافه لا يمس الفواتير الآجلة القائمة.'
+                    : undefined
+                }
                 checked={draft.paymentMethods[m]}
                 onChange={(v) => set('paymentMethods', { [m]: v })}
               />
@@ -342,6 +392,7 @@ function Settings() {
             />
             <Toggle
               label="الرد بوسيلة غير الأصلية يحتاج موافقة"
+              hint="يُرد المال بالوسيلة التي دُفعت بها الفاتورة. مثال: فاتورة دُفعت ببطاقة، فردّها نقدًا من الدرج لا يتم إلا لمن يملك صلاحية «الرد بوسيلة غير الأصلية» (مشرف عادةً)، حتى لا يخرج نقد مقابل مبلغ لم يدخل الدرج. الفاتورة الآجلة تُرد إلى حساب العميل، أو بالوسيلة التي حُصّلت بها. عند الإيقاف يرد كل من يملك «رد المال» بأي وسيلة."
               checked={draft.returns.refundToOtherMethodNeedsApproval}
               onChange={(v) => set('returns', { refundToOtherMethodNeedsApproval: v })}
             />
@@ -352,7 +403,7 @@ function Settings() {
           <Card title="الورديات والنقد">
             <Toggle
               label="عدّ أعمى عند الإغلاق"
-              hint="لا يرى الكاشير المتوقع قبل إدخال المعدود."
+              hint="عند إغلاق الوردية يعدّ الكاشير النقد في الدرج ويُدخل المبلغ دون أن يرى كم يُفترض أن يكون، فيُسجَّل ما في الدرج فعلًا لا رقمًا يطابق المتوقع. بعد الإدخال يظهر له المتوقع والفرق، ويُطلب سبب إن تجاوز الفرق الحد المقبول، ويظهر الفرق للمدير في تقرير الإغلاق. عند الإيقاف يرى المتوقع أثناء العدّ."
               checked={draft.shifts.blindCount}
               onChange={(v) => set('shifts', { blindCount: v })}
             />
@@ -430,7 +481,7 @@ function Settings() {
         </TabsContent>
       </Tabs>
 
-      {canEdit && tab !== 'print' ? (
+      {canEdit && tab !== 'print' && tab !== 'categories' ? (
         <div className="sticky bottom-3 flex justify-end">
           <Button onClick={save} disabled={!dirty}>
             <Save className="h-4 w-4" />
@@ -444,8 +495,10 @@ function Settings() {
 
 export function PosSettingsPage() {
   return (
-    <PosGate permission="pos.settings.manage">
-      <Settings />
-    </PosGate>
+    <PosDataScope days={0}>
+      <PosGate permission="pos.settings.manage">
+        <Settings />
+      </PosGate>
+    </PosDataScope>
   );
 }

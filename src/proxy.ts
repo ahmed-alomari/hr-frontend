@@ -79,11 +79,23 @@ function requestHost(request: NextRequest): string {
   return (request.headers.get('host') ?? '').split(':')[0].toLowerCase();
 }
 
+/**
+ * Hosts that serve the console on their bare name, for a deployment without a
+ * storefront domain (`NEXT_PUBLIC_CONSOLE_HOSTS=nazafa.qutb.tech`). Baked at
+ * build time like every `NEXT_PUBLIC_*`. Empty on a deployment that sets none.
+ */
+const CONSOLE_HOSTS = new Set(
+  (process.env.NEXT_PUBLIC_CONSOLE_HOSTS ?? '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean),
+);
+
 async function hostKind(host: string): Promise<HostKind> {
   // Local dev, LAN IPs and tunnels: keep every route reachable from one origin,
   // otherwise `npm run dev` on localhost could never open the console.
   if (!host || !host.includes('.') || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return 'both';
-  if (host.startsWith('admin.')) return 'admin';
+  if (host.startsWith('admin.') || CONSOLE_HOSTS.has(host)) return 'admin';
   // A console domain added by the platform owner (company domains), e.g.
   // `erp.amarstore.com`. Every other hostname is a store; which company's
   // store is decided by the page itself (storefront-company.server.ts).

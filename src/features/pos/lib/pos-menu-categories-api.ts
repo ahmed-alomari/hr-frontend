@@ -4,6 +4,9 @@ export type PosMenuCategoryRow = {
   id: string;
   name: string;
   sortOrder: number;
+  /** Products in this group (not archived). */
+  productCount?: number;
+  createdAt?: string;
 };
 
 export async function fetchPosMenuCategories(companyId: string): Promise<PosMenuCategoryRow[]> {

@@ -1,63 +1,27 @@
 'use client';
 
 import * as React from 'react';
-import { Download } from 'lucide-react';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import { cn } from '@/shared/utils';
-import { useExpensesStore } from '../data/store';
-import { currenciesInUse } from '../domain/ledger';
-import { minorToInput, type Minor } from '../domain/money';
 import type { ExpensesSettings } from '../domain/types';
-import { AmountInput, Field, LoadingBlock, PartyChecklist, Section, useRunCommand } from './common';
-import { todayIso, useCurrency, useExpensesData, useExpensesPermissions } from './expenses-provider';
-
-function GroupLabel({ children }: { children: string }) {
-  return <h2 className="px-1 pt-2 text-sm font-semibold text-foreground">{children}</h2>;
-}
-
-function OptionalAmount({ label, hint, value, onChange }: { label: string; hint?: string; value: Minor | null; onChange: (v: Minor | null) => void }) {
-  const currency = useCurrency();
-  const [text, setText] = React.useState(value != null ? minorToInput(value, currency.decimals) : '');
-  React.useEffect(() => setText(value != null ? minorToInput(value, currency.decimals) : ''), [value, currency.decimals]);
-  return (
-    <Field label={label} hint={hint ?? 'اتركه فارغاً لتعطيله.'}>
-      <AmountInput value={text} placeholder="بلا حد" onChange={(t, m) => { setText(t); onChange(t.trim() ? m : null); }} />
-    </Field>
-  );
-}
+import { LoadingBlock, PickList, Section, useRunCommand } from './common';
+import { useDirectory, useExpensesData, useExpensesPermissions } from './expenses-provider';
 
 export function SettingsPage() {
   const data = useExpensesData();
   const run = useRunCommand();
-  const participants = useExpensesStore((s) => s.participants);
-  const live = useExpensesStore((s) => s.liveParticipants);
-  const currency = useCurrency();
   const perms = useExpensesPermissions();
+  const directory = useDirectory();
   if (!data) return <LoadingBlock />;
   const s = data.settings;
   const patch = (p: Partial<ExpensesSettings>) => {
     void run({ type: 'updateSettings', patch: p }, 'حُفظ الإعداد');
   };
   const disabled = !perms.settings;
-  const other = currenciesInUse(data, currency.code).filter((c) => c !== currency.code);
-
-  const download = () => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `expenses-export-${todayIso()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
   return (
     <div className="space-y-4">
-      <SetPageTitle titleAr="الإعدادات والسياسات" descriptionAr="إعدادات المصروفات والعهد، ثم سياسات الصرف" iconName="Settings" />
+      <SetPageTitle titleAr="الإعدادات" descriptionAr="إعدادات تطبيق المصروفات والعهد" iconName="Settings" />
       {disabled ? <p className="rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">للعرض فقط: تعديل الإعدادات يحتاج صلاحية exp.settings.update.</p> : null}
-
-      <GroupLabel>الإعدادات</GroupLabel>
 
       <Section title="مستوى الواجهة" description="يغيّر الوظائف الظاهرة فقط — لا يغيّر الحسابات ولا يحذف بيانات.">
         <div className="grid gap-2 sm:grid-cols-2">
@@ -70,59 +34,31 @@ export function SettingsPage() {
         </div>
       </Section>
 
-      <Section title="العملة" description="عملة الشركة الأساسية من إعدادات الشركة؛ تُحفظ العملة على كل مصروف وعهد وتسوية. تعدد العملات والتحويل مؤجل.">
-        <div className="text-sm">العملة المستخدمة: <Badge variant="outline">{currency.code}</Badge> <span className="text-xs text-muted-foreground">(من إعدادات الشركة)</span></div>
-        {other.length > 0 ? <p className="mt-2 text-xs text-warning">توجد عمليات بعملات أخرى ({other.join('، ')}) لا تظهر في الأرصدة الحالية.</p> : null}
-      </Section>
-
-      <Section title="الاعتماد" description="ينطبق على المصروفات والعهد والسلف والتسويات. الرصيد يتغير بعد الاعتماد، والمعلّق يظهر منفصلاً.">
-        <div className="flex items-center justify-between gap-3 py-1">
-          <div><p className="text-sm font-medium">يتطلب اعتماداً</p><p className="text-xs text-muted-foreground">عند الإيقاف تُعتمد العملية عند حفظها.</p></div>
-          <Switch checked={s.requireApproval} disabled={disabled} onCheckedChange={(v) => patch({ requireApproval: v })} />
+      <Section title="من يرى مصروفات الآخرين" description="يسري فوراً، ولا يغيّر الأرصدة ولا الحسابات.">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {([
+            { value: 'own', title: 'كل موظف يرى عملياته فقط', hint: 'ما سجّله أو دفعه أو يتحمله أو ينتظر اعتماده، وعهده وسلفه.' },
+            { value: 'all', title: 'الجميع يرون كل العمليات', hint: 'لمنشأة صغيرة لا تحتاج إلى خصوصية بين موظفيها.' },
+          ] as const).map((o) => (
+            <button key={o.value} type="button" disabled={disabled} onClick={() => patch({ visibility: o.value })} className={cn('rounded-xl border p-3 text-start transition-colors', s.visibility === o.value ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50', disabled && 'cursor-not-allowed opacity-70')}>
+              <p className="text-sm font-semibold">{o.title}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{o.hint}</p>
+            </button>
+          ))}
         </div>
-        {s.requireApproval ? (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <OptionalAmount label="اعتماد تلقائي لما دون" hint="تحت هذا المبلغ تُعتمد المصروفات والعهد والسلف والتسويات مباشرة." value={s.autoApproveBelow} onChange={(v) => !disabled && patch({ autoApproveBelow: v })} />
-            <Field label="المعتمِدون" hint="من مستخدمي الشركة. بلا اختيار: كل من يملك صلاحية الاعتماد. لا يعتمد أحد عملية سجّلها بنفسه."><PartyChecklist value={s.approverIds} limitTo={live.filter((p) => p.userId).map((p) => p.id)} onChange={(ids) => !disabled && patch({ approverIds: ids })} /></Field>
+        {s.visibility === 'own' ? (
+          <div className="mt-3 space-y-1.5">
+            <p className="text-xs font-medium">موظفون يرون كل العمليات</p>
+            <PickList
+              options={directory.choices.filter((p) => p.userId).map((p) => ({ id: p.id, name: p.name }))}
+              value={s.fullViewerIds}
+              onChange={(fullViewerIds) => patch({ fullViewerIds })}
+              placeholder="أضف موظفاً"
+              disabled={disabled}
+            />
+            <p className="text-[11px] leading-relaxed text-muted-foreground">مدير النظام ومن يملك صلاحية التقارير (أمين الصندوق، والمعتمد، والمحاسب، والمراجع) يرون الكل دائماً.</p>
           </div>
         ) : null}
-      </Section>
-
-      <GroupLabel>سياسات المصروفات</GroupLabel>
-
-      <Section title="حدود الصرف" description="تخص المصروفات. حد الفئة الواحدة يُضبط من صفحة الفئات.">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <OptionalAmount label="يلزم مرفق للمبالغ فوق" value={s.requireAttachmentAbove} onChange={(v) => !disabled && patch({ requireAttachmentAbove: v })} />
-          <OptionalAmount label="الحد الشهري لمصروفات الشخص" value={s.monthlyLimitPerPerson} onChange={(v) => !disabled && patch({ monthlyLimitPerPerson: v })} />
-        </div>
-        <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
-          <div><p className="text-sm font-medium">منع الإرسال عند مخالفة السياسة</p><p className="text-xs text-muted-foreground">عند الإيقاف تظهر تنبيهات فقط ولا يُمنع حفظ المصروف.</p></div>
-          <Switch checked={s.blockOnPolicyViolation} disabled={disabled} onCheckedChange={(v) => patch({ blockOnPolicyViolation: v })} />
-        </div>
-      </Section>
-
-      <GroupLabel>العهد والسلف</GroupLabel>
-
-      <Section title="ما ينطبق على العهد" description="لا حدود صرف منفصلة للعهد؛ تتبع الاعتماد أعلاه.">
-        <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
-          <li>صرف العهد وتسويتها والسلف تُعتمد بنفس «يتطلب اعتماداً» وحد الاعتماد التلقائي.</li>
-          <li>إلزام المرفق والحد الشهري ومنع الإرسال تخص المصروفات فقط.</li>
-        </ul>
-      </Section>
-
-      <GroupLabel>البيانات</GroupLabel>
-
-      <Section title="المشاركون" description="مستخدمو الشركة وجهات اتصالها الداخلية (للقراءة فقط)، والأشخاص التجريبيون إن حُمّلت البيانات التجريبية.">
-        <ul className="space-y-1 text-sm">
-          <li>مستخدمو الشركة وجهات الاتصال الداخلية: <Badge variant={participants === 'live' ? 'success' : 'subtle'}>{participants === 'live' ? `${live.length} مشارك` : participants === 'loading' ? 'جارٍ…' : 'تعذر التحميل'}</Badge></li>
-          <li>أشخاص تجريبيون: {data.demoParticipants.length}</li>
-        </ul>
-      </Section>
-
-      <Section title="التصدير" description="محفوظة في خادم الشركة ومشتركة بين مستخدميها وأجهزتهم. البيانات التجريبية يحمّلها مالك النظام من «بيانات الشركة».">
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={download}><Download className="me-1.5 h-4 w-4" />تصدير JSON</Button>
-        </div>
       </Section>
     </div>
   );

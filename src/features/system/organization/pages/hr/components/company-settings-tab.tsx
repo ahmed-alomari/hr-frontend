@@ -653,6 +653,54 @@ export function CompanySettingsTab() {
         </div>
 
         <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground">ضريبة المبيعات</p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                تُحدَّد مرة واحدة هنا، وتعتمدها كل التطبيقات التي تبيع (نقاط البيع وغيرها). كل فاتورة تحفظ النسبة التي
+                بيعت بها، فالتغيير يسري على المبيعات الجديدة فقط ولا يمسّ الفواتير السابقة.
+              </p>
+            </div>
+            <Switch
+              checked={form.taxEnabled}
+              onCheckedChange={(taxEnabled) => patch({ taxEnabled })}
+              aria-label="تفعيل ضريبة المبيعات"
+            />
+          </div>
+          {form.taxEnabled ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormField label="نسبة الضريبة %">
+                <Input
+                  dir="ltr"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  value={String(form.taxRate)}
+                  onChange={(e) => patch({ taxRate: Number(e.target.value) })}
+                  className="h-9"
+                />
+              </FormField>
+              <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                <div>
+                  <p className="text-xs font-medium">الأسعار شاملة الضريبة</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {form.pricesIncludeTax
+                      ? 'سعر المنتج 115 يشمل الضريبة: يدفع العميل 115.'
+                      : 'تُضاف الضريبة فوق السعر: 100 تصبح 115 عند 15%.'}
+                  </p>
+                </div>
+                <Switch
+                  checked={form.pricesIncludeTax}
+                  onCheckedChange={(pricesIncludeTax) => patch({ pricesIncludeTax })}
+                  aria-label="الأسعار شاملة الضريبة"
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="space-y-3">
           <p className="text-xs font-semibold text-muted-foreground">المنطقة الزمنية</p>
           <p className="text-[11px] leading-relaxed text-muted-foreground">
             يُحسب عليها يوم الحضور والعمل الإضافي. غيّرها قبل بدء تسجيل الحضور.

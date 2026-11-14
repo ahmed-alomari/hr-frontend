@@ -12,7 +12,7 @@ type Props = {
   className?: string;
 };
 
-/** Label/value row used by Odoo-style entity forms (products, warehouses, …). */
+/** Label/value row used by the entity forms (products, warehouses, …). */
 export function EntityFormRow({ label, htmlFor, children, hint, className }: Props) {
   return (
     <div

@@ -1,17 +1,25 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { PackageCheck, Plus, Printer } from 'lucide-react';
 import { toast } from 'sonner';
+import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
+import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
+import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
+import { PageHeaderPrimaryButton } from '@/components/layouts/page-header-primary-button';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { ListFilterBar } from '@/components/ui/list-filter-bar';
+import { LocalListTable, LocalListToolbar, useLocalList, type LocalListField } from '@/components/ui/local-list';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
+  MONEY_METHODS,
   PAYMENT_METHOD_LABELS,
   resolvePosInvoiceStyle,
   RETURN_CONDITION_LABELS,
@@ -20,23 +28,34 @@ import {
   type PosReturnCondition,
   type PosSale,
 } from '@/features/pos/domain/types';
-import { usePosContext } from '@/features/pos/hooks/use-pos-context';
-import { newId } from '@/features/pos/lib/pos-store';
+import { PosDataScope, usePosContext } from '@/features/pos/hooks/use-pos-context';
+import { lookupSaleByNumber, newId } from '@/features/pos/lib/pos-store';
 import { lineRefundAmount, round2 } from '@/features/pos/lib/calc';
 import { formatDateTime, formatMoney, parseAmount } from '@/features/pos/lib/format';
 import { returnToPrintable } from '@/features/pos/lib/receipt';
-import { EmptyState, PosGate, PrintPreviewDialog } from '@/features/pos/components/shared/pos-shared';
+import { refundMethodLabel } from '@/features/pos/lib/sales-report';
+import { EmptyState, PosGate, PrintPreviewDialog, lastDaysPeriod, type PosPeriod } from '@/features/pos/components/shared/pos-shared';
 
 type LineDraft = { quantity: number; condition: PosReturnCondition };
 
 function originalMethod(sale: PosSale): PosPaymentMethod {
+  // Still owed: the return comes off the customer's account first.
+  if ((sale.credit?.due ?? 0) > 0) return 'credit';
   const paid = sale.payments.filter((p) => p.kind === 'payment' && p.status === 'succeeded');
   const top = [...paid].sort((a, b) => b.amount - a.amount)[0];
   return top?.method ?? 'cash';
 }
 
+/** Owed: only to the account. A settled credit invoice: the account or money back. Otherwise: money back. */
+function refundMethodsOf(sale: PosSale): PosPaymentMethod[] {
+  if (!sale.credit) return [...MONEY_METHODS];
+  if (sale.credit.due > 0) return ['credit'];
+  return ['credit', ...MONEY_METHODS];
+}
+
 function NewReturnDialog({ open, initialSaleId, onClose }: { open: boolean; initialSaleId: string | null; onClose: () => void }) {
-  const { data, actions, userName, currency, can } = usePosContext();
+  const { companyId, data, actions, userName, currency, can } = usePosContext();
+  const queryClient = useQueryClient();
   const [saleQuery, setSaleQuery] = React.useState('');
   const [saleId, setSaleId] = React.useState<string | null>(initialSaleId);
   const [lines, setLines] = React.useState<Record<string, LineDraft>>({});
@@ -50,7 +69,9 @@ function NewReturnDialog({ open, initialSaleId, onClose }: { open: boolean; init
   const [operationKey, setOperationKey] = React.useState(() => newId());
 
   const sale = data.sales.find((s) => s.id === saleId && s.status === 'completed') ?? null;
-  const openSessions = data.sessions.filter((s) => s.status === 'open');
+  // Cash goes back from a drawer of the sale's branch (the server's rule).
+  const branchOf = (registerId: string | undefined) => data.registers.find((r) => r.id === registerId)?.branchId ?? null;
+  const openSessions = data.sessions.filter((s) => s.status === 'open' && (!sale || branchOf(s.registerId) === branchOf(sale.registerId)));
 
   React.useEffect(() => {
     if (open) {
@@ -70,6 +91,15 @@ function NewReturnDialog({ open, initialSaleId, onClose }: { open: boolean; init
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saleId]);
 
+  // An old sale is outside the period on screen: the server finds it by its number.
+  React.useEffect(() => {
+    const number = saleQuery.trim().toUpperCase();
+    if (!companyId || !open || number.length < 5) return;
+    if (data.sales.some((s) => s.number === number)) return;
+    const timer = setTimeout(() => void lookupSaleByNumber(companyId, number, queryClient).catch(() => undefined), 400);
+    return () => clearTimeout(timer);
+  }, [companyId, data.sales, open, queryClient, saleQuery]);
+
   const matches = saleQuery.trim()
     ? data.sales.filter((s) => s.status === 'completed' && (s.number ?? '').toLowerCase().includes(saleQuery.trim().toLowerCase())).slice(0, 6)
     : [];
@@ -82,14 +112,18 @@ function NewReturnDialog({ open, initialSaleId, onClose }: { open: boolean; init
         .filter((x): x is { line: (typeof sale.lines)[number]; draft: LineDraft } => !!x.draft && x.draft.quantity > 0)
     : [];
   const amount = round2(chosen.reduce((a, x) => a + lineRefundAmount(x.line, x.draft.quantity), 0));
-  const otherMethod = !!sale && method !== originalMethod(sale);
+  const paidWith = new Set<PosPaymentMethod>([
+    ...(sale?.payments ?? []).filter((p) => p.kind === 'payment' && p.status === 'succeeded').map((p) => p.method),
+    ...data.collections.filter((c) => c.saleId === sale?.id).map((c) => c.method),
+  ]);
+  const otherMethod = !!sale && paidWith.size > 0 && !paidWith.has(method);
   const otherMethodBlocked = otherMethod && data.settings.returns.refundToOtherMethodNeedsApproval && !can('pos.refund.other-method');
   const cashWithoutSession = method === 'cash' && !sessionId;
   const valid = !!sale && chosen.length > 0 && reason.trim() && !otherMethodBlocked && !cashWithoutSession && !outOfWindow;
 
   const submit = async () => {
     if (!sale || !actions || !valid || submitting) return;
-    const refundDone = method === 'cash' || !!reference.trim();
+    const refundDone = method === 'cash' || method === 'credit' || !!reference.trim();
     const hasDamaged = chosen.some((x) => x.draft.condition === 'damaged');
     setSubmitting(true);
     const created = await actions.createReturn({
@@ -203,9 +237,9 @@ function NewReturnDialog({ open, initialSaleId, onClose }: { open: boolean; init
                     <Select value={method} onValueChange={(v) => setMethod(v as PosPaymentMethod)}>
                       <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {(Object.keys(PAYMENT_METHOD_LABELS) as PosPaymentMethod[]).map((m) => (
+                        {refundMethodsOf(sale).map((m) => (
                           <SelectItem key={m} value={m}>
-                            {PAYMENT_METHOD_LABELS[m]}{m === originalMethod(sale) ? ' (الأصلية)' : ''}
+                            {refundMethodLabel(m)}{m === originalMethod(sale) ? ' (الأصلية)' : ''}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -225,6 +259,13 @@ function NewReturnDialog({ open, initialSaleId, onClose }: { open: boolean; init
                         </SelectContent>
                       </Select>
                     </div>
+                  ) : method === 'credit' ? (
+                    <div className="space-y-1">
+                      <Label className="text-xs">العميل</Label>
+                      <div className="flex h-9 items-center rounded-md border border-border bg-muted/40 px-3">
+                        {sale.credit?.partnerName}
+                      </div>
+                    </div>
                   ) : (
                     <div className="space-y-1">
                       <Label className="text-xs">مرجع الرد (إن نُفّذ الآن)</Label>
@@ -240,7 +281,12 @@ function NewReturnDialog({ open, initialSaleId, onClose }: { open: boolean; init
                 </div>
                 {otherMethodBlocked ? <p className="text-xs text-destructive">الرد بوسيلة غير الأصلية يحتاج صلاحية الموافقة.</p> : null}
                 {cashWithoutSession ? <p className="text-xs text-destructive">الرد النقدي يحتاج وردية مفتوحة.</p> : null}
-                {method !== 'cash' && !reference.trim() ? (
+                {method === 'credit' ? (
+                  <p className="text-xs text-muted-foreground">
+                    يُخصم من المستحق على العميل ({formatMoney(sale.credit?.due ?? 0, currency)})، ويُسجَّل له في حسابه بجهات الاتصال
+                    {(sale.credit?.due ?? 0) > 0 ? '. لا يُرد مال لفاتورة عليها مستحق.' : '.'}
+                  </p>
+                ) : method !== 'cash' && !reference.trim() ? (
                   <p className="text-xs text-muted-foreground">دون مرجع يُحفظ الرد «بانتظار التنفيذ» حتى يُسجَّل لاحقًا.</p>
                 ) : null}
               </div>
@@ -273,7 +319,13 @@ function ReturnRow({ ret }: { ret: PosReturn }) {
         <div>
           <div className="flex items-center gap-2 font-semibold">
             <span dir="ltr">{ret.number}</span>
-            {ret.refund.status === 'done' ? <Badge variant="success">رُدّ المال</Badge> : <Badge variant="warning">رد المال بانتظار التنفيذ</Badge>}
+            {ret.refund.method === 'credit' ? (
+              <Badge variant="outline">إلى حساب العميل</Badge>
+            ) : ret.refund.status === 'done' ? (
+              <Badge variant="success">رُدّ المال</Badge>
+            ) : (
+              <Badge variant="warning">رد المال بانتظار التنفيذ</Badge>
+            )}
             {ret.damagedDecision === 'pending' ? <Badge variant="destructive">تالف بانتظار قرار</Badge> : null}
             {ret.stockPosting === 'pending' ? <Badge variant="warning">ترحيل مخزون معلّق</Badge> : null}
             {ret.stockPosting === 'reviewed' ? <Badge variant="outline">رُوجع — يُرحَّل عند عودة الربط</Badge> : null}
@@ -324,6 +376,14 @@ function ReturnRow({ ret }: { ret: PosReturn }) {
           </Button>
         </div>
       ) : null}
+      {(ret.stockPosting === 'pending' || ret.stockPosting === 'reviewed') && data.settings.stockMode === 'inventory' ? (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2 text-xs">
+          <span>عاد الربط بالمخازن: يمكن ترحيل الصالح من هذا المرتجع إلى مستودعه بتكلفته الأصلية، مرة واحدة.</span>
+          <Button size="sm" variant="outline" onClick={() => actions?.postReturnStock(ret.id)}>
+            ترحيل إلى المخازن
+          </Button>
+        </div>
+      ) : null}
       {damaged.length > 0 && ret.damagedDecision === 'pending' ? (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2 text-xs">
           <PackageCheck className="h-4 w-4 text-muted-foreground" />
@@ -353,41 +413,84 @@ function ReturnRow({ ret }: { ret: PosReturn }) {
   );
 }
 
-function Returns() {
-  const { data, can } = usePosContext();
+function Returns({ period, setPeriod }: { period: PosPeriod; setPeriod: (p: PosPeriod) => void }) {
+  const { data, can, currency } = usePosContext();
   const params = useSearchParams();
   const initialSale = params.get('sale');
   const [open, setOpen] = React.useState(!!initialSale);
 
+  const [defaultPeriod] = React.useState(period);
+  const periodChanged = period.from !== defaultPeriod.from || period.to !== defaultPeriod.to;
+  const mayReturn = can('pos.return');
+
+  const fields = React.useMemo<LocalListField<PosReturn>[]>(() => {
+    const amountOf = (r: PosReturn) => r.lines.reduce((s, l) => s + l.amount, 0);
+    const money = (n: number) => formatMoney(n, currency);
+    return [
+      { key: 'number', label: 'رقم المرتجع', kind: 'code', text: (r) => r.number },
+      { key: 'sale', label: 'البيع الأصلي', kind: 'code', text: (r) => r.saleNumber, groupKey: (r) => r.saleNumber },
+      { key: 'date', label: 'التاريخ', kind: 'date', text: (r) => formatDateTime(r.createdAt), sortValue: (r) => r.createdAt, groupKey: (r) => r.createdAt.slice(0, 7) },
+      { key: 'items', label: 'الأصناف', sortable: false, text: (r) => r.lines.map((l) => `${l.name} × ${l.quantity}`).join('، ') },
+      { key: 'reason', label: 'السبب', optional: true, sortable: false, text: (r) => r.reason || '—' },
+      { key: 'amount', label: 'المبلغ', kind: 'number', text: (r) => money(amountOf(r)), sortValue: amountOf, sum: amountOf, formatSum: money },
+    ];
+  }, [currency]);
+  const list = useLocalList({ section: 'pos', page: 'returns', fields, rows: data.returns });
+
+  usePageHeaderActions(
+    () => (
+      <LocalListToolbar
+        list={list}
+        title="مرتجعات نقاط البيع"
+        fileName={`pos-returns-${period.from}-${period.to}`}
+        subtitleLines={[`الفترة: ${period.from} إلى ${period.to}`]}
+        before={<FilterToggleButton activeFilterCount={periodChanged ? 1 : 0} />}
+        primary={mayReturn ? (
+          <PageHeaderPrimaryButton icon={Plus} label="مرتجع جديد" onClick={() => setOpen(true)}>
+            مرتجع جديد
+          </PageHeaderPrimaryButton>
+        ) : undefined}
+      />
+    ),
+    [periodChanged, mayReturn, period.from, period.to, list.rows, list.visibleFields, list.groups, list.sort.sortKey],
+  );
+
+  useEntityFilterSlot(
+    () => (
+      <ListFilterBar
+        showStatusSection={false}
+        showEmployeePicker={false}
+        periodValue={period}
+        onPeriodChange={setPeriod}
+        defaultPeriod={defaultPeriod}
+      />
+    ),
+    [period, defaultPeriod],
+  );
+
   return (
     <div className="space-y-4 sm:space-y-5">
       <SetPageTitle titleAr="مرتجعات نقاط البيع" iconName="Receipt" />
-      <div className="flex justify-end">
-        {can('pos.return') ? (
-          <Button size="sm" onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4" />
-            مرتجع جديد
-          </Button>
-        ) : null}
-      </div>
-      {data.returns.length === 0 ? (
-        <EmptyState title="لا مرتجعات" description="كل مرتجع يشير إلى سطور بيعه الأصلي، واستلام البضاعة ورد المال جزءان مستقلان." />
-      ) : (
-        <div className="space-y-3">
-          {data.returns.map((r) => (
-            <ReturnRow key={r.id} ret={r} />
-          ))}
-        </div>
-      )}
+      <LocalListTable
+        list={list}
+        cardsOnly
+        cardsClassName="space-y-3"
+        rowKey={(r) => r.id}
+        empty={<EmptyState title="لا مرتجعات" description="كل مرتجع يشير إلى سطور بيعه الأصلي، واستلام البضاعة ورد المال جزءان مستقلان." />}
+        card={(r) => <ReturnRow ret={r} />}
+      />
       <NewReturnDialog open={open} initialSaleId={initialSale} onClose={() => setOpen(false)} />
     </div>
   );
 }
 
 export function PosReturnsPage() {
+  const [period, setPeriod] = React.useState<PosPeriod>(() => lastDaysPeriod(30));
   return (
-    <PosGate permission="pos.return">
-      <Returns />
-    </PosGate>
+    <PosDataScope range={period}>
+      <PosGate permission="pos.return">
+        <Returns period={period} setPeriod={setPeriod} />
+      </PosGate>
+    </PosDataScope>
   );
 }

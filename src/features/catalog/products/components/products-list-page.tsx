@@ -1,5 +1,6 @@
 'use client';
 
+import { FoldedHeaderTool } from '@/components/layouts/phone-fold';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
@@ -18,7 +19,7 @@ import { useProductMutations } from '@/features/catalog/products/hooks/use-produ
 import { useCategories } from '@/features/catalog/categories/hooks/use-categories';
 import { useBrands } from '@/features/catalog/brands/hooks/use-brands';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
-import { ProductFormDialog } from '@/features/catalog/products/components/product-form-dialog';
+import { lazyDialog } from '@/shared/lib/lazy-dialog';
 import { DeleteProductDialog } from '@/features/catalog/products/components/delete-product-dialog';
 import { type ProductFilters } from '@/features/catalog/products/components/product-filters-bar';
 import {
@@ -44,7 +45,6 @@ import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-li
 import { resolveUploadUrl } from '@/shared/resolve-upload-url';
 import { productAppSectionsFrom } from '@/features/catalog/products/hooks/use-product-app-sections';
 import { APP, useCompanyApps, type AppRequirement } from '@/shared/modules/company-apps';
-import { ecommerceAdminRoutes } from '@/features/ecommerce/admin/constants/routes';
 import { useCan } from '@/features/auth/hooks/use-can';
 import {
   PRODUCTS_COLUMN_OPTIONS,
@@ -67,6 +67,11 @@ import {
   writePersistedJson,
 } from '@/features/hr/lib/use-persisted-filter-state';
 import { usePersistedStateRestore } from '@/shared/hooks/use-persisted-state-restore';
+
+// Loads on first open: keeps the form's code (and zod) out of the page's first load.
+const ProductFormDialog = lazyDialog(() =>
+  import('@/features/catalog/products/components/product-form-dialog').then((m) => m.ProductFormDialog),
+);
 
 /** The filters kept in the URL and saved per user and company (the sort has its own menu). */
 const SAVED_FILTER_KEYS = [
@@ -316,9 +321,9 @@ export function ProductsListPage() {
 
   const [scanOpen, setScanOpen] = React.useState(false);
   const can = useCan();
-  // The import is the store's (store admin); the other apps' product lists do not offer it.
+  // Every products list offers the import (AGENTS.md §7); its server belongs to the store, so it needs store-admin.
   const canImport =
-    productsBasePath === ecommerceAdminRoutes.products &&
+    apps.isEnabled(APP.storeAdmin) &&
     can('catalog.products.create') &&
     can('catalog.products.update');
 
@@ -393,14 +398,16 @@ export function ProductsListPage() {
           <span className="hidden sm:inline">مسح</span>
         </button>
         {canImport ? (
-          <Link
-            href={ecommerceAdminRoutes.productsImport}
-            aria-label="استيراد المنتجات"
-            className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground sm:px-3"
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden sm:inline">استيراد</span>
-          </Link>
+          <FoldedHeaderTool>
+            <Link
+              href={`${productsBasePath}/import`}
+              aria-label="استيراد المنتجات"
+              className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground sm:px-3"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" />
+              <span className="hidden sm:inline">استيراد</span>
+            </Link>
+          </FoldedHeaderTool>
         ) : null}
         <FilterToggleButton activeFilterCount={activeFilterCount} />
         <ListColumnsPicker model={columnVisibility} />

@@ -290,7 +290,7 @@ export function CustomerFormPage({ customerId }: CustomerFormPageProps) {
         </div>
       </div>
 
-      {/* Main Odoo Form Card */}
+      {/* Main Form Card */}
       <div className="rounded-xl border border-border/60 bg-card p-6 md:p-8 shadow-xs flex flex-col gap-6 relative">
         {/* Top Header Stat Smart Buttons (Matching Screenshot 2) */}
         <div className="flex items-center justify-start gap-2 border-b border-border/40 pb-4">
@@ -473,7 +473,7 @@ export function CustomerFormPage({ customerId }: CustomerFormPageProps) {
                 <Input
                   value={website}
                   onChange={(e) => setWebsite(e.target.value)}
-                  placeholder="مثل https://www.odoo.com"
+                  placeholder="مثل https://www.example.com"
                   className="h-9 rounded-lg text-sm"
                   dir="ltr"
                 />

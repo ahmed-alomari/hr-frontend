@@ -15,5 +15,6 @@ export const EXP = {
   settlementsCreate: 'exp.settlements.create',
   reportsRead: 'exp.reports.read',
   setupManage: 'exp.setup.manage',
+  periodsManage: 'exp.periods.manage',
   settingsUpdate: 'exp.settings.update',
 } as const;

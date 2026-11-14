@@ -12,6 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
@@ -20,7 +21,7 @@ import { ListFilterBar, type PeriodRange } from '@/components/ui/list-filter-bar
 import { cn } from '@/shared/utils';
 import { last30Days, ReportSummaryCard, ShareBar } from '@/features/expenses/components/report-common';
 import { posRoutes } from '@/features/pos/constants/routes';
-import { usePosContext } from '@/features/pos/hooks/use-pos-context';
+import { PosDataScope, usePosContext } from '@/features/pos/hooks/use-pos-context';
 import { formatAmount, formatMoney } from '@/features/pos/lib/format';
 import {
   GROUPINGS,
@@ -59,10 +60,8 @@ function daysBetween(from: string, to: string): string[] {
   return out;
 }
 
-function Analytics() {
+function Analytics({ period, setPeriod, defaultPeriod }: { period: PeriodRange; setPeriod: (p: PeriodRange) => void; defaultPeriod: PeriodRange }) {
   const { data, currency } = usePosContext();
-  const defaultPeriod = React.useMemo<PeriodRange>(() => last30Days(dayOf(new Date().toISOString())), []);
-  const [period, setPeriod] = React.useState<PeriodRange>(defaultPeriod);
   const [registerId, setRegisterId] = React.useState(ALL);
   const [cashierName, setCashierName] = React.useState(ALL);
   const [categoryId, setCategoryId] = React.useState(ALL);
@@ -189,39 +188,41 @@ function Analytics() {
         iconName="BarChart3"
       />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        <ReportSummaryCard
-          label="صافي المبيعات"
-          value={formatMoney(totals.revenue, currency)}
-          hint={`قبل الخصم ${formatAmount(totals.gross)} · بدون ضريبة`}
-        />
-        <ReportSummaryCard
-          label="تكلفة البضاعة المباعة"
-          value={formatMoney(totals.cost, currency)}
-          hint={`${formatAmount(totals.units)} قطعة`}
-        />
-        <ReportSummaryCard
-          label={totals.profit < 0 ? 'الخسارة' : 'مجمل الربح'}
-          value={formatMoney(totals.profit, currency)}
-          valueClassName={profitClass}
-          hint={
-            totals.uncostedRevenue > 0 ? (
-              <span className="text-warning">{formatAmount(totals.uncostedRevenue)} مبيعات بلا تكلفة (خارج الربح)</span>
-            ) : (
-              `هامش ${marginText(totals.margin)}`
-            )
-          }
-        />
-        <ReportSummaryCard
-          label="الفواتير"
-          value={String(totals.invoices)}
-          hint={`متوسط الفاتورة ${formatAmount(totals.averageInvoice)}`}
-        />
-        <ReportSummaryCard label="الخصومات" value={formatMoney(totals.discount, currency)} />
-        <ReportSummaryCard label="المرتجعات" value={formatMoney(totals.returned, currency)} />
-        <ReportSummaryCard label="الضريبة" value={formatMoney(totals.tax, currency)} />
-        <ReportSummaryCard label="الهامش" value={marginText(totals.margin)} hint="الربح ÷ صافي المبيعات" />
-      </div>
+      <PhoneStatsFold summary={formatMoney(totals.revenue, currency)}>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+          <ReportSummaryCard
+            label="صافي المبيعات"
+            value={formatMoney(totals.revenue, currency)}
+            hint={`قبل الخصم ${formatAmount(totals.gross)} · بدون ضريبة`}
+          />
+          <ReportSummaryCard
+            label="تكلفة البضاعة المباعة"
+            value={formatMoney(totals.cost, currency)}
+            hint={`${formatAmount(totals.units)} قطعة`}
+          />
+          <ReportSummaryCard
+            label={totals.profit < 0 ? 'الخسارة' : 'مجمل الربح'}
+            value={formatMoney(totals.profit, currency)}
+            valueClassName={profitClass}
+            hint={
+              totals.uncostedRevenue > 0 ? (
+                <span className="text-warning">{formatAmount(totals.uncostedRevenue)} مبيعات بلا تكلفة (خارج الربح)</span>
+              ) : (
+                `هامش ${marginText(totals.margin)}`
+              )
+            }
+          />
+          <ReportSummaryCard
+            label="الفواتير"
+            value={String(totals.invoices)}
+            hint={`متوسط الفاتورة ${formatAmount(totals.averageInvoice)}`}
+          />
+          <ReportSummaryCard label="الخصومات" value={formatMoney(totals.discount, currency)} />
+          <ReportSummaryCard label="المرتجعات" value={formatMoney(totals.returned, currency)} />
+          <ReportSummaryCard label="الضريبة" value={formatMoney(totals.tax, currency)} />
+          <ReportSummaryCard label="الهامش" value={marginText(totals.margin)} hint="الربح ÷ صافي المبيعات" />
+        </div>
+      </PhoneStatsFold>
 
       <section className="rounded-xl border border-border bg-card p-4 shadow-soft">
         <div className="mb-3">
@@ -317,9 +318,13 @@ function TopList({
 }
 
 export function PosAnalyticsPage() {
+  const defaultPeriod = React.useMemo<PeriodRange>(() => last30Days(dayOf(new Date().toISOString())), []);
+  const [period, setPeriod] = React.useState<PeriodRange>(defaultPeriod);
   return (
-    <PosGate permission="pos.reports.read">
-      <Analytics />
-    </PosGate>
+    <PosDataScope range={period.from && period.to ? { from: period.from, to: period.to } : undefined}>
+      <PosGate permission="pos.reports.read">
+        <Analytics period={period} setPeriod={setPeriod} defaultPeriod={defaultPeriod} />
+      </PosGate>
+    </PosDataScope>
   );
 }

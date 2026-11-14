@@ -17,7 +17,14 @@ export type PosStockMode = 'none' | 'inventory';
  */
 export type PosStockTiming = 'reserve_on_commit' | 'issue_on_complete';
 
-export type PosPaymentMethod = 'cash' | 'card' | 'transfer';
+/**
+ * `credit` (آجل): the part the customer owes, on his account in contacts
+ * once the sale completes; needs a customer from contacts.
+ */
+export type PosPaymentMethod = 'cash' | 'card' | 'transfer' | 'credit';
+
+/** Methods that take money now (a collection, a refund in hand). */
+export type PosMoneyMethod = Exclude<PosPaymentMethod, 'credit'>;
 
 /** How a point of sale prints a completed sale. */
 export type PosInvoiceStyle = 'thermal' | 'standard';
@@ -45,6 +52,8 @@ export type PosSettings = {
     cashierMaxPercent: number;
     /** Above the limit: a supervisor confirms on the same device. */
     supervisorApprovalAbove: boolean;
+    /** Who may confirm: chosen in the settings, each signs with his password. */
+    supervisors: Array<{ id: string; name: string }>;
     allowPriceOverride: boolean;
   };
   returns: {
@@ -82,6 +91,8 @@ export type PosRegister = {
   invoiceStyle?: PosInvoiceStyle | null;
   nextSequence: number;
   createdAt: string;
+  /** Who may work this register. Nobody assigned: only the company's super admin. */
+  assignedUsers?: Array<{ id: string; name: string }>;
 };
 
 /** A browser paired with a register. */
@@ -116,7 +127,14 @@ export type PosSession = {
 
 export type PosCustomer =
   | { kind: 'walk_in' }
-  | { kind: 'named'; name: string; phone?: string; taxNumber?: string };
+  | { kind: 'named'; name: string; phone?: string; taxNumber?: string }
+  /** A contact: its name and phone are set by the server from contacts. */
+  | { kind: 'partner'; partnerId: string; name: string; phone?: string; taxNumber?: string };
+
+/** The customer's name as receipts and reports show it. */
+export function customerLabel(customer: PosCustomer): string {
+  return customer.kind === 'walk_in' ? 'عميل عابر' : customer.name;
+}
 
 export type PosDiscount = { type: 'percent' | 'amount'; value: number };
 
@@ -146,6 +164,11 @@ export type PosSaleLine = {
    */
   unitCost?: number | null;
   costSource?: 'purchase_price' | 'inventory' | null;
+  /** What inventory charged for this line: the unit cost is its rounding. */
+  costTotal?: number | null;
+  /** The product's selling group in the register, fixed at the sale. */
+  menuCategoryId?: string | null;
+  menuCategoryName?: string | null;
   /** The item's category when sold. */
   categoryId?: string | null;
   categoryName?: string | null;
@@ -215,6 +238,34 @@ export type PosSale = {
   exceptionReason: string | null;
   /** The company currency when sold (server-set); absent on older sales. */
   currency?: string | null;
+  /** The part sold on credit, set by the server at completion. */
+  credit?: PosSaleCredit | null;
+};
+
+export type PosSaleCredit = {
+  partnerId: string;
+  partnerName: string;
+  amount: number;
+  collected: number;
+  returned: number;
+  /** amount − collected − returned, never below zero. */
+  due: number;
+};
+
+/** A payment of a credit invoice, in a shift (into its drawer) or outside one. */
+export type PosCollection = {
+  id: string;
+  saleId: string;
+  saleNumber: string;
+  partnerId: string;
+  partnerName: string;
+  method: PosMoneyMethod;
+  amount: number;
+  reference: string | null;
+  sessionId: string | null;
+  currency: string | null;
+  createdAt: string;
+  createdBy: string;
 };
 
 export type PosReturnCondition = 'resellable' | 'damaged' | 'not_received';
@@ -307,7 +358,8 @@ export type PosAuditEvent = {
     | 'stock_mode_change_requested'
     | 'stock_mode_change_cancelled'
     | 'stock_mode_changed'
-    | 'stock_posting_reviewed';
+    | 'stock_posting_reviewed'
+    | 'credit_collected';
   detail: string;
 };
 
@@ -315,7 +367,10 @@ export const PAYMENT_METHOD_LABELS: Record<PosPaymentMethod, string> = {
   cash: 'نقد',
   card: 'بطاقة',
   transfer: 'تحويل / محفظة',
+  credit: 'آجل',
 };
+
+export const MONEY_METHODS: readonly PosMoneyMethod[] = ['cash', 'card', 'transfer'];
 
 export const SALE_STATUS_LABELS: Record<PosSaleStatus, string> = {
   awaiting_payment: 'بانتظار الدفع',
@@ -336,7 +391,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   stockTiming: 'reserve_on_commit',
   onlyPosAvailableProducts: false,
   tax: { enabled: false, rate: 0, pricesIncludeTax: true },
-  discounts: { cashierMaxPercent: 10, supervisorApprovalAbove: true, allowPriceOverride: false },
+  discounts: { cashierMaxPercent: 10, supervisorApprovalAbove: true, supervisors: [], allowPriceOverride: false },
   returns: { windowDays: 7, refundToOtherMethodNeedsApproval: true },
   shifts: {
     blindCount: true,
@@ -344,7 +399,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
     differenceTolerance: 0,
     denominations: [1000, 500, 200, 100, 50, 20, 10, 5, 1],
   },
-  paymentMethods: { cash: true, card: true, transfer: true },
+  paymentMethods: { cash: true, card: true, transfer: true, credit: false },
   invoiceStyle: 'thermal',
 };
 

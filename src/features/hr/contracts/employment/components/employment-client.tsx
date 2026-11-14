@@ -1,5 +1,7 @@
 'use client';
 
+import type { ColumnDef } from '@/components/ui/data-table';
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -13,24 +15,10 @@ import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-con
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
 import { usePageFilters } from '@/components/layouts/filter-panel-context';
-import {
-  EmptyState,
-} from '@/components/ui/shared-dialogs';
+import { EmptyState } from '@/components/ui/shared-dialogs';
 import { DirectoryPagedViews, useServerDirectoryPagination } from '@/components/ui/paged-list';
 import { employeeContractsApi } from '@/features/hr/contracts/lib/contracts-api';
-import {
-  useHRContractsStore,
-  mapEmployeeContractFromApi,
-  CONTRACT_STATUS_LABELS,
-  CONTRACT_STATUS_COLORS,
-  contractNatureLabel,
-  workArrangementLabel,
-  type HRContractDraft,
-  type HRContractLifecycleStatus,
-  type HRContractNature,
-  type HRContractRecord,
-  type HRWorkArrangement,
-} from '@/features/hr/contracts/lib/contracts-store';
+import { useHRContractsStore, mapEmployeeContractFromApi, CONTRACT_STATUS_LABELS, CONTRACT_STATUS_COLORS, contractNatureLabel, workArrangementLabel, type HRContractLifecycleStatus, type HRContractNature, type HRContractRecord, type HRWorkArrangement } from '@/features/hr/contracts/lib/contracts-store';
 import { useHRContractTemplatesStore } from '@/features/hr/contracts/lib/contract-templates-store';
 import { contractTemplatesApi } from '@/features/hr/contracts/contract-templates/lib/api/contract-templates';
 import { applyContractTemplateToForm, computeTemplateEndDate } from '@/features/hr/contracts/employment/utils/apply-contract-template';
@@ -42,45 +30,19 @@ import { useEmployees } from '@/features/hr/organization/employees/hooks/useEmpl
 import { MoneyAmount } from '@/components/ui/sar-amount';
 import { cn, formatMoneyDigits, formatNumber } from '@/shared/utils';
 import { hrContractsRoutes } from '@/features/hr/contracts/constants/routes';
-import {
-  HR_CONTRACTS_MODE_PARAM,
-  type AllowanceLine,
-  type EmploymentContractFormValues,
-  emptyEmploymentContractForm,
-  recordToEmploymentForm,
-  cloneEmploymentFormFromContract,
-  employmentFormToDraft,
-  mergeEssentialArticleIds,
-  EMPLOYMENT_STATUS_FILTER_OPTIONS,
-  EMPLOYMENT_KIND_FILTER_OPTIONS,
-  EMPLOYMENT_WORK_ARRANGEMENT_FILTER_OPTIONS,
-} from '@/features/hr/contracts/employment/utils/employment-contract-form';
+import { HR_CONTRACTS_MODE_PARAM, type AllowanceLine, type EmploymentContractFormValues, emptyEmploymentContractForm, recordToEmploymentForm, cloneEmploymentFormFromContract, employmentFormToDraft, mergeEssentialArticleIds, EMPLOYMENT_STATUS_FILTER_OPTIONS, EMPLOYMENT_KIND_FILTER_OPTIONS, EMPLOYMENT_WORK_ARRANGEMENT_FILTER_OPTIONS } from '@/features/hr/contracts/employment/utils/employment-contract-form';
 import { buildEmployeeContractsListQuery } from '@/features/hr/contracts/lib/employee-contracts-list-query';
 import { EmploymentContractTerminateModal as TerminateModal } from '@/features/hr/contracts/employment/components/employment-contract-terminate-modal';
 import { EmploymentContractDetailDialog } from '@/features/hr/contracts/employment/components/employment-contract-detail-dialog';
 import { EmploymentContractFormDialog } from '@/features/hr/contracts/employment/components/employment-contract-form-dialog';
 import { ContractLeaveTypePickerDialog } from '@/features/hr/contracts/employment/components/contract-leave-type-picker-dialog';
-import {
-  contractCreditsLeaveDays,
-  resolveContractActions,
-} from '@/features/hr/contracts/employment/utils/contract-leave-credit';
+import { contractCreditsLeaveDays, resolveContractActions } from '@/features/hr/contracts/employment/utils/contract-leave-credit';
 import { PdfPreviewExportDialog } from '@/components/pdf/pdf-preview-export-dialog';
-import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
-import type { RegisterColumn } from '@/components/pdf/print/register-document';
-import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
 import { hrFiltersKey } from '@/features/hr/lib/use-persisted-filter-state';
-import {
-  CREATE_PICKER_ACTIVE_OR_SUSPENDED,
-  employeeMatchesStatus,
-  employeeStatusFilterLabelAr,
-  isEmployeeStatusFilterActive,
-  useEmployeeStatusFilter,
-} from '@/features/hr/lib/employee-status-filter';
+import { CREATE_PICKER_ACTIVE_OR_SUSPENDED, employeeMatchesStatus, employeeStatusFilterLabelAr, isEmployeeStatusFilterActive, useEmployeeStatusFilter } from '@/features/hr/lib/employee-status-filter';
 import { EmploymentContractPrintHtml } from '@/components/pdf/print/employment-contract-print-html';
-import { useAuthStore } from '@/features/auth/lib/auth-store';
 import { companyCurrencyCode } from '@/features/auth/lib/company-currency';
-import { getDefaultCompanyId, useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
+import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
 import { getSessionCompanyDisplay } from '@/features/hr/organization/lib/session-company-display';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
 
@@ -106,16 +68,6 @@ const EMPTY_ALLOWANCE_TYPES: HRAllowanceTypeRecord[] = [];
 const EMPTY_ARTICLES: HRContractArticle[] = [];
 const EMPTY_EMPLOYEES: NonNullable<ReturnType<typeof useEmployees>['data']>['items'] = [];
 
-const CONTRACTS_EXPORT_COLUMNS: RegisterColumn[] = [
-  { label: 'الموظف', kind: 'name', weight: 1.6 },
-  { label: 'رقم العقد', kind: 'code' },
-  { label: 'الحالة', kind: 'status' },
-  { label: 'نوع العقد', kind: 'status' },
-  { label: 'نظام العمل', kind: 'status' },
-  { label: 'البداية', kind: 'date' },
-  { label: 'النهاية', kind: 'date' },
-  { label: 'الراتب الأساسي', kind: 'number' },
-];
 
 export function EmploymentContractsClient() {
   const router = useRouter();
@@ -530,42 +482,64 @@ export function EmploymentContractsClient() {
     + (selectedEmpIds.size > 0 ? 1 : 0)
     + (isEmployeeStatusFilterActive(employeeStatus) ? 1 : 0);
 
-  const getExportRows = useLatestCallback(async (): Promise<string[][]> => {
-    if (!companyId) return [];
-    const { items } = await fetchAllPaginatedItems((page, limit) =>
-      employeeContractsApi.list(buildListQuery(page, limit)),
-    );
-    return items.map(mapEmployeeContractFromApi).map((c) => [
-      c.employeeNameAr || c.employeeId,
-      c.contractNumber || '—',
-      CONTRACT_STATUS_LABELS[c.status] ?? c.status,
-      contractNatureLabel(c.contractType),
-      workArrangementLabel(c.workArrangement),
-      c.startDate || '—',
-      c.endDate || '—',
-      `${formatMoneyDigits(c.baseSalary, 0)} ${c.currency || companyCurrencyCode()}`,
-    ]);
+  const salaryText = (c: HRContractRecord) =>
+    `${formatMoneyDigits(c.baseSalary, 0)} ${c.currency || companyCurrencyCode()}`;
+  const salaryOf = (c: HRContractRecord) => Number(c.baseSalary) || 0;
+  const columns: ColumnDef<HRContractRecord>[] = [
+    { key: 'employee', title: 'الموظف', render: (c) => c.employeeNameAr || getEmpName(c.employeeId, c.employeeNameAr) },
+    { key: 'contractNumber', title: 'رقم العقد', render: (c) => <span className="font-mono text-xs" dir="ltr">{c.contractNumber || '—'}</span> },
+    {
+      key: 'status',
+      title: 'الحالة',
+      render: (c) => (
+        <Badge variant="outline" className={cn('text-[10px]', CONTRACT_STATUS_COLORS[c.status])}>
+          {CONTRACT_STATUS_LABELS[c.status]}
+        </Badge>
+      ),
+    },
+    { key: 'kind', title: 'نوع العقد', render: (c) => contractNatureLabel(c.contractType) },
+    { key: 'work', title: 'نظام العمل', render: (c) => workArrangementLabel(c.workArrangement) },
+    { key: 'start', title: 'البداية', render: (c) => <span className="font-mono text-xs">{c.startDate || '—'}</span> },
+    { key: 'end', title: 'النهاية', render: (c) => <span className="font-mono text-xs">{c.endDate || '—'}</span> },
+    {
+      key: 'salary',
+      title: 'الراتب الأساسي',
+      render: (c) => <MoneyAmount value={c.baseSalary} currency={c.currency} fractionDigits={0} className="text-sm font-bold" />,
+    },
+    { key: 'actions', title: '', isActions: true, render: (c) => <ContractActions c={c} /> },
+  ];
+  const tools = useListTools<HRContractRecord>({
+    section: 'hr',
+    page: 'employment-contracts',
+    columns,
+    rows: filtered,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      employee: { kind: 'name', text: (c) => c.employeeNameAr || c.employeeId, group: (c) => c.employeeNameAr || null },
+      contractNumber: { kind: 'code', text: (c) => c.contractNumber || '—' },
+      status: { kind: 'status', text: (c) => CONTRACT_STATUS_LABELS[c.status] ?? c.status, group: (c) => CONTRACT_STATUS_LABELS[c.status] ?? c.status },
+      kind: { kind: 'status', text: (c) => contractNatureLabel(c.contractType), group: (c) => contractNatureLabel(c.contractType) },
+      work: { kind: 'status', text: (c) => workArrangementLabel(c.workArrangement), group: (c) => workArrangementLabel(c.workArrangement) },
+      start: { kind: 'date', text: (c) => c.startDate || '—', group: (c) => (c.startDate ? c.startDate.slice(0, 7) : null) },
+      end: { kind: 'date', text: (c) => c.endDate || '—', group: (c) => (c.endDate ? c.endDate.slice(0, 7) : null) },
+      salary: { text: salaryText, sort: salaryOf, sum: salaryOf, formatSum: (n) => formatMoneyDigits(n, 0) },
+    },
   });
 
   usePageHeaderActions(
     () => (
       <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
         <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <RegisterExportMenu
-          title="سجل عقود العمل"
-          fileName="employment-contracts"
-          columns={CONTRACTS_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={[`حالة الموظفين: ${employeeStatusFilterLabelAr(employeeStatus)}`]}
-          landscape
-        />
+        {tools.buttons}
+        {tools.exportMenu('سجل عقود العمل', 'employment-contracts', [`حالة الموظفين: ${employeeStatusFilterLabelAr(employeeStatus)}`])}
         <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0" onClick={openCreate}>
           <Plus className="h-3.5 w-3.5" />
           عقد جديد
         </Button>
       </div>
     ),
-    [activeFilterCount, employeeStatus, openCreate, getExportRows],
+    [activeFilterCount, employeeStatus, openCreate, tools.depsKey],
   );
 
   const openView = (c: HRContractRecord) => {
@@ -860,10 +834,11 @@ export function EmploymentContractsClient() {
       {filtered.length === 0 && !listLoading ? (
         <EmptyState icon={FileText} title="لا توجد عقود" description="أنشئ عقد عمل جديداً للبدء." />
       ) : (
+        <ListToolsTable tools={tools} keyExtractor={(c) => c.id} onRowClick={openView}>
         <DirectoryPagedViews
-          items={filtered}
-          serverPagination={pagination}
-          loading={listLoading}
+          items={tools.rows}
+          serverPagination={tools.pagination(pagination)}
+          loading={listLoading || tools.loading}
         >
           {(pageItems) => (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -923,6 +898,7 @@ export function EmploymentContractsClient() {
           </div>
           )}
         </DirectoryPagedViews>
+        </ListToolsTable>
       )}
 
       <EmploymentContractDetailDialog

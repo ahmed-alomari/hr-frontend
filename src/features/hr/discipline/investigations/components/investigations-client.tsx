@@ -1,74 +1,27 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
 import * as React from 'react';
-import { useLatestCallback } from '@/shared/hooks/use-latest-callback';
-import { Trash2, CalendarDays, FileDown, FileSpreadsheet, Plus, ClipboardCheck, Loader2 } from 'lucide-react';
-import {
-  EntityActionCard,
-  EntityActionCardChip,
-  EntityActionCardGrid,
-  EntityActionCardGridSkeleton,
-} from '@/components/ui/entity-action-card';
+import { Trash2, CalendarDays, Plus, ClipboardCheck } from 'lucide-react';
+import { EntityActionCard, EntityActionCardChip, EntityActionCardGrid } from '@/components/ui/entity-action-card';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
-import { fetchAllPaginatedItems } from '@/features/hr/lib/api/client';
-import {
-  disciplineInvestigationsApi,
-  type InvestigationResultDto,
-  type InvestigationRecommendationDto,
-} from '@/features/hr/discipline/lib/api/discipline-investigations';
-import { mapDisciplineInvestigationResponse } from '@/features/hr/discipline/investigations/services/discipline-investigations.service';
 import { ForbiddenState } from '@/components/shared/forbidden-state';
-import {
-  ConfirmationModal, HRSettingsFormDrawer, FormField,
-  EmptyState, MinimalDropdown, SearchableDropdown,
-} from '@/components/ui/shared-dialogs';
+import { ConfirmationModal, HRSettingsFormDrawer, FormField, EmptyState, SearchableDropdown } from '@/components/ui/shared-dialogs';
 import { useDisciplineInvestigationsDirectoryModel } from '@/features/hr/discipline/investigations/hooks/useDisciplineInvestigationsDirectoryModel';
-import type {
-  HRInvestigationRecommendation,
-  HRInvestigationResult,
-} from '@/features/hr/discipline/lib/types';
-import {
-  formatInvestigationDeductionType,
-  formatInvestigationDeductionValue,
-  INVESTIGATION_RECOMMENDATION_LABELS,
-  INVESTIGATION_RESULT_LABELS,
-  INVESTIGATION_RESULT_FILTER_ORDER,
-} from '@/features/hr/discipline/lib/types';
-import {
-  canMutateInvestigationRecord,
-} from '@/features/hr/discipline/investigations/services/discipline-investigations.service';
+import type { HRInvestigationRecommendation, HRInvestigationResult } from '@/features/hr/discipline/lib/types';
+import { formatInvestigationDeductionType, formatInvestigationDeductionValue, INVESTIGATION_RECOMMENDATION_LABELS, INVESTIGATION_RESULT_LABELS, INVESTIGATION_RESULT_FILTER_ORDER } from '@/features/hr/discipline/lib/types';
+import { canMutateInvestigationRecord } from '@/features/hr/discipline/investigations/services/discipline-investigations.service';
 import { InvestigationResultsFormFields } from '@/features/hr/discipline/investigations/components/investigation-results-form-fields';
-import {
-  INVESTIGATION_RESULTS_EMPTY,
-  type InvestigationResultsDraftForm,
-} from '@/features/hr/discipline/investigations/constants/investigation-form';
-import {
-  buildSubmitInvestigationResultsDto,
-  validateInvestigationResultsDraft,
-} from '@/features/hr/discipline/investigations/services/submit-violation-investigation';
-import {
-  ListFilterBar,
-  type ListFilterBarHandle,
-  type ListFilterInlineSelect,
-} from '@/components/ui/list-filter-bar';
-import {
-  type DateFilterTab,
-} from '@/features/hr/discipline/lib/discipline-date-filter';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { INVESTIGATION_RESULTS_EMPTY, type InvestigationResultsDraftForm } from '@/features/hr/discipline/investigations/constants/investigation-form';
+import { buildSubmitInvestigationResultsDto, validateInvestigationResultsDraft } from '@/features/hr/discipline/investigations/services/submit-violation-investigation';
+import { ListFilterBar, type ListFilterBarHandle, type ListFilterInlineSelect } from '@/components/ui/list-filter-bar';
+import { type DateFilterTab } from '@/features/hr/discipline/lib/discipline-date-filter';
 import { PdfPreviewExportDialog } from '@/components/pdf/pdf-preview-export-dialog';
 import { PdfPreviewDownloadButton } from '@/components/pdf/pdf-preview-download-button';
-import { GenericRegisterPrintHtml } from '@/components/pdf/print/generic-register-print-html';
 import { DisciplineLetterPrintHtml } from '@/components/pdf/print/discipline-letter-print-html';
-import { downloadXlsxFromAoA, type XlsxCell } from '@/shared/export/download-xlsx';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { FilterToggleButton } from '@/components/layouts/filter-toggle-button';
@@ -156,7 +109,6 @@ export function InvestigationsClient() {
   const [resultsFormError, setResultsFormError] = React.useState<string | null>(null);
   const [resultsSaving, setResultsSaving] = React.useState(false);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
-  const [pdfOpen, setPdfOpen] = React.useState(false);
   const [detailRow, setDetailRow] = React.useState<HRDisciplineInvestigationRecord | null>(null);
   const [letterOpen, setLetterOpen] = React.useState(false);
 
@@ -190,74 +142,6 @@ export function InvestigationsClient() {
   ], [recommendationFilter]);
 
   // Exports cover every investigation matching the current filters (same query as the list), not just the visible page.
-  const [investigationsPdfRows, setInvestigationsPdfRows] = React.useState<string[][]>([]);
-  const [exporting, setExporting] = React.useState(false);
-
-  const fetchAllForExport = React.useCallback(async (): Promise<string[][] | null> => {
-    if (!m.companyId) { toast.error('تعذّر تحديد الشركة للتصدير.'); return null; }
-    const exportCompanyId = m.companyId;
-    setExporting(true);
-    try {
-      const empIds = [...selectedEmpIds];
-      const { items: all } = await fetchAllPaginatedItems((page, limit) =>
-        disciplineInvestigationsApi.getAll({
-          companyId: exportCompanyId,
-          page,
-          limit,
-          ...(empIds.length > 0 ? { subjectEmployeeIds: empIds } : {}),
-          ...(resultFilter !== 'all' ? { result: resultFilter as InvestigationResultDto } : {}),
-          ...(recommendationFilter !== 'all' ? { recommendation: recommendationFilter as InvestigationRecommendationDto } : {}),
-          ...(dateBounds.from ? { dateFrom: dateBounds.from } : {}),
-          ...(dateBounds.to ? { dateTo: dateBounds.to } : {}),
-        }),
-      );
-      const empNames = Object.fromEntries(m.employees.map((e) => [e.id, e.nameAr]));
-      return all.map((raw) => {
-        const inv = mapDisciplineInvestigationResponse(raw, empNames);
-        return [
-          inv.caseNumber,
-          inv.employeeNameAr,
-          inv.investigatorName,
-          inv.date,
-          INVESTIGATION_RESULT_LABELS[inv.result],
-          inv.recommendation,
-        ];
-      });
-    } catch (err) {
-      const { displayMessage } = handleApiError(err, 'discipline-investigations.export');
-      toast.error(displayMessage || 'تعذّر تحميل التحقيقات للتصدير.');
-      return null;
-    } finally {
-      setExporting(false);
-    }
-  }, [m.companyId, m.employees, selectedEmpIds, resultFilter, recommendationFilter, dateBounds.from, dateBounds.to]);
-
-  const handleExportInvestigationsPdf = useLatestCallback(async () => {
-    if (exporting) return;
-    const all = await fetchAllForExport();
-    if (!all) return;
-    if (all.length === 0) {
-      toast.error('لا توجد تحقيقات للتصدير ضمن الفلاتر الحالية.');
-      return;
-    }
-    setInvestigationsPdfRows(all);
-    setPdfOpen(true);
-  });
-
-  const printable = React.useMemo(
-    () =>
-      investigationsPdfRows.length === 0 ? null : (
-        <GenericRegisterPrintHtml
-          companyNameAr={m.company?.nameAr ?? '—'}
-          companyNameEn={m.company?.nameEn ?? m.company?.nameAr ?? '—'}
-          titleAr="سجل التحقيقات"
-          headers={['رقم القضية', 'الموظف', 'المحقق', 'التاريخ', 'النتيجة', 'التوصية']}
-          rows={investigationsPdfRows}
-          landscape
-        />
-      ),
-    [investigationsPdfRows, m.company],
-  );
 
   const letterPrintable = React.useMemo(
     () =>
@@ -291,50 +175,7 @@ export function InvestigationsClient() {
     [detailRow, m.company],
   );
 
-  const handleExportInvestigationsExcel = useLatestCallback(async () => {
-    if (exporting) return;
-    const all = await fetchAllForExport();
-    if (!all) return;
-    if (all.length === 0) {
-      toast.error('لا توجد تحقيقات للتصدير ضمن الفلاتر الحالية.');
-      return;
-    }
-    const header: XlsxCell[] = ['رقم القضية', 'الموظف', 'المحقق', 'التاريخ', 'النتيجة', 'التوصية'];
-    const rows: XlsxCell[][] = [header, ...all];
-    await downloadXlsxFromAoA('discipline-investigations.xlsx', 'التحقيقات', rows);
-    toast.success('تم تنزيل ملف Excel.');
-  });
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={activeFilterCount} />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" variant="outline" size="sm" className="h-8 w-8 shrink-0" aria-label="تصدير التحقيقات" disabled={exporting} aria-busy={exporting}>
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportInvestigationsPdf()}>
-              <FileDown className="h-4 w-4" />
-              PDF
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={exporting} onSelect={() => void handleExportInvestigationsExcel()}>
-              <FileSpreadsheet className="h-4 w-4" />
-              Excel
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
-          onClick={() => { setOpenDraft({ ...OPEN_EMPTY, date: new Date().toISOString().slice(0, 10) }); setOpenFormError(null); setOpenDrawerOpen(true); }}>
-          <Plus className="h-3.5 w-3.5" />
-          فتح تحقيق
-        </Button>
-      </div>
-    ),
-    [activeFilterCount, exporting, handleExportInvestigationsPdf, handleExportInvestigationsExcel],
-  );
 
   const setOpen = (patch: Partial<OpenDraftForm>) => setOpenDraft((d) => ({ ...d, ...patch }));
   const setResults = (patch: Partial<InvestigationResultsDraftForm>) => setResultsDraft((d) => ({ ...d, ...patch }));
@@ -470,6 +311,47 @@ export function InvestigationsClient() {
     },
   ], [openResultsDrawer]);
 
+  const recommendationOf = (inv: HRDisciplineInvestigationRecord) => {
+    if (inv.recommendationType === 'deduction' && inv.recommendation.trim()) return inv.recommendation;
+    return inv.recommendationType ? INVESTIGATION_RECOMMENDATION_LABELS[inv.recommendationType] : (inv.recommendation || '—');
+  };
+  const tools = useListTools<HRDisciplineInvestigationRecord>({
+    section: 'hr',
+    page: 'discipline-investigations',
+    columns,
+    rows: listFiltered,
+    fetchAll: pagination.loadAll,
+    resetKey: pagination.resetKey,
+    fields: {
+      caseNumber: { kind: 'code', text: (inv) => inv.caseNumber || '—' },
+      employee: { kind: 'name', text: (inv) => inv.employeeNameAr || '—', group: (inv) => inv.employeeNameAr || null },
+      investigator: { text: (inv) => inv.investigatorName || '—', group: (inv) => inv.investigatorName || null },
+      date: { kind: 'date', text: (inv) => inv.date || '—', group: (inv) => (inv.date ? inv.date.slice(0, 7) : null) },
+      result: { kind: 'status', text: (inv) => INVESTIGATION_RESULT_LABELS[inv.result], group: (inv) => INVESTIGATION_RESULT_LABELS[inv.result] },
+      recommendation: { text: recommendationOf, group: recommendationOf },
+      deductionType: { text: (inv) => investigationDeductionTypeLabel(inv) ?? '—', group: (inv) => investigationDeductionTypeLabel(inv) ?? null },
+      deductionValue: { text: (inv) => investigationDeductionValueLabel(inv) || '—', sortable: false },
+      employeeStatement: { text: (inv) => inv.employeeStatement || '—', sortable: false },
+      witnessStatement: { text: (inv) => inv.witnessStatement || '—', sortable: false },
+    },
+  });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={activeFilterCount} />
+        {tools.buttons}
+        {tools.exportMenu('سجل التحقيقات', 'discipline-investigations')}
+        <Button variant="luxe" size="sm" className="h-8 gap-1.5 px-3 text-xs shadow-sm shrink-0"
+          onClick={() => { setOpenDraft({ ...OPEN_EMPTY, date: new Date().toISOString().slice(0, 10) }); setOpenFormError(null); setOpenDrawerOpen(true); }}>
+          <Plus className="h-3.5 w-3.5" />
+          فتح تحقيق
+        </Button>
+      </div>
+    ),
+    [activeFilterCount, tools.depsKey],
+  );
+
   const handleCaseSelect = (caseId: string) => {
     const c = m.cases.find(x => x.id === caseId);
     if (!c) { setOpen({ caseId: '', caseNumber: '', employeeId: '', employeeNameAr: '' }); return; }
@@ -577,14 +459,6 @@ export function InvestigationsClient() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <PdfPreviewExportDialog
-        open={pdfOpen}
-        onOpenChange={setPdfOpen}
-        title="معاينة تصدير التحقيقات"
-        fileName="discipline-investigations.pdf"
-        printable={printable}
-        orientation="landscape"
-      />
-      <PdfPreviewExportDialog
         open={letterOpen}
         onOpenChange={setLetterOpen}
         title="معاينة محضر التحقيق"
@@ -625,10 +499,11 @@ export function InvestigationsClient() {
           </Button>
         </div>
       ) : (
-        <DisciplinePaginatedList pagination={pagination}>
+        <ListToolsTable tools={tools} keyExtractor={(inv) => inv.id} onRowClick={(inv) => setDetailRow(inv)}>
+        <DisciplinePaginatedList pagination={tools.pagination(pagination)}>
           {viewMode === 'cards' ? (
           <EntityActionCardGrid>
-            {listFiltered.map((inv) => (
+            {tools.rows.map((inv) => (
             <EntityActionCard
               key={inv.id}
               reference={inv.caseNumber}
@@ -701,13 +576,16 @@ export function InvestigationsClient() {
             variant="directory"
             alwaysShowTable
             tableClassName="min-w-[720px]"
-            columns={columns}
-            data={listFiltered}
+            columns={tools.columns}
+            {...tools.tableSort}
+            data={tools.rows}
+            loading={tools.loading}
             keyExtractor={(inv) => inv.id}
             onRowClick={(inv) => setDetailRow(inv)}
           />
           )}
         </DisciplinePaginatedList>
+        </ListToolsTable>
       )}
       </DisciplineListViewport>
 

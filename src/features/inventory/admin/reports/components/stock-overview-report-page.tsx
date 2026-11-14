@@ -1,5 +1,7 @@
 'use client';
 
+import { ListToolsTable, useListTools } from '@/components/ui/list-tools';
+import { PhoneStatsFold } from '@/components/layouts/phone-fold';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { inventoryAdminRoutes } from '@/features/inventory/admin/constants/routes';
@@ -16,6 +18,7 @@ import { DataTable, usePagination, type ColumnDef } from '@/components/ui/data-t
 import { DirectoryPagedViews, DEFAULT_PAGE_SIZE } from '@/components/ui/paged-list';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
+import { formatQty } from '@/features/inventory/admin/reports/lib/report-shared';
 
 type StockOverviewRow = {
   key: string;
@@ -116,60 +119,6 @@ export function StockOverviewReportPage() {
     return { onHand, low, out, products: filtered.length };
   }, [filtered]);
 
-  const {
-    page,
-    setPage,
-    pageSize,
-    setPageSize,
-    slice: pagedRows,
-    total,
-  } = usePagination(filtered, DEFAULT_PAGE_SIZE);
-
-  usePageHeaderActions(() => <FilterToggleButton />, []);
-
-  useEntityFilterSlot(
-    () => (
-      <ListFilterBar
-        showDateSection={false}
-        showStatusSection={false}
-        showEmployeePicker={false}
-        leadingFilters={
-          <EntityFilterSearchField
-            value={searchInput}
-            onChange={setSearchInput}
-            placeholder="ابحث بالمنتج أو SKU…"
-          />
-        }
-        inlineSelects={[
-          {
-            id: 'warehouse',
-            value: warehouseId,
-            onChange: setWarehouseId,
-            placeholder: 'كل المستودعات',
-            options: [
-              { value: 'all', label: 'كل المستودعات' },
-              ...warehouses.map((warehouse) => ({ value: warehouse.id, label: warehouse.nameAr })),
-            ],
-          },
-          {
-            id: 'stock',
-            value: stockFilter,
-            onChange: (value) => setStockFilter(value as typeof stockFilter),
-            placeholder: 'كل الحالات',
-            options: [
-              { value: 'all', label: 'كل الحالات' },
-              { value: 'in_stock', label: 'متوفر' },
-              { value: 'low', label: 'منخفض' },
-              { value: 'out', label: 'نفد' },
-            ],
-          },
-        ]}
-      />
-    ),
-    [searchInput, warehouseId, stockFilter, warehouses],
-  );
-
-  const router = useRouter();
   const columns: ColumnDef<StockOverviewRow>[] = [
     {
       key: 'product',
@@ -230,6 +179,94 @@ export function StockOverviewReportPage() {
     },
   ];
 
+  const tools = useListTools<StockOverviewRow>({
+    section: 'inventory',
+    page: 'stock-overview',
+    columns,
+    rows: filtered,
+    fields: {
+      product: { kind: 'name', text: (r) => r.productName },
+      onHand: { kind: 'number', text: (r) => formatQty(r.onHand), sort: (r) => r.onHand, sum: (r) => r.onHand, formatSum: formatQty },
+      reserved: { kind: 'number', text: (r) => formatQty(r.reserved), sort: (r) => r.reserved, sum: (r) => r.reserved, formatSum: formatQty },
+      available: { kind: 'number', text: (r) => formatQty(r.available), sort: (r) => r.available, sum: (r) => r.available, formatSum: formatQty },
+      warehouses: { kind: 'number', text: (r) => String(r.warehouseCount), sort: (r) => r.warehouseCount },
+      locations: { kind: 'number', text: (r) => String(r.locationCount), sort: (r) => r.locationCount },
+      status: { kind: 'status', text: stockStatusLabel, group: stockStatusLabel },
+    },
+  });
+
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    slice: pagedRows,
+    total,
+  } = usePagination(tools.rows, DEFAULT_PAGE_SIZE);
+
+  const warehouseLabel = warehouseId !== 'all' ? warehouses.find((w) => w.id === warehouseId)?.nameAr : null;
+  const stockFilterLabel = { all: null, in_stock: 'متوفر', low: 'منخفض', out: 'نفد' }[stockFilter];
+  const filterSummary = [
+    warehouseLabel ? `المستودع: ${warehouseLabel}` : 'كل المستودعات',
+    stockFilterLabel ? `الحالة: ${stockFilterLabel}` : null,
+    search ? `بحث: ${search}` : null,
+  ].filter((line): line is string => Boolean(line));
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={(warehouseId !== 'all' ? 1 : 0) + (stockFilter !== 'all' ? 1 : 0)} />
+        {tools.buttons}
+        {tools.exportMenu('المخزون', 'inventory-stock', filterSummary)}
+      </div>
+    ),
+    [warehouseId, stockFilter, filterSummary.join('|'), tools.depsKey],
+  );
+
+  useEntityFilterSlot(
+    () => (
+      <ListFilterBar
+        showDateSection={false}
+        showStatusSection={false}
+        showEmployeePicker={false}
+        leadingFilters={
+          <EntityFilterSearchField
+            value={searchInput}
+            onChange={setSearchInput}
+            placeholder="ابحث بالمنتج أو SKU…"
+          />
+        }
+        inlineSelects={[
+          {
+            id: 'warehouse',
+            value: warehouseId,
+            onChange: setWarehouseId,
+            placeholder: 'كل المستودعات',
+            options: [
+              { value: 'all', label: 'كل المستودعات' },
+              ...warehouses.map((warehouse) => ({ value: warehouse.id, label: warehouse.nameAr })),
+            ],
+          },
+          {
+            id: 'stock',
+            value: stockFilter,
+            onChange: (value) => setStockFilter(value as typeof stockFilter),
+            placeholder: 'كل الحالات',
+            options: [
+              { value: 'all', label: 'كل الحالات' },
+              { value: 'in_stock', label: 'متوفر' },
+              { value: 'low', label: 'منخفض' },
+              { value: 'out', label: 'نفد' },
+            ],
+          },
+        ]}
+      />
+    ),
+    [searchInput, warehouseId, stockFilter, warehouses],
+  );
+
+  const router = useRouter();
+
   /** Phones: name and status, then on hand / reserved / available on one line. */
   const stockMobileCard = (row: StockOverviewRow) => (
     <div className="space-y-1.5">
@@ -267,15 +304,18 @@ export function StockOverviewReportPage() {
         iconName="Package"
       />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        <SummaryCard label="منتجات" value={totals.products} />
-        <SummaryCard label="إجمالي الكمية" value={totals.onHand} />
-        <SummaryCard label="منخفض المخزون" value={totals.low} />
-        <SummaryCard label="نفد" value={totals.out} />
-      </div>
+      <PhoneStatsFold summary={<>منتجات {totals.products}</>}>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+          <SummaryCard label="منتجات" value={totals.products} />
+          <SummaryCard label="إجمالي الكمية" value={totals.onHand} />
+          <SummaryCard label="منخفض المخزون" value={totals.low} />
+          <SummaryCard label="نفد" value={totals.out} />
+        </div>
+      </PhoneStatsFold>
 
       {stockError ? <p className="text-sm text-destructive">تعذر تحميل بيانات المخزون.</p> : null}
 
+<ListToolsTable tools={tools} keyExtractor={(row) => row.key} onRowClick={(row) => router.push(inventoryAdminRoutes.productDetail(row.productId))}>
       <DirectoryPagedViews
         items={pagedRows}
         loading={stockLoading || productsLoading}
@@ -292,7 +332,8 @@ export function StockOverviewReportPage() {
           <DataTable
             variant="directory"
             className="inv-table-host"
-            columns={columns}
+            columns={tools.columns}
+            {...tools.tableSort}
             data={rowsPage}
             keyExtractor={(row) => row.key}
             mobileCard={stockMobileCard}
@@ -302,6 +343,7 @@ export function StockOverviewReportPage() {
           />
         )}
       </DirectoryPagedViews>
+</ListToolsTable>
     </div>
   );
 }
@@ -315,6 +357,13 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
       </p>
     </div>
   );
+}
+
+function stockStatusLabel(row: StockOverviewRow): string {
+  if (!row.trackInventory) return 'بدون تتبع';
+  if (row.available <= 0) return 'نفد';
+  if (row.isLow) return 'منخفض';
+  return 'متوفر';
 }
 
 function stockStatusBadge(row: StockOverviewRow) {

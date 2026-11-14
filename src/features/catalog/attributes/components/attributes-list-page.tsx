@@ -1,5 +1,6 @@
 'use client';
 
+import { useListTools } from '@/components/ui/list-tools';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
@@ -13,12 +14,12 @@ import {
   useCatalogAttributeMutations,
   useCatalogAttributes,
 } from '@/features/catalog/attributes/hooks/use-catalog-attributes';
-import { CatalogAttributeFormDialog } from '@/features/catalog/attributes/components/catalog-attribute-form-dialog';
+import { lazyDialog } from '@/shared/lib/lazy-dialog';
 import {
   attributeDisplayTypeLabelAr,
   VARIANT_CREATION_OPTIONS,
   normalizeVariantCreationMode,
-} from '@/features/catalog/attributes/schemas/catalog-attribute-schema';
+} from '@/features/catalog/attributes/constants/attribute-options';
 import type { CatalogAttribute } from '@/features/ecommerce/domain/types/catalog-attribute';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
 import { EntityFilterSearchField } from '@/components/ui/entity-filter-search-field';
@@ -40,6 +41,11 @@ import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
 import type { RegisterColumn } from '@/components/pdf/print/register-document';
 import { fetchAllPaginatedItems } from '@/shared/api/client';
 import { catalogAttributesApi } from '@/features/catalog/attributes/lib/api/catalog-attributes';
+
+// Loads on first open: keeps the form's code (and zod) out of the page's first load.
+const CatalogAttributeFormDialog = lazyDialog(() =>
+  import('@/features/catalog/attributes/components/catalog-attribute-form-dialog').then((m) => m.CatalogAttributeFormDialog),
+);
 
 /** Server keys (list-screens skill); default: the name. */
 const ATTRIBUTES_SORT_OPTIONS: readonly ListSortOption[] = [
@@ -135,31 +141,6 @@ export function AttributesListPage() {
     (line): line is string => Boolean(line),
   );
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton />
-        <ListSortMenu model={sort} />
-        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
-        <PageHeaderPrimaryButton
-          icon={Plus}
-          label="جديد"
-          disabled={!companyId}
-          onClick={() => setFormState({ open: true, attribute: null })}
-        />
-        <RegisterExportMenu
-          title="سجل الخصائص"
-          fileName="attributes"
-          columns={ATTRIBUTES_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          subtitleLines={filterSummary}
-          landscape
-          emptyMessage="لا توجد خصائص للتصدير."
-        />
-      </div>
-    ),
-    [companyId, sort.sortKey, sort.label, search, stateKeys.views],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -236,6 +217,35 @@ export function AttributesListPage() {
     },
   ];
 
+  const tools = useListTools<CatalogAttribute>({ section: 'catalog', page: 'attributes', columns: columns, rows: [], fields: {}, savedViews: false });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton />
+        {tools.buttons}
+        <ListSortMenu model={sort} />
+        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
+        <PageHeaderPrimaryButton
+          icon={Plus}
+          label="جديد"
+          disabled={!companyId}
+          onClick={() => setFormState({ open: true, attribute: null })}
+        />
+        <RegisterExportMenu
+          title="سجل الخصائص"
+          fileName="attributes"
+          columns={ATTRIBUTES_EXPORT_COLUMNS}
+          getRows={getExportRows}
+          subtitleLines={filterSummary}
+          landscape
+          emptyMessage="لا توجد خصائص للتصدير."
+        />
+      </div>
+    ),
+    [companyId, sort.sortKey, sort.label, search, stateKeys.views, tools.depsKey],
+  );
+
   return (
     <div className="flex flex-col gap-5">
       <SetPageTitle
@@ -266,7 +276,7 @@ export function AttributesListPage() {
           <DataTable
             variant="directory"
             className="sto-table-host"
-            columns={columns}
+            columns={tools.columns}
             data={rowsPage}
             keyExtractor={(row) => row.id}
             loading={isLoading}

@@ -19,6 +19,12 @@ function asPaginated<T>(value: unknown): PaginatedResult<T> {
   };
 }
 
+/** active = تعمل، suspended = موقوفة مؤقتاً، archived = منتهية. */
+export type CompanyStatus = 'active' | 'suspended' | 'archived';
+export type CompanyStatusAction = 'suspend' | 'resume' | 'archive' | 'restore';
+/** production: demo data can be neither loaded nor removed. */
+export type CompanyOperatingMode = 'trial' | 'testing' | 'production';
+
 export type SystemOwnerCompany = {
   id: string;
   code?: string | null;
@@ -28,8 +34,18 @@ export type SystemOwnerCompany = {
   taxNumber?: string | null;
   email?: string | null;
   phone?: string | null;
+  mobile?: string | null;
+  website?: string | null;
   city?: string | null;
+  address?: string | null;
+  logoUrl?: string | null;
+  notes?: string | null;
   isActive?: boolean;
+  status: CompanyStatus;
+  operatingMode: CompanyOperatingMode;
+  operatingModeChangedAt?: string | null;
+  operatingModeChangedBy?: string | null;
+  archivedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -39,11 +55,22 @@ export type CreateSystemOwnerCompanyDto = {
   code?: string;
   nameEn?: string | null;
   commercialRegistrationNo?: string | null;
+  taxNumber?: string | null;
   email?: string | null;
   phone?: string | null;
+  mobile?: string | null;
+  website?: string | null;
   city?: string | null;
-  isActive?: boolean;
+  address?: string | null;
+  logoUrl?: string | null;
+  notes?: string | null;
 };
+
+function mapCompany(raw: SystemOwnerCompany): SystemOwnerCompany {
+  const status: CompanyStatus =
+    raw.status ?? (raw.archivedAt ? 'archived' : raw.isActive === false ? 'suspended' : 'active');
+  return { ...raw, status, operatingMode: raw.operatingMode ?? 'trial' };
+}
 
 export type SystemOwnerCompanyUser = {
   id: string;
@@ -77,6 +104,8 @@ export type SystemOwnerCompanyApplication = {
   code: string;
   nameAr: string;
   nameEn?: string | null;
+  description?: string | null;
+  icon?: string | null;
   isEnabled: boolean;
   isVisible: boolean;
   isAlwaysEnabled: boolean;
@@ -320,6 +349,11 @@ function mapCompanyApplication(raw: Record<string, unknown>): SystemOwnerCompany
       (raw.nameEn as string | null | undefined)
       ?? (nested.nameEn as string | null | undefined)
       ?? null,
+    description:
+      (raw.description as string | null | undefined)
+      ?? (nested.description as string | null | undefined)
+      ?? null,
+    icon: (raw.icon as string | null | undefined) ?? (nested.icon as string | null | undefined) ?? null,
     isEnabled: readIsEnabled(raw),
     isVisible: readIsVisible(raw),
     isAlwaysEnabled: readIsAlwaysEnabled(raw),
@@ -511,15 +545,19 @@ export const systemOwnerApi = {
     });
   },
 
-  listCompanies(query?: { page?: number; limit?: number; search?: string }) {
+  /** Every company, archived ones included (`archiveScope=all`): the page splits them by status. */
+  listCompanies(query?: { page?: number; limit?: number }) {
     return apiRequest<PaginatedResult<SystemOwnerCompany> | SystemOwnerCompany[]>(
       '/system-owner/companies',
-      { query },
-    ).then((res) => asPaginated<SystemOwnerCompany>(res));
+      { query: { ...query, archiveScope: 'all' } },
+    ).then((res) => {
+      const page = asPaginated<SystemOwnerCompany>(res);
+      return { ...page, items: page.items.map(mapCompany) };
+    });
   },
 
   getCompany(companyId: string) {
-    return apiRequest<SystemOwnerCompany>(`/system-owner/companies/${companyId}`);
+    return apiRequest<SystemOwnerCompany>(`/system-owner/companies/${companyId}`).then(mapCompany);
   },
 
   createCompany(payload: CreateSystemOwnerCompanyDto) {
@@ -533,7 +571,23 @@ export const systemOwnerApi = {
     return apiRequest<SystemOwnerCompany>(`/system-owner/companies/${companyId}`, {
       method: 'PATCH',
       body: payload,
+      throwOnError: true,
     });
+  },
+
+  changeCompanyStatus(companyId: string, action: CompanyStatusAction) {
+    return apiRequest<SystemOwnerCompany>(
+      `/system-owner/companies/${companyId}/status/${action}`,
+      { method: 'POST', throwOnError: true },
+    ).then(mapCompany);
+  },
+
+  /** Leaving production needs `confirmCode` = the company code. */
+  setCompanyOperatingMode(companyId: string, mode: CompanyOperatingMode, confirmCode?: string) {
+    return apiRequest<SystemOwnerCompany>(
+      `/system-owner/companies/${companyId}/operating-mode`,
+      { method: 'PATCH', body: { mode, confirmCode }, throwOnError: true },
+    ).then(mapCompany);
   },
 
   listCompanyUsers(companyId: string) {

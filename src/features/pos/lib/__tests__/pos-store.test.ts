@@ -58,8 +58,10 @@ describe('posActions', () => {
     const next = { ...EMPTY_POS_DATA, returnSequence: 7 };
     request.mockResolvedValue({ data: next, result: null } as never);
     const { client, actions } = setup();
+    const key = [...posDataQueryKey(COMPANY), 90];
+    client.setQueryData(key, EMPTY_POS_DATA);
     await expect(actions.cancelSale('sale-1', 'سبب')).resolves.toBe(true);
-    expect(client.getQueryData(posDataQueryKey(COMPANY))).toEqual(next);
+    expect(client.getQueryData(key)).toEqual(next);
   });
 
   it('a refusal rejects with the server reason, and the next command still goes', async () => {

@@ -23,7 +23,7 @@ type SeedSpec = {
 };
 
 /**
- * Fixed system locations created for every warehouse (Odoo-style counterparts):
+ * Fixed system locations created for every warehouse:
  * Customers, Inventory adjustment, Production, Vendors, {CODE}, {CODE}/Stock.
  */
 const FIXED_LOCATION_SPECS: SeedSpec[] = [

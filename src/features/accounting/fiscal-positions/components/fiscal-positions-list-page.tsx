@@ -61,7 +61,7 @@ export function FiscalPositionsListPage() {
         iconName="CalendarRange"
       />
 
-      {/* Top Controls Bar (Odoo Style) */}
+      {/* Top Controls Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-background p-2 border border-border/40 shadow-xs">
         {/* Right side in RTL (Title and Action) */}
         <div className="flex items-center gap-2 order-1 md:order-2">

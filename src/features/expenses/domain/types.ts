@@ -43,21 +43,119 @@ export interface CostCenter {
   code: string;
   name: string;
   archived?: boolean;
+  /** Reference data: no branch = shared by every branch (decisions.md §29). */
+  branchId?: string | null;
 }
 
-/** A trip, project or shared household: expenses filed under it, its members split them. */
+/** A rule that applies to every record, to none, or from an amount up. */
+export type GroupRule = 'none' | 'always' | 'above';
+
+/**
+ * How the approvers of a group decide (as HR requests): in order, all of
+ * them in any order, or the first one who decides.
+ */
+export type ApprovalMode = 'sequential' | 'parallel' | 'any_one';
+
+/** One stage of a group's approval, as a stage of an HR request. */
+export type ApprovalStageMode = ApprovalMode | 'optional';
+
+export interface ApprovalStage {
+  mode: ApprovalStageMode;
+  /** Company users. More than one is a choice, not a requirement. */
+  approverIds: string[];
+  /** Parallel only: how many approvals complete the stage. null: every approver. */
+  requiredCount: number | null;
+}
+
+/** A group accepts new records only while active. */
+export type GroupStatus = 'active' | 'maintenance' | 'suspended' | 'ended';
+
+/**
+ * A group's policy: what its records need. Every rule is optional; a group
+ * without a manager and approvers is decided by whoever holds the approve
+ * permission (never the record's author).
+ */
+export interface GroupPolicy {
+  /** Receipt on an expense: never, always, or above `attachmentAbove`. */
+  attachment: GroupRule;
+  attachmentAbove: Minor | null;
+  /** Approval of a record: none (approved when sent), always, or from `approvalAbove` up. */
+  approval: GroupRule;
+  approvalAbove: Minor | null;
+  /** Expenses of the whole group in one month above this violate. */
+  monthlyLimit: Minor | null;
+  /** Expenses one person records in the group in one month above this violate. */
+  monthlyLimitPerPerson: Minor | null;
+  /** A violation blocks sending (else it warns). */
+  blockOnViolation: boolean;
+  /** Decides first when set (a company user). Kept for policies saved before stages. */
+  managerId: string | null;
+  /** Decide after the manager, by `approvalMode` (company users). Kept for old policies. */
+  approverIds: string[];
+  approvalMode: ApprovalMode;
+  /** The approval path when set. Empty or missing: the manager and approvers above. */
+  stages?: ApprovalStage[];
+}
+
+/**
+ * A group records are filed under: the default «عام» every company has, a
+ * trip, a project, a department… Its members split costs; its policy says
+ * what its records need. A person may belong to any number of groups.
+ */
 export interface ExpenseGroup {
   id: string;
   name: string;
   description?: string | null;
   memberIds: string[];
+  /** The first of `costCenterIds`. */
   costCenterId?: string | null;
+  /** The group's cost centers, in the order chosen. */
+  costCenterIds?: string[];
   closed?: boolean;
+  /** active accepts records. Missing: active, or ended when `closed`. */
+  status?: GroupStatus;
+  /** The company's own group: always there, always active. */
+  isDefault?: boolean;
+  /** Hidden from lists and pickers; its records stay as they are. */
+  archived?: boolean;
+  /** Reference data: no branch = shared by every branch (decisions.md §29). */
+  branchId?: string | null;
+  policy: GroupPolicy;
+}
+
+export type ApprovalStepStatus = 'pending' | 'approved' | 'rejected' | 'skipped';
+
+export interface ApprovalStep {
+  partyId: string;
+  role: 'manager' | 'approver';
+  /** Which stage of `TxnApproval.stages` this step belongs to. */
+  stage?: number;
+  status: ApprovalStepStatus;
+  decidedAt?: string | null;
+  note?: string | null;
+}
+
+/**
+ * Who decides a sent record, fixed when it is sent (a later change of the
+ * group's policy never rewrites a pending record). No pending step: anyone
+ * holding the approve permission decides.
+ */
+export interface TxnApproval {
+  mode: ApprovalMode;
+  /** Present when the path was built from stages. Old records have steps only. */
+  stages?: Array<{ mode: ApprovalMode; requiredCount: number | null }>;
+  steps: ApprovalStep[];
 }
 
 interface TxnBase {
   id: string;
+  /** No branch = the company's own record (head office), not «unknown». */
+  branchId?: string | null;
   currency: string;
+  /** The group it is filed under (the company's default group when not chosen). */
+  groupId?: string | null;
+  /** Fixed when sent for approval; null on drafts and records approved at once. */
+  approval?: TxnApproval | null;
   /** Business date, YYYY-MM-DD. */
   date: string;
   status: TxnStatus;
@@ -119,7 +217,7 @@ export interface AttachmentMeta {
   name: string;
   type: string;
   size: number;
-  /** Stored receipt (`/uploads/receipts/…`, signed by the server); null on sample records. */
+  /** Stored receipt (`/uploads/receipts/…`, signed in responses); null on sample records. */
   url?: string | null;
 }
 
@@ -128,7 +226,6 @@ export interface Expense extends TxnBase {
   description: string;
   amount: Minor;
   categoryId: string;
-  groupId?: string | null;
   costCenterId?: string | null;
   payments: PaymentPart[];
   bearing: Bearing;
@@ -143,6 +240,10 @@ export interface Expense extends TxnBase {
  */
 export interface Custody {
   id: string;
+  /** No branch = the company's own custody (head office). */
+  branchId?: string | null;
+  /** Its moves are filed under this group and follow its policy. */
+  groupId?: string | null;
   holderId: string;
   purpose: string;
   currency: string;
@@ -151,6 +252,8 @@ export interface Custody {
   openedAt: string;
   closedAt?: string | null;
   createdBy: string;
+  /** Closed custodies only; hidden from the list, never deleted. */
+  archived?: boolean;
 }
 
 /** issue: first handover; topup: refill; return: money back to the organization. */
@@ -182,22 +285,33 @@ export interface Settlement extends TxnBase {
 
 export type AnyTxn = Expense | CustodyMove | Advance | Settlement;
 
+/** Money one branch hands another to clear what it owes it. No branch = the company. */
+export interface BranchTransfer {
+  id: string;
+  /** The branch that pays (the one that owes). */
+  fromBranchId: string | null;
+  /** The branch that receives. */
+  toBranchId: string | null;
+  amount: Minor;
+  currency: string;
+  date: string;
+  note?: string | null;
+  createdBy: string;
+  createdAt: string;
+  voidedBy?: string | null;
+  voidedAt?: string | null;
+  voidReason?: string | null;
+}
+
+/** App-wide settings. Approval, receipts and limits are each group's policy. */
 export interface ExpensesSettings {
   mode: 'simple' | 'advanced';
-  /** Off: a submitted record is approved at once. */
-  requireApproval: boolean;
-  /** Approved at once below this amount (when approval is required). */
-  autoApproveBelow: Minor | null;
-  /** An attachment is required above this amount. */
-  requireAttachmentAbove: Minor | null;
-  /** Monthly spending of one person (expenses they created) above this warns. */
-  monthlyLimitPerPerson: Minor | null;
-  /** Policy violations block submitting (else they warn). */
-  blockOnPolicyViolation: boolean;
-  /** Who approves (participant ids of users); empty: anyone holding the approve permission. */
-  approverIds: string[];
   /** Used when the company currency is unknown (demo). */
   fallbackCurrency: string;
+  /** own: each employee sees their own records; all: everyone sees everything. */
+  visibility: 'own' | 'all';
+  /** With `own`: the people who still see everything. */
+  fullViewerIds: PartyId[];
 }
 
 export interface ExpensesData {
@@ -212,5 +326,37 @@ export interface ExpensesData {
   custodyMoves: CustodyMove[];
   advances: Advance[];
   settlements: Settlement[];
+  /** Between branches (and the company). */
+  branchTransfers?: BranchTransfer[];
+  /** Closed (and reopened) periods, oldest first. */
+  closings?: PeriodClosing[];
   settings: ExpensesSettings;
+}
+
+/** Totals of a period when it was closed (approved records, one currency). */
+export interface PeriodSummary {
+  currency: string;
+  expensesCount: number;
+  expensesTotal: Minor;
+  cashOut: Minor;
+  cashIn: Minor;
+}
+
+/**
+ * A closed period: nothing dated from `from` to `to` (inclusive) can be
+ * recorded, edited, sent, decided or voided. Periods follow each other.
+ */
+export interface PeriodClosing {
+  id: string;
+  from: string;
+  to: string;
+  label: string;
+  status: 'closed' | 'reopened';
+  note?: string | null;
+  summary?: PeriodSummary | null;
+  closedBy: string;
+  closedAt: string;
+  reopenedBy?: string | null;
+  reopenedAt?: string | null;
+  reopenReason?: string | null;
 }

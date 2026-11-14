@@ -13,6 +13,11 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { notificationsApi } from '@/features/hr/notifications/lib/api/notifications';
+import { getDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
+import { getInventoryCompanyId } from '@/features/inventory/lib/company-id';
+import { getStorefrontCompanyId } from '@/features/ecommerce/storefront/lib/storefront-company';
+import { getContactsCompanyId } from '@/features/contacts/lib/company-id';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -66,6 +71,7 @@ import {
 } from '@/features/contacts/admin/notifications/lib/contacts-notifications-store';
 import { resolveContactsNotificationLink } from '@/features/contacts/admin/notifications/lib/resolve-contacts-notification-link';
 import { contactsAdminRoutes } from '@/features/contacts/admin/constants/routes';
+import { useExpensesNotificationsStore } from '@/features/expenses/data/notifications-store';
 import {
   useUnifiedNotificationTabs,
   type UnifiedNotificationTabId,
@@ -84,6 +90,7 @@ function tabUnreadCount(
     storeUnreadApi: number;
     contactsItems: ReturnType<typeof useContactsNotificationsStore.getState>['items'];
     contactsUnreadApi: number;
+    expensesUnread: number;
   },
 ): number {
   switch (tabId) {
@@ -103,6 +110,8 @@ function tabUnreadCount(
       const local = countUnreadContactsInbox(args.contactsItems, args.userId);
       return args.contactsUnreadApi > 0 ? args.contactsUnreadApi : local;
     }
+    case 'expenses':
+      return args.expensesUnread;
     default:
       return 0;
   }
@@ -118,6 +127,7 @@ export function UnifiedNotificationBellPopover() {
   const inventoryStore = useInventoryNotificationsStore();
   const storeStore = useStoreNotificationsStore();
   const contactsStore = useContactsNotificationsStore();
+  const expensesStore = useExpensesNotificationsStore();
 
   const unreadByTab = React.useMemo(() => {
     const args = {
@@ -131,6 +141,7 @@ export function UnifiedNotificationBellPopover() {
       storeUnreadApi: storeStore.unreadTotal,
       contactsItems: contactsStore.items,
       contactsUnreadApi: contactsStore.unreadTotal,
+      expensesUnread: expensesStore.unreadTotal,
     };
     return Object.fromEntries(
       tabs.map((tab) => [tab.id, tabUnreadCount(tab.id, args)]),
@@ -147,6 +158,7 @@ export function UnifiedNotificationBellPopover() {
     storeStore.unreadTotal,
     contactsStore.items,
     contactsStore.unreadTotal,
+    expensesStore.unreadTotal,
   ]);
 
   const totalUnread = React.useMemo(
@@ -173,14 +185,45 @@ export function UnifiedNotificationBellPopover() {
     wasOpenRef.current = open;
   }, [open, tabs, unreadByTab]);
 
+  // Closed: only the unread counts (the badge), once per set of tabs. The
+  // lists load when the bell opens (below). Inventory, store and contacts
+  // share one count endpoint: it is asked once per company.
+  const tabsKey = tabs.map((tab) => tab.id).join(',');
   React.useEffect(() => {
-    for (const tab of tabs) {
-      if (tab.id === 'hr' && employeeId) void hrStore.fetch(employeeId);
-      if (tab.id === 'inventory' && userId) void inventoryStore.fetch(userId);
-      if (tab.id === 'store' && userId) void storeStore.fetch(userId);
-      if (tab.id === 'contacts' && userId) void contactsStore.fetch(userId);
+    if (!tabsKey) return;
+    const ids = new Set(tabsKey.split(','));
+    if (ids.has('hr') && employeeId) {
+      void notificationsApi
+        .unreadCount(employeeId, getDefaultCompanyId() ?? undefined)
+        .then((res) => useHRNotificationsStore.setState({ unreadTotal: res.unread }))
+        .catch(() => undefined);
     }
-  }, [tabs, userId, employeeId, hrStore.fetch, inventoryStore.fetch, storeStore.fetch, contactsStore.fetch]);
+    if (userId) {
+      const byCompany = new Map<string, Array<'inventory' | 'store' | 'contacts'>>();
+      const add = (id: 'inventory' | 'store' | 'contacts', companyId: string | null | undefined) => {
+        if (!ids.has(id)) return;
+        const key = companyId ?? '';
+        byCompany.set(key, [...(byCompany.get(key) ?? []), id]);
+      };
+      add('inventory', getInventoryCompanyId());
+      add('store', getStorefrontCompanyId());
+      add('contacts', getContactsCompanyId());
+      for (const [companyId, apps] of byCompany) {
+        void notificationsApi
+          .userUnreadCount(userId, companyId || undefined)
+          .then((res) => {
+            const byCategory = (res.byCategory ?? {}) as Record<string, number | undefined>;
+            const of = (category: string) => byCategory[category] ?? 0;
+            if (apps.includes('inventory')) useInventoryNotificationsStore.setState({ unreadTotal: of('inventory') });
+            if (apps.includes('store')) useStoreNotificationsStore.setState({ unreadTotal: of('store') });
+            if (apps.includes('contacts')) useContactsNotificationsStore.setState({ unreadTotal: of('contacts') });
+          })
+          .catch(() => undefined);
+      }
+    }
+    // Its own small endpoint: the count and the latest few.
+    if (ids.has('expenses')) void useExpensesNotificationsStore.getState().fetch();
+  }, [tabsKey, userId, employeeId]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -189,8 +232,9 @@ export function UnifiedNotificationBellPopover() {
       if (tab.id === 'inventory' && userId) void inventoryStore.fetch(userId);
       if (tab.id === 'store' && userId) void storeStore.fetch(userId);
       if (tab.id === 'contacts' && userId) void contactsStore.fetch(userId);
+      if (tab.id === 'expenses') void expensesStore.fetch();
     }
-  }, [open, tabs, userId, employeeId, hrStore.fetch, inventoryStore.fetch, storeStore.fetch, contactsStore.fetch]);
+  }, [open, tabs, userId, employeeId, hrStore.fetch, inventoryStore.fetch, storeStore.fetch, contactsStore.fetch, expensesStore.fetch]);
 
   async function handleMarkAllReadActiveTab() {
     if (!activeTabMeta) return;
@@ -208,6 +252,9 @@ export function UnifiedNotificationBellPopover() {
         case 'contacts':
           if (userId) await contactsStore.markAllReadForUser(userId);
           break;
+        case 'expenses':
+          await expensesStore.markAllRead();
+          break;
       }
     } catch {
       toast.error('تعذر تحديد كل الإشعارات كمقروءة.');
@@ -224,6 +271,8 @@ export function UnifiedNotificationBellPopover() {
         return selectStoreInbox(storeStore.items, userId).every((n) => n.readAt);
       case 'contacts':
         return selectContactsInbox(contactsStore.items, userId).every((n) => n.readAt);
+      case 'expenses':
+        return expensesStore.items.every((n) => n.readAt);
       default:
         return true;
     }
@@ -329,6 +378,9 @@ export function UnifiedNotificationBellPopover() {
               canUpdate={can('cnt.notifications.update') || can('hr.notifications.update')}
               onNavigate={() => setOpen(false)}
             />
+          </TabsContent>
+          <TabsContent value="expenses" className="mt-0">
+            <ExpensesNotificationTabPanel onNavigate={() => setOpen(false)} />
           </TabsContent>
         </Tabs>
 
@@ -613,6 +665,35 @@ function ContactsNotificationTabPanel({
           />
         );
       })}
+    </NotificationListShell>
+  );
+}
+
+const EXPENSES_SOURCE_LABELS: Record<string, string> = {
+  expenses_approval_waiting: 'بانتظار الاعتماد',
+  expenses_approval_decided: 'قرار الاعتماد',
+};
+
+function ExpensesNotificationTabPanel({ onNavigate }: { onNavigate: () => void }) {
+  const { items, markRead } = useExpensesNotificationsStore();
+  return (
+    <NotificationListShell emptyMessage="لا توجد إشعارات مصاريف في صندوقك">
+      {items.map((n) => (
+        <NotificationRow
+          key={n.recipientId}
+          title={n.titleAr}
+          body={n.bodyAr ?? undefined}
+          readAt={n.readAt}
+          canUpdate
+          severityDotClass={CONTACTS_SEVERITY_DOT_CLASS[n.severity] ?? 'bg-muted-foreground'}
+          badges={[(n.sourceKind && EXPENSES_SOURCE_LABELS[n.sourceKind]) ?? 'مصاريف', NOTIFICATION_SEVERITY_LABELS[n.severity as NotificationSeverity] ?? n.severity]}
+          href={n.actionUrl ?? null}
+          actionLabel={n.actionLabelAr}
+          createdAt={n.createdAt}
+          onMarkRead={() => markRead(n.recipientId)}
+          onNavigate={onNavigate}
+        />
+      ))}
     </NotificationListShell>
   );
 }

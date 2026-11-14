@@ -1,5 +1,6 @@
 'use client';
 
+import { useListTools } from '@/components/ui/list-tools';
 import { SetPageTitle } from '@/components/layouts/set-page-title';
 import { usePageHeaderActions } from '@/components/layouts/page-header-actions-context';
 import { useEntityFilterSlot } from '@/components/layouts/entity-filter-slot-context';
@@ -13,7 +14,7 @@ import { useAuthStore } from '@/features/auth/lib/auth-store';
 import { getBranchAccessLabel } from '@/features/auth/types/access-profile';
 import { useWarehouses } from '@/features/inventory/admin/warehouses/hooks/use-warehouses';
 import { useWarehouseMutations } from '@/features/inventory/admin/warehouses/hooks/use-warehouse-mutations';
-import { WarehouseFormDialog } from '@/features/inventory/admin/warehouses/components/warehouse-form-dialog';
+import { lazyDialog } from '@/shared/lib/lazy-dialog';
 import { inventoryAdminRoutes } from '@/features/inventory/admin/constants/routes';
 import type { Warehouse as WarehouseEntity } from '@/features/inventory/domain/types/warehouse';
 import { ListFilterBar } from '@/components/ui/list-filter-bar';
@@ -44,6 +45,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+
+// Loads on first open: keeps the form's code (and zod) out of the page's first load.
+const WarehouseFormDialog = lazyDialog(() =>
+  import('@/features/inventory/admin/warehouses/components/warehouse-form-dialog').then((m) => m.WarehouseFormDialog),
+);
 
 /** Server keys (list-screens skill); by default the code. */
 const WAREHOUSES_SORT_OPTIONS: readonly ListSortOption[] = [
@@ -172,32 +178,6 @@ export function WarehousesListPage() {
 
   const canCreate = Boolean(companyId) && (hasAllBranchAccess || branchOptions.length > 0);
 
-  usePageHeaderActions(
-    () => (
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
-        <FilterToggleButton activeFilterCount={branchFilter ? 1 : 0} />
-        <ListSortMenu model={sort} />
-        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
-        <PageHeaderPrimaryButton
-          icon={Plus}
-          label="إضافة مستودع"
-          disabled={!canCreate}
-          onClick={() => setFormState({ open: true, warehouse: null })}
-        >
-          إضافة مستودع
-        </PageHeaderPrimaryButton>
-        <RegisterExportMenu
-          title="سجل المستودعات"
-          fileName="warehouses"
-          columns={exportColumns}
-          getRows={getExportRows}
-          subtitleLines={filterSummary}
-          emptyMessage="لا توجد مستودعات للتصدير."
-        />
-      </div>
-    ),
-    [canCreate, branchFilter, search, sort.sortKey, sort.label, stateKeys.views],
-  );
 
   useEntityFilterSlot(
     () => (
@@ -321,6 +301,36 @@ export function WarehousesListPage() {
     },
   ];
 
+  const tools = useListTools<WarehouseEntity>({ section: 'inventory', page: 'warehouses', columns: columns, rows: [], fields: {}, savedViews: false });
+
+  usePageHeaderActions(
+    () => (
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+        <FilterToggleButton activeFilterCount={branchFilter ? 1 : 0} />
+        {tools.buttons}
+        <ListSortMenu model={sort} />
+        <ListSavedViews storageKey={stateKeys.views} prefixes={stateKeys.prefixes} />
+        <PageHeaderPrimaryButton
+          icon={Plus}
+          label="إضافة مستودع"
+          disabled={!canCreate}
+          onClick={() => setFormState({ open: true, warehouse: null })}
+        >
+          إضافة مستودع
+        </PageHeaderPrimaryButton>
+        <RegisterExportMenu
+          title="سجل المستودعات"
+          fileName="warehouses"
+          columns={exportColumns}
+          getRows={getExportRows}
+          subtitleLines={filterSummary}
+          emptyMessage="لا توجد مستودعات للتصدير."
+        />
+      </div>
+    ),
+    [canCreate, branchFilter, search, sort.sortKey, sort.label, stateKeys.views, tools.depsKey],
+  );
+
   return (
     <div className="flex flex-col gap-5">
       <SetPageTitle titleAr="المخازن" iconName="Warehouse" />
@@ -347,7 +357,7 @@ export function WarehousesListPage() {
           <DataTable
             variant="directory"
             className="inv-table-host"
-            columns={columns}
+            columns={tools.columns}
             sort={sort.sort}
             onSort={sort.toggle}
             data={rowsPage}

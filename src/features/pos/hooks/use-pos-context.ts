@@ -9,7 +9,7 @@ import { useCan } from '@/features/auth/hooks/use-can';
 import { useModuleEnablementContext } from '@/features/auth/hooks/use-system-owner';
 import { companiesApi } from '@/features/hr/organization/lib/api/companies';
 import { useDefaultCompanyId } from '@/features/hr/organization/lib/default-company-id';
-import { PosRuleError, posActions, usePosData } from '@/features/pos/lib/pos-store';
+import { POS_HISTORY_DAYS, PosRuleError, posActions, usePosData, type PosDataScopeValue } from '@/features/pos/lib/pos-store';
 import type { PrintCompany } from '@/features/print-templates/domain/types';
 import { toPrintCompany } from '@/features/print-templates/lib/print-company';
 import { isModuleEnabledFor } from '@/shared/modules/registry';
@@ -30,7 +30,8 @@ export type PosPermission =
   | 'pos.session.close-others'
   | 'pos.devices.manage'
   | 'pos.settings.manage'
-  | 'pos.reports.read';
+  | 'pos.reports.read'
+  | 'pos.credit.collect';
 
 type RawActions = Omit<ReturnType<typeof posActions>, 'read'>;
 type Actions = {
@@ -65,6 +66,16 @@ function guarded(actions: ReturnType<typeof posActions>): Actions {
   ) as Actions;
 }
 
+const PosDataScopeContext = React.createContext<PosDataScopeValue>(POS_HISTORY_DAYS);
+
+/**
+ * How much history this screen reads: days (the register needs only what is
+ * open, 0), or the period its filter chose, of any age.
+ */
+export function PosDataScope({ days, range, children }: { days?: number; range?: { from: string; to: string }; children: React.ReactNode }) {
+  return React.createElement(PosDataScopeContext.Provider, { value: range ?? days ?? POS_HISTORY_DAYS }, children);
+}
+
 /** Everything a POS screen needs: company, its data, actions, the user and permissions. */
 export function usePosContext() {
   // The active company: its data and its permissions (useCan reads the active
@@ -89,7 +100,8 @@ export function usePosContext() {
   });
   // The company's base currency (company settings), from the access profile.
   const currency = useCompanyCurrency();
-  const data = usePosData(companyId);
+  const scope = React.useContext(PosDataScopeContext);
+  const data = usePosData(companyId, scope);
   const queryClient = useQueryClient();
   const actions = React.useMemo(
     () => (companyId ? guarded(posActions(companyId, queryClient)) : null),
@@ -111,6 +123,8 @@ export function usePosContext() {
   );
 
   const userName = user?.fullNameAr || user?.fullNameEn || user?.email || 'مستخدم';
+  // The company's super admin or the platform's owner: on any register.
+  const isSuperAdmin = Boolean(moduleContext.isSystemOwner || profileCompany?.isCompanySuperuser);
   const enabled = isModuleEnabledFor('pos', companyId ?? moduleCompanyId, moduleContext);
 
   return {
@@ -122,6 +136,7 @@ export function usePosContext() {
     actions,
     userId: user?.id ?? 'unknown',
     userName,
+    isSuperAdmin,
     enabled,
     can: (code: PosPermission) => can(code),
   };

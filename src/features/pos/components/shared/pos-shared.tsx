@@ -15,6 +15,19 @@ import { useDocumentPrintSettings } from '@/features/print-templates/lib/print-t
 import { SALE_STATUS_LABELS, type PosInvoiceStyle, type PosSaleStatus } from '@/features/pos/domain/types';
 import { usePosContext, type PosPermission } from '@/features/pos/hooks/use-pos-context';
 
+/** The period a history screen reads, of any age (the default: the last 30 days). */
+export type PosPeriod = { from: string; to: string };
+
+const localDay = (at: Date) => {
+  const shifted = new Date(at.getTime() - at.getTimezoneOffset() * 60_000);
+  return shifted.toISOString().slice(0, 10);
+};
+
+export function lastDaysPeriod(days: number): PosPeriod {
+  const now = new Date();
+  return { from: localDay(new Date(now.getTime() - (days - 1) * 86_400_000)), to: localDay(now) };
+}
+
 /** Shows the page only when POS is enabled for the company and the user may see it. */
 export function PosGate({ permission, children }: { permission?: PosPermission; children: React.ReactNode }) {
   const { enabled, companyId, can } = usePosContext();

@@ -30,6 +30,8 @@ import { FlexibleQuantityInput } from '@/features/inventory/admin/operations/com
 import { WarehouseOperationDetailDialog } from '@/features/inventory/admin/operations/components/warehouse-operation-detail-dialog';
 import { WarehouseOperationsPanel } from '@/features/inventory/admin/operations/components/warehouse-operations-panel';
 import { handleApiError } from '@/features/hr/lib/api/global-error-handler';
+import { RegisterExportMenu } from '@/components/pdf/register-export-menu';
+import { registerExportRows, type RegisterExportColumn } from '@/components/pdf/lib/register-export-rows';
 import { SUGGESTIONS_REPLENISHMENT_SOURCE_DOCUMENT } from '@/features/catalog/products/constants/replenishment';
 import type {
   ReplenishmentSuggestion,
@@ -43,7 +45,7 @@ function formatQuantity(value: number): string {
 }
 
 /**
- * Replenishment, Odoo style: the products at or below their low-stock
+ * Replenishment: the products at or below their low-stock
  * threshold (counting what open purchase orders will bring), and a purchase
  * order drafted from the ones picked. Stock enters only when that order is
  * received. Each drafted order stays listed as a replenishment request, its
@@ -162,6 +164,19 @@ export function ReplenishmentPage() {
     />
   );
 
+  const exportColumns: RegisterExportColumn<ReplenishmentSuggestion>[] = [
+    { label: 'المنتج', kind: 'name', value: (row) => row.productName },
+    { label: 'SKU', kind: 'code', value: (row) => row.sku ?? '' },
+    { label: 'الرصيد', kind: 'number', value: (row) => formatQuantity(row.onHand) },
+    { label: 'منتظر من أوامر الشراء', kind: 'number', value: (row) => formatQuantity(row.onOrder) },
+    { label: 'حدّ التنبيه', kind: 'number', value: (row) => formatQuantity(row.threshold) },
+    {
+      label: 'الكمية المطلوبة',
+      kind: 'number',
+      value: (row) => formatQuantity(quantities[row.productId] ?? row.suggestedQuantity),
+    },
+  ];
+
   const variantsNote = (
     <p className="text-xs text-muted-foreground">له متغيرات: أضف كل متغير إلى أمر الشراء بنفسك.</p>
   );
@@ -194,10 +209,25 @@ export function ReplenishmentPage() {
           placeholder="ابحث بالاسم أو الرمز…"
           aria-label="بحث"
         />
+        <div className="sm:ms-auto">
+          <RegisterExportMenu
+            title="اقتراحات تجديد المخزون"
+            fileName="inventory-replenishment"
+            columns={exportColumns}
+            getRows={async () => registerExportRows({ columns: exportColumns, rows: suggestions })}
+            subtitleLines={[
+              warehouseId === ALL_WAREHOUSES
+                ? 'كل المستودعات'
+                : `المستودع: ${warehouses.find((w) => w.id === warehouseId)?.nameAr ?? ''}`,
+              ...(search ? [`بحث: ${search}`] : []),
+            ]}
+            emptyMessage="لا توجد اقتراحات تجديد ضمن الفلاتر الحالية."
+          />
+        </div>
         {canCreate ? (
           <Button
             type="button"
-            className="h-10 max-sm:w-full sm:ms-auto"
+            className="h-10 max-sm:w-full"
             disabled={!scopedWarehouseId || pickedRows.length === 0 || creating}
             onClick={() => void createPurchaseOrder()}
           >
