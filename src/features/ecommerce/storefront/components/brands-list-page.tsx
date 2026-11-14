@@ -9,6 +9,7 @@ import { JsonLd } from '@/features/ecommerce/storefront/components/json-ld';
 import { collectionPageJsonLd } from '@/features/ecommerce/storefront/lib/seo-jsonld';
 import { Link } from '@/i18n/navigation';
 import type { StorefrontLocale } from '@/i18n/routing';
+import { BrandNames } from '@/features/ecommerce/storefront/components/catalog/brand-names';
 
 export function BrandsListPage({ brands }: { brands: StorefrontBrand[] }) {
   const t = useTranslations('storefront');
@@ -39,7 +40,9 @@ export function BrandsListPage({ brands }: { brands: StorefrontBrand[] }) {
                 <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Tag className="h-5 w-5" aria-hidden />
                 </div>
-                <h2 className="text-base font-semibold text-foreground">{brand.name}</h2>
+                <h2 className="text-base font-semibold text-foreground">
+                  <BrandNames brand={brand} align="start" />
+                </h2>
               </div>
               {brand.description ? (
                 <p className="text-sm leading-relaxed text-muted-foreground">{brand.description}</p>

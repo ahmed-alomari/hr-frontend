@@ -111,6 +111,9 @@ export type StorefrontBrand = {
   companyId: string;
   slug: string;
   name: string;
+  /** Both names, shown one above the other (2026-11-14). */
+  nameAr?: string;
+  nameEn?: string | null;
   description: string;
   websiteUrl: string | null;
   logoUrl: string | null;

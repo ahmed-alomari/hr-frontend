@@ -3,6 +3,7 @@ import { Tag } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 import type { StorefrontBrand } from '@/features/ecommerce/storefront/domain/storefront-models';
 import { cn } from '@/shared/utils';
+import { BrandNames } from '@/features/ecommerce/storefront/components/catalog/brand-names';
 
 type BrandCardProps = {
   brand: StorefrontBrand;
@@ -28,7 +29,7 @@ export function BrandCard({ brand, variant = 'slider', showLogo = true, classNam
           <Tag className="h-5 w-5" aria-hidden />
         </div>
       ) : null}
-      <span className="line-clamp-2 text-sm font-medium text-foreground">{brand.name}</span>
+      <BrandNames brand={brand} className="text-sm font-medium text-foreground" />
     </Link>
   );
 }

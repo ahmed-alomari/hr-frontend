@@ -218,6 +218,8 @@ function mapSearchBrand(
     companyId: dto.companyId || companyId,
     slug: dto.slug,
     name,
+    nameAr: dto.nameAr,
+    nameEn: dto.nameEn ?? null,
     description: dto.description ?? '',
     websiteUrl: dto.websiteUrl ?? null,
     logoUrl: dto.logoUrl ?? null,

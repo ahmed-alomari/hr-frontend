@@ -39,6 +39,12 @@ env:
   # على السيرفر، ويجب تجميدها هنا لأنها NEXT_PUBLIC_ تُخبز وقت البناء.
   NEXT_PUBLIC_STOREFRONT_COMPANY_ID: fab83485-28ff-4852-a8c1-6bb5835de497
 
+# نشر واحد في كل مرة لهذا المستودع؛ والقفل على السيرفر (flock أدناه) يمنع
+# تزامنه مع نشر الخادم.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
 jobs:
   build-and-push:
     name: Build & Push Docker Image
@@ -139,6 +145,12 @@ jobs:
           script: |
             set -euo pipefail
 
+            # الخادم والواجهة ينشران على السيرفر نفسه: نشر واحد في كل مرة.
+            # بدونه يحذف `docker image prune` في أحدهما طبقة يفكّها الآخر
+            # (فشل 2026-11-14: lchown … no such file or directory).
+            exec 9>/tmp/qutb-deploy.lock
+            flock -w 1200 9 || { echo "::error::نشر آخر يعمل على السيرفر منذ 20 دقيقة"; exit 1; }
+
             # سجّل دخول السيرفر إلى GHCR لسحب الصورة (الحزمة Private).
             # نستخدم GITHUB_TOKEN المؤقت الخاص بهذا التشغيل بدل PAT دائم:
             # صلاحيته تنتهي مع انتهاء الـ job، فلا يبقى سر طويل العمر على السيرفر.
@@ -159,7 +171,12 @@ jobs:
             fi
 
             # خدمة هذا المستودع وحدها — الباك اند لا يُعاد تشغيله
-            docker compose pull ${{ env.SERVICE }}
+            # سحب الصورة مع إعادة المحاولة (انقطاع مؤقت في السجل أو الشبكة).
+            for attempt in 1 2 3; do
+              docker compose pull ${{ env.SERVICE }} && break
+              [ "$attempt" = 3 ] && exit 1
+              sleep 15
+            done
             docker compose up -d ${{ env.SERVICE }}
 
             # انتظر جاهزية الواجهة

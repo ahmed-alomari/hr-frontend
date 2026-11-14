@@ -110,7 +110,6 @@ export function StoreImportPage() {
   // unless the user picks it here.
   const [csvSheet, setCsvSheet] = React.useState<StoreImportSheetKey | null>(null);
   const [mapping, setMapping] = React.useState<StoreImportOptions['mapping']>({});
-  const [publish, setPublish] = React.useState(false);
   // Categories and brands the system lacks: created and linked, or refused.
   const [createMissing, setCreateMissing] = React.useState(true);
   const createMissingRef = React.useRef(createMissing);
@@ -229,7 +228,8 @@ export function StoreImportPage() {
     try {
       const result = await storeImportApi.commit(companyId, file, {
         mapping,
-        publish,
+        // Imported products are active and shown in the store (owner 2026-11-14).
+        publish: true,
         createMissing,
         corrections,
         ...fixes,
@@ -548,10 +548,9 @@ export function StoreImportPage() {
           {/* 4 — import */}
           <Card>
             <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={publish} onCheckedChange={(v) => setPublish(v === true)} />
-                انشر المنتجات الجديدة مباشرة (وإلا تُحفظ مسودة لمراجعتها)
-              </label>
+              <p className="text-sm text-muted-foreground">
+                المنتجات المستوردة تُنشر مفعّلة وتظهر في المتجر مباشرة.
+              </p>
               <div className="flex gap-2">
                 <Button
                   variant="outline"

@@ -60,6 +60,7 @@ import {
   type SystemOwnerCompanyApplication,
 } from '@/features/system-owner/lib/api/system-owner';
 import { CompanyModeCard } from '@/features/system-owner/components/company-mode-card';
+import { CompanyOverviewCards } from '@/features/system-owner/components/company-overview-cards';
 import { CompanyProfileHeader } from '@/features/system-owner/components/company-profile-header';
 import {
   resolveApplicationIcon,
@@ -68,7 +69,7 @@ import {
 import { ApiError } from '@/shared/api/client';
 import { cn } from '@/shared/utils';
 
-type TabId = 'apps' | 'users' | 'superusers' | 'domains';
+type TabId = 'apps' | 'people' | 'mode' | 'domains';
 
 export function SystemOwnerCompanyDetailPage() {
   const params = useParams<{ companyId: string }>();
@@ -95,22 +96,37 @@ export function SystemOwnerCompanyDetailPage() {
       )}
 
       {companyQuery.isError ? (
-        <p className="text-sm text-destructive">تعذر تحميل الشركة.</p>
+        <div className="flex items-center gap-2 text-sm text-destructive">
+          تعذر تحميل الشركة.
+          <Button size="sm" variant="outline" onClick={() => void companyQuery.refetch()}>
+            إعادة المحاولة
+          </Button>
+        </div>
       ) : (
         <>
-          <div className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-muted/30 p-1">
-            {/* Five tabs: on a phone the bar scrolls instead of widening the page. */}
+          {company ? (
+            <CompanyOverviewCards company={company} onOpen={setTab} />
+          ) : null}
+
+          <div
+            role="tablist"
+            aria-label="أقسام الشركة"
+            className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-muted/30 p-1"
+          >
+            {/* On a phone the bar scrolls instead of widening the page. */}
             {(
               [
                 ['apps', 'التطبيقات'],
-                ['users', 'المستخدمون'],
-                ['superusers', 'Superusers'],
+                ['people', 'المستخدمون والملاك'],
                 ['domains', 'النطاقات'],
+                ['mode', 'وضع الشركة'],
               ] as const
             ).map(([id, label]) => (
               <button
                 key={id}
                 type="button"
+                role="tab"
+                aria-selected={tab === id}
                 onClick={() => setTab(id)}
                 className={cn(
                   'flex-1 shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors',
@@ -123,9 +139,9 @@ export function SystemOwnerCompanyDetailPage() {
           </div>
 
           {tab === 'apps' ? <CompanyAppsTab companyId={companyId} company={company} /> : null}
-          {tab === 'users' ? <CompanyUsersTab companyId={companyId} /> : null}
-          {tab === 'superusers' ? <CompanySuperusersTab companyId={companyId} /> : null}
+          {tab === 'people' ? <CompanyPeopleTab companyId={companyId} /> : null}
           {tab === 'domains' ? <CompanyDomainsTab companyId={companyId} /> : null}
+          {tab === 'mode' && company ? <CompanyModeCard company={company} /> : null}
         </>
       )}
     </div>
@@ -160,6 +176,25 @@ function CompanyAppsTab({
   const [enablingChain, setEnablingChain] = React.useState(false);
 
   const apps = data ?? [];
+  /**
+   * A switch shows its new state at once and stays locked until the
+   * reloaded list agrees (2026-11-14): a second click on a stale switch
+   * used to undo the first.
+   */
+  const [optimistic, setOptimistic] = React.useState<Record<string, boolean>>({});
+  React.useEffect(() => {
+    setOptimistic((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const app of data ?? []) {
+        if (app.id in next && next[app.id] === app.isEnabled) {
+          delete next[app.id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [data]);
   const byCode = new Map(apps.map((a) => [a.code, a]));
   const nameOf = (code: string) => byCode.get(code)?.nameAr || code;
   const names = (codes: string[]) => codes.map((c) => `«${nameOf(c)}»`).join('، ');
@@ -193,27 +228,7 @@ function CompanyAppsTab({
   if (isLoading) return <p className="text-sm text-muted-foreground">جاري التحميل…</p>;
   if (isError) return <p className="text-sm text-destructive">تعذر تحميل التطبيقات.</p>;
 
-  return (
-    <div className="space-y-2">
-      {company ? <CompanyModeCard company={company} /> : null}
-      {catalog.data && company ? (
-        <CompanyDemoSection
-          company={company}
-          profile={selectedProfile}
-          onProfileChange={setSelectedProfile}
-          catalogProfile={catalog.data.catalogProfile}
-          profileOptions={catalog.data.catalogProfileOptions}
-          production={production}
-          open={openData === DEMO_SECTION}
-          onOpenChange={(open) => setOpenData(open ? DEMO_SECTION : null)}
-        />
-      ) : null}
-      <p className="text-xs text-muted-foreground">
-        «تفعيل» يتحكم بالترخيص والصلاحيات. «إظهار» يتحكم بظهور التطبيق في مشغّل الموظفين. تطبيق
-        النظام وتطبيقات الشركة لا يمكن تعطيلهما، لكن يمكن إخفاؤهما من المشغّل. التطبيق لا يُفعَّل قبل
-        ما يعتمد عليه، ولا يُعطَّل وتطبيق مفعّل يعتمد عليه.
-      </p>
-      {apps.map((app, index) => {
+  const renderApp = (app: SystemOwnerCompanyApplication, index: number) => {
         const enableLocked = app.isAlwaysEnabled;
         const Icon = resolveApplicationIcon(app);
         const dataApp = setsByApp.get(app.code);
@@ -228,11 +243,11 @@ function CompanyAppsTab({
         const bridges = app.isEnabled ? app.followingBridges : [];
 
         return (
-          <div key={app.id} className="rounded-xl border border-border bg-card">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <li key={app.id}>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
             <span
               className={cn(
-                'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl',
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
                 resolveApplicationTileClass(app, index),
                 !(app.isEnabled || enableLocked) && 'opacity-45 grayscale',
               )}
@@ -297,8 +312,8 @@ function CompanyAppsTab({
             <div className="flex shrink-0 items-center gap-4">
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Switch
-                  checked={app.isEnabled || enableLocked}
-                  disabled={enableLocked || pending || followsApps}
+                  checked={(optimistic[app.id] ?? app.isEnabled) || enableLocked}
+                  disabled={enableLocked || pending || followsApps || app.id in optimistic}
                   onCheckedChange={(checked) => {
                     if (checked && missing.length > 0) {
                       setNeedsFirst(app);
@@ -310,11 +325,18 @@ function CompanyAppsTab({
                       );
                       return;
                     }
-                    patchCompanyApplication.mutate({
-                      companyId,
-                      applicationId,
-                      payload: { isEnabled: checked },
-                    });
+                    setOptimistic((prev) => ({ ...prev, [app.id]: checked }));
+                    patchCompanyApplication.mutate(
+                      { companyId, applicationId, payload: { isEnabled: checked } },
+                      {
+                        onError: () =>
+                          setOptimistic((prev) => {
+                            const next = { ...prev };
+                            delete next[app.id];
+                            return next;
+                          }),
+                      },
+                    );
                   }}
                   aria-label={`تفعيل ${app.nameAr}`}
                 />
@@ -349,9 +371,50 @@ function CompanyAppsTab({
               hasSets={dataSets.length > 0}
             />
           ) : null}
-          </div>
+          </li>
         );
-      })}
+  };
+
+  const enabledApps = apps.filter((app) => app.isEnabled || app.isAlwaysEnabled);
+  const otherApps = apps.filter((app) => !(app.isEnabled || app.isAlwaysEnabled));
+
+  return (
+    <div className="space-y-3">
+      {catalog.data && company ? (
+        <CompanyDemoSection
+          company={company}
+          profile={selectedProfile}
+          onProfileChange={setSelectedProfile}
+          catalogProfile={catalog.data.catalogProfile}
+          profileOptions={catalog.data.catalogProfileOptions}
+          production={production}
+          open={openData === DEMO_SECTION}
+          onOpenChange={(open) => setOpenData(open ? DEMO_SECTION : null)}
+        />
+      ) : null}
+      <p className="text-xs text-muted-foreground">
+        «تفعيل» يتحكم بالترخيص والصلاحيات. «إظهار» يتحكم بظهور التطبيق في مشغّل الموظفين. تطبيق
+        النظام وتطبيقات الشركة لا يمكن تعطيلهما، لكن يمكن إخفاؤهما من المشغّل. التطبيق لا يُفعَّل قبل
+        ما يعتمد عليه، ولا يُعطَّل وتطبيق مفعّل يعتمد عليه.
+      </p>
+
+      {(
+        [
+          ['مفعّلة لهذه الشركة', enabledApps],
+          ['متاحة للتفعيل', otherApps],
+        ] as const
+      ).map(([title, list]) =>
+        list.length ? (
+          <section key={title} className="space-y-1.5">
+            <h3 className="px-1 text-xs font-semibold text-muted-foreground">
+              {title} <span className="tabular-nums">({list.length})</span>
+            </h3>
+            <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+              {list.map((app) => renderApp(app, apps.indexOf(app)))}
+            </ul>
+          </section>
+        ) : null,
+      )}
       {apps.length === 0 ? (
         <p className="text-sm text-muted-foreground">لا توجد تطبيقات في الكتالوج.</p>
       ) : null}
@@ -929,10 +992,26 @@ function CompanyDataResult({ run, appName }: { run: CompanyDataRun; appName: (co
   );
 }
 
-function CompanyUsersTab({ companyId }: { companyId: string }) {
+/**
+ * Users and owners in one list (owner 2026-11-14): every user of the company,
+ * the owners (company superusers) marked with their own on/off switch, and
+ * «تعيين صاحباً للشركة» on the others.
+ */
+function CompanyPeopleTab({ companyId }: { companyId: string }) {
   const currentUser = useAuthStore((s) => s.user);
-  const { data, isLoading, isError } = useSystemOwnerCompanyUsers(companyId);
-  const { createCompanyUser } = useSystemOwnerMutations();
+  const { data, isLoading, isError, refetch } = useSystemOwnerCompanyUsers(companyId);
+  const superusersQuery = useSystemOwnerSuperusers(companyId);
+  const {
+    createCompanyUser,
+    assignSuperuser: assignOwner,
+    setSuperuserActive,
+  } = useSystemOwnerMutations();
+  const ownerRows = superusersQuery.data ?? [];
+  const ownerById = new Map(ownerRows.map((row) => [row.userId, row]));
+  const users = data ?? [];
+  // Owners not (or no longer) linked as users still show, after the users.
+  const ownersOnly = ownerRows.filter((row) => !users.some((u) => u.id === row.userId));
+  const ownerCount = ownerRows.filter((row) => row.isActive).length;
   const [open, setOpen] = React.useState(false);
   const [email, setEmail] = React.useState('');
   const [fullNameAr, setFullNameAr] = React.useState('');
@@ -955,9 +1034,19 @@ function CompanyUsersTab({ companyId }: { companyId: string }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          أنشئ صاحب الشركة ببريد مختلف عن مالك النظام. بعد الدخول يدير المستخدمين والأدوار والصلاحيات بنفسه.
-        </p>
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">
+            المستخدمون والملاك
+            {!isLoading ? (
+              <span className="ms-2 text-xs font-normal text-muted-foreground">
+                {users.length} مستخدم · {ownerCount} صاحب شركة
+              </span>
+            ) : null}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            صاحب الشركة المخوّل يدير المستخدمين والأدوار والصلاحيات والتطبيقات المفعّلة بعد دخوله. مالك النظام لا يُعيَّن صاحباً للشركة.
+          </p>
+        </div>
         <Button size="sm" onClick={() => setOpen(true)}>
           <Plus className="h-4 w-4" />
           إضافة مستخدم
@@ -965,29 +1054,56 @@ function CompanyUsersTab({ companyId }: { companyId: string }) {
       </div>
 
       {isLoading ? <p className="text-sm text-muted-foreground">جاري التحميل…</p> : null}
-      {isError ? <p className="text-sm text-destructive">تعذر تحميل المستخدمين.</p> : null}
-
-      {(data ?? []).map((user) => (
-        <div
-          key={user.id}
-          className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
-        >
-          <div>
-            <p className="text-sm font-medium">{user.fullNameAr || user.email || user.id.slice(0, 8)}</p>
-            <p className="text-xs text-muted-foreground" dir="ltr">
-              {user.email}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {user.isCompanySuperuser ? <Badge variant="gold">صاحب الشركة</Badge> : null}
-            <Badge variant={user.isActive === false ? 'subtle' : 'success'}>
-              {user.isActive === false ? 'غير نشط' : 'نشط'}
-            </Badge>
-          </div>
+      {isError ? (
+        <div className="flex items-center gap-2 text-sm text-destructive">
+          تعذر تحميل المستخدمين.
+          <Button size="sm" variant="outline" onClick={() => void refetch()}>
+            إعادة المحاولة
+          </Button>
         </div>
-      ))}
-      {!isLoading && (data ?? []).length === 0 ? (
-        <p className="text-sm text-muted-foreground">لا يوجد مستخدمون مرتبطون بالشركة.</p>
+      ) : null}
+
+      {users.length > 0 || ownersOnly.length > 0 ? (
+        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+          {users.map((user) => {
+            const owner = ownerById.get(user.id);
+            const isPlatformAdmin = (user.userType ?? '').toLowerCase() === 'platform_admin';
+            return (
+              <PersonRow
+                key={user.id}
+                name={user.fullNameAr || user.email || user.id.slice(0, 8)}
+                email={user.email ?? null}
+                active={user.isActive !== false}
+                owner={owner ? { isActive: owner.isActive, notes: owner.notes ?? null } : null}
+                ownerBusy={setSuperuserActive.isPending || assignOwner.isPending}
+                canAssign={!owner && !isPlatformAdmin}
+                onAssign={() => assignOwner.mutate({ companyId, userId: user.id })}
+                onOwnerActive={(checked) =>
+                  setSuperuserActive.mutate({ companyId, userId: user.id, isActive: checked })
+                }
+              />
+            );
+          })}
+          {ownersOnly.map((row) => (
+            <PersonRow
+              key={row.userId}
+              name={row.fullNameAr || row.email || row.userId.slice(0, 8)}
+              email={row.email ?? null}
+              active
+              owner={{ isActive: row.isActive, notes: row.notes ?? null }}
+              ownerBusy={setSuperuserActive.isPending}
+              canAssign={false}
+              onAssign={() => undefined}
+              onOwnerActive={(checked) =>
+                setSuperuserActive.mutate({ companyId, userId: row.userId, isActive: checked })
+              }
+            />
+          ))}
+        </ul>
+      ) : !isLoading && !isError ? (
+        <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+          لا يوجد مستخدمون مرتبطون بالشركة. أضف صاحب الشركة أولاً.
+        </p>
       ) : null}
 
       <Dialog
@@ -1098,98 +1214,73 @@ function CompanyUsersTab({ companyId }: { companyId: string }) {
   );
 }
 
-function CompanySuperusersTab({ companyId }: { companyId: string }) {
-  const usersQuery = useSystemOwnerCompanyUsers(companyId);
-  const superusersQuery = useSystemOwnerSuperusers(companyId);
-  const { assignSuperuser, setSuperuserActive } = useSystemOwnerMutations();
-  const [userId, setUserId] = React.useState('');
-  const [notes, setNotes] = React.useState('');
-
-  const assignedIds = new Set((superusersQuery.data ?? []).map((s) => s.userId));
-  const availableUsers = (usersQuery.data ?? []).filter((u) => {
-    if (assignedIds.has(u.id)) return false;
-    if ((u.userType ?? '').toLowerCase() === 'platform_admin') return false;
-    return true;
-  });
-
+/** One person of the company: the user, and their owner role when they have one. */
+function PersonRow({
+  name,
+  email,
+  active,
+  owner,
+  ownerBusy,
+  canAssign,
+  onAssign,
+  onOwnerActive,
+}: {
+  name: string;
+  email: string | null;
+  active: boolean;
+  owner: { isActive: boolean; notes: string | null } | null;
+  ownerBusy: boolean;
+  canAssign: boolean;
+  onAssign: () => void;
+  onOwnerActive: (checked: boolean) => void;
+}) {
   return (
-    <div className="space-y-4">
-      <div className="space-y-3 rounded-xl border border-border bg-card p-4">
-        <p className="text-sm font-medium">تعيين Superuser</p>
-        <p className="text-xs text-muted-foreground">
-          مالك النظام لا يُعيَّن Superuser. صاحب الشركة المخوّل يدير المستخدمين والأدوار والصلاحيات والتطبيقات المفعّلة بعد دخوله.
-        </p>
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-          <div className="space-y-1.5">
-            <Label>المستخدم</Label>
-            <Select value={userId || '_none'} onValueChange={(v) => setUserId(v === '_none' ? '' : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="اختر مستخدماً مربوطاً بالشركة" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_none">— اختر —</SelectItem>
-                {availableUsers.map((user) => (
-                  <SelectItem key={user.id} value={user.id}>
-                    {user.fullNameAr || user.email || user.id.slice(0, 8)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>ملاحظة</Label>
-            <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="أساسي" />
-          </div>
-        </div>
-        <Button
-          disabled={!userId || assignSuperuser.isPending}
-          onClick={() =>
-            assignSuperuser.mutate(
-              { companyId, userId, notes: notes.trim() || undefined },
-              {
-                onSuccess: () => {
-                  setUserId('');
-                  setNotes('');
-                },
-              },
-            )
-          }
+    <li className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <span
+          className={cn(
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
+            owner?.isActive ? 'bg-amber-100 text-amber-800' : 'bg-muted text-muted-foreground',
+          )}
+          aria-hidden
         >
-          تعيين
-        </Button>
+          {name.trim().charAt(0) || '؟'}
+        </span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="truncate text-sm font-medium">{name}</p>
+            {owner ? (
+              <Badge variant={owner.isActive ? 'gold' : 'subtle'} className="text-[10px]">
+                {owner.isActive ? 'صاحب الشركة' : 'صاحب شركة موقوف'}
+              </Badge>
+            ) : null}
+            {!active ? (
+              <Badge variant="subtle" className="text-[10px]">
+                حساب غير نشط
+              </Badge>
+            ) : null}
+          </div>
+          <p className="truncate text-xs text-muted-foreground" dir="ltr">
+            {email}
+            {owner?.notes ? ` · ${owner.notes}` : ''}
+          </p>
+        </div>
       </div>
-
-      {(superusersQuery.data ?? []).map((row) => (
-        <div
-          key={row.userId}
-          className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
-        >
-          <div>
-            <p className="text-sm font-medium">{row.fullNameAr || row.email || row.userId.slice(0, 8)}</p>
-            <p className="text-xs text-muted-foreground" dir="ltr">
-              {row.email}
-              {row.notes ? ` · ${row.notes}` : ''}
-            </p>
-          </div>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>نشط</span>
-            <Switch
-              checked={row.isActive}
-              disabled={setSuperuserActive.isPending}
-              onCheckedChange={(checked) =>
-                setSuperuserActive.mutate({
-                  companyId,
-                  userId: row.userId,
-                  isActive: checked,
-                })
-              }
-            />
-          </label>
-        </div>
-      ))}
-      {(superusersQuery.data ?? []).length === 0 ? (
-        <p className="text-sm text-muted-foreground">لم يُعيَّن Superuser بعد.</p>
+      {owner ? (
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          صلاحية صاحب الشركة
+          <Switch
+            checked={owner.isActive}
+            disabled={ownerBusy}
+            onCheckedChange={onOwnerActive}
+            aria-label={`صلاحية صاحب الشركة: ${name}`}
+          />
+        </label>
+      ) : canAssign ? (
+        <Button size="sm" variant="outline" disabled={ownerBusy} onClick={onAssign}>
+          تعيين صاحباً للشركة
+        </Button>
       ) : null}
-    </div>
+    </li>
   );
 }

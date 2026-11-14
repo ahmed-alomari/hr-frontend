@@ -96,6 +96,17 @@ export function ProductPurchasePanel({ product, onActiveMediaChange }: Props) {
     setOrderQty(1);
   }, [hasVariantCatalog, product.id]);
 
+  // «طلب مباشر» (the product as itself, no option) is offered only when the
+  // product can be sold as itself now (owner 2026-11-14): never shown and
+  // then found unavailable. Checked on the store's availability (the
+  // product's own quantity, as orders are checked).
+  const directAvailable = canOrderQuantity(product, null);
+  React.useEffect(() => {
+    if (hasVariantCatalog && orderMode === 'direct' && !directAvailable) {
+      setOrderMode('variants');
+    }
+  }, [hasVariantCatalog, orderMode, directAvailable]);
+
   const useVariants = hasVariantCatalog && orderMode === 'variants';
   const activeVariant = useVariants ? resolveActiveVariant(product, selected) : undefined;
   const selectionIncomplete = useVariants && !activeVariant;
@@ -222,7 +233,7 @@ export function ProductPurchasePanel({ product, onActiveMediaChange }: Props) {
         ) : null}
       </div>
 
-      {hasVariantCatalog ? (
+      {hasVariantCatalog && directAvailable ? (
         <div className="flex flex-wrap gap-2">
           <button
             type="button"

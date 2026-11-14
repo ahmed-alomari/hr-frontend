@@ -10,6 +10,7 @@ import { StoreEmptyState } from '@/features/ecommerce/storefront/components/stor
 import { JsonLd } from '@/features/ecommerce/storefront/components/json-ld';
 import { breadcrumbJsonLd, collectionPageJsonLd } from '@/features/ecommerce/storefront/lib/seo-jsonld';
 import type { StorefrontLocale } from '@/i18n/routing';
+import { BrandNames } from '@/features/ecommerce/storefront/components/catalog/brand-names';
 
 export function BrandDetailPage({ brand, products }: { brand: StorefrontBrand; products: StorefrontProduct[] }) {
   const t = useTranslations('storefront');
@@ -35,7 +36,9 @@ export function BrandDetailPage({ brand, products }: { brand: StorefrontBrand; p
               <Tag className="h-7 w-7" aria-hidden />
             </div>
             <div>
-              <h1 className="font-arabic-display text-2xl font-bold text-foreground">{brand.name}</h1>
+              <h1 className="font-arabic-display text-2xl font-bold text-foreground">
+                <BrandNames brand={brand} align="start" secondaryClassName="mt-1 text-sm" />
+              </h1>
               {brand.description ? (
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{brand.description}</p>
               ) : null}

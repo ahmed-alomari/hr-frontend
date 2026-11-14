@@ -10,6 +10,10 @@ import { isRtlLocale } from '@/i18n/routing';
 import { Link } from '@/i18n/navigation';
 import { cn } from '@/shared/utils';
 
+/** The cart icon on a product card's image (homepage, lists): always visible. */
+const QUICK_CART_CLASS =
+  'inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-soft transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50';
+
 type AddToCartButtonProps = {
   productId: string;
   stockStatus: StockStatus;
@@ -143,12 +147,18 @@ export function AddToCartButton({
         title={label}
         className={cn(
           variant === 'quick'
-            ? 'inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-soft transition-colors hover:bg-muted'
+            ? QUICK_CART_CLASS
             : 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90',
           className,
         )}
       >
-        <SlidersHorizontal className="h-4 w-4" aria-hidden />
+        {/* The card's cart icon on every product (2026-11-14): one with
+            options opens its page to choose them first. */}
+        {variant === 'quick' ? (
+          <ShoppingCart className="h-4 w-4" aria-hidden />
+        ) : (
+          <SlidersHorizontal className="h-4 w-4" aria-hidden />
+        )}
       </Link>
     );
   }
@@ -242,13 +252,11 @@ export function AddToCartButton({
         type="button"
         onClick={handleAdd}
         disabled={outOfStock}
-        className={cn(
-          'inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-soft transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50',
-          className,
-        )}
+        className={cn(QUICK_CART_CLASS, className)}
         aria-label={t('products.addToCart')}
+        title={t('products.addToCart')}
       >
-        <Plus className="h-4 w-4" aria-hidden />
+        <ShoppingCart className="h-4 w-4" aria-hidden />
       </button>
     );
   }

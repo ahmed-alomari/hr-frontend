@@ -16,6 +16,7 @@ import {
 import { LinkPendingSpinner } from '@/features/ecommerce/storefront/components/link-pending-spinner';
 import { Link } from '@/i18n/navigation';
 import { cn } from '@/shared/utils';
+import { BrandNames } from '@/features/ecommerce/storefront/components/catalog/brand-names';
 
 type PromoNavLink = StorefrontCompanyConfig['secondaryNavigation'][number];
 
@@ -372,7 +373,7 @@ export function StoreMobileCategoryNav({
                         className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-accent"
                         onClick={onNavigate}
                       >
-                        {brand.name}
+                        <BrandNames brand={brand} align="start" />
                       </Link>
                     ))}
                   </div>

@@ -8,6 +8,7 @@ import { ProductCardClient } from '@/features/ecommerce/storefront/components/pr
 import { StoreEmptyState } from '@/features/ecommerce/storefront/components/store-empty-state';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useSearchParams } from 'next/navigation';
+import { BrandNames } from '@/features/ecommerce/storefront/components/catalog/brand-names';
 
 export function StoreSearchResults() {
   const t = useTranslations('storefront');
@@ -136,9 +137,9 @@ export function StoreSearchResults() {
                     <Link
                       key={brand.id}
                       href={`/store/brands/${brand.slug}`}
-                      className="rounded-full border border-border bg-card px-4 py-2 text-sm text-foreground transition-colors hover:bg-accent"
+                      className="rounded-2xl border border-border bg-card px-4 py-2 text-sm text-foreground transition-colors hover:bg-accent"
                     >
-                      {brand.name}
+                      <BrandNames brand={brand} />
                     </Link>
                   ))}
                 </div>

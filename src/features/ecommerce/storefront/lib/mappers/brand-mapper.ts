@@ -24,6 +24,8 @@ export function mapStorefrontBrand(brand: Brand, locale: StorefrontLocale): Stor
     companyId: brand.companyId,
     slug: brand.slug,
     name,
+    nameAr: brand.nameAr,
+    nameEn: brand.nameEn ?? null,
     description: resolveDescription(brand, locale),
     websiteUrl: brand.websiteUrl ?? null,
     logoUrl: brand.logo?.url ? resolveUploadUrl(brand.logo.url) || null : null,
